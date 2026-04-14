@@ -1,0 +1,8 @@
+node_modules/
+database/cntrd.db
+database/cntrd.db-shm
+database/cntrd.db-wal
+public/uploads/*
+!public/uploads/.gitkeep
+.env
+*.log
