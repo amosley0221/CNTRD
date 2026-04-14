@@ -6,3 +6,5 @@ public/uploads/*
 !public/uploads/.gitkeep
 .env
 *.log
+screenshot.js
+screenshots/
