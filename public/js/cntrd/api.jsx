@@ -56,6 +56,11 @@ const API = {
   plays()                  { return request('GET',  '/api/plays'); },
   createPlay(payload)      { return request('POST', '/api/plays', payload); },
 
+  // Static pages (terms / privacy / about)
+  pages()                  { return request('GET',  '/api/pages'); },
+  page(slug)               { return request('GET',  `/api/pages/${slug}`); },
+  updatePage(slug, body)   { return request('PUT',  `/api/pages/${slug}`, body); },
+
   // Admin (server enforces is_admin)
   adminUsers(q)            { return request('GET',  '/api/admin/users' + (q ? '?q=' + encodeURIComponent(q) : '')); },
   adminStats()             { return request('GET',  '/api/admin/stats'); },

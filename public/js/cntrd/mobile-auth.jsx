@@ -362,8 +362,9 @@ function SettingsScreen({ tweaks, setTweak, onNav, me }) {
         )}
 
         <Section title="More">
-          <Row label="Privacy" right={<Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />} />
-          <Row label="About CNTRD" sub="v2.4 · build 1284" right={<Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />} />
+          <Row label="Terms of service" right={<Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />} onClick={() => onNav?.('terms')} />
+          <Row label="Privacy policy"   right={<Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />} onClick={() => onNav?.('privacy')} />
+          <Row label="About CNTRD" sub="v2.4 · build 1284" right={<Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />} onClick={() => onNav?.('about')} />
           <Row label={<span style={{ color: 'var(--cn-danger)' }}>Sign out</span>} right={<Icon name="logout" size={16} stroke="var(--cn-danger)" />} onClick={() => onNav?.('logout')} last />
         </Section>
       </div>

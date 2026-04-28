@@ -101,6 +101,25 @@ function AdminScreen({ tweaks, onNav, me }) {
         </div>
       )}
 
+      {/* Site pages — admin can edit Terms/Privacy/About */}
+      <div style={{
+        padding: '12px 16px', borderBottom: '0.5px solid var(--cn-border)',
+        display: 'flex', alignItems: 'center', gap: 8,
+      }}>
+        <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1, textTransform: 'uppercase', marginRight: 4 }}>Site pages:</span>
+        {['terms', 'privacy', 'about'].map(slug => (
+          <button key={slug} onClick={() => onNav?.(slug)} style={{
+            padding: '5px 10px', borderRadius: 6,
+            background: 'transparent',
+            border: '0.5px solid var(--cn-border-s)',
+            color: 'var(--cn-text)',
+            fontSize: 11, fontWeight: 600, cursor: 'pointer',
+            fontFamily: 'var(--cn-font-body)',
+            textTransform: 'capitalize',
+          }}>{slug}</button>
+        ))}
+      </div>
+
       {/* User list */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {loading ? (

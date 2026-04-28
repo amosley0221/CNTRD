@@ -245,6 +245,9 @@ function CNTRDApp() {
     playsCreator: PlaysCreatorScreen,
     admin:        AdminScreen,
     teams:        TeamsEditorScreen,
+    terms:        TermsScreen,
+    privacy:      PrivacyScreen,
+    about:        AboutScreen,
   };
   const ScreenComp = screenMap[screen] || FeedScreen;
   const isAuthScreen = screen === 'login' || screen === 'signup';

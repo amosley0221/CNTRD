@@ -39,6 +39,9 @@ function DesktopMainContent({ screen, ...props }) {
     playsCreator: PlaysCreatorScreen,
     admin:        AdminScreen,
     teams:        TeamsEditorScreen,
+    terms:        TermsScreen,
+    privacy:      PrivacyScreen,
+    about:        AboutScreen,
   };
   const Comp = map[screen] || DesktopFeed;
   return <Comp {...props} />;
@@ -344,12 +347,23 @@ function DesktopRail({ tweaks, onNav, games, query, setQuery }) {
         </div>
       </div>
 
-      <div style={{ fontSize: 11, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', lineHeight: 1.5, paddingTop: 8, borderTop: '0.5px solid var(--cn-border)' }}>
+      <div style={{ fontSize: 11, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', lineHeight: 1.6, paddingTop: 8, borderTop: '0.5px solid var(--cn-border)' }}>
         CNTRD · 2026 · Where the game gets loud.<br />
-        Terms · Privacy · About
+        <a onClick={() => onNav?.('terms')}   style={footerLinkStyle}>Terms</a>
+        {' · '}
+        <a onClick={() => onNav?.('privacy')} style={footerLinkStyle}>Privacy</a>
+        {' · '}
+        <a onClick={() => onNav?.('about')}   style={footerLinkStyle}>About</a>
       </div>
     </aside>
   );
 }
+
+const footerLinkStyle = {
+  color: 'var(--cn-text-dim)',
+  cursor: 'pointer',
+  textDecoration: 'underline',
+  textUnderlineOffset: 2,
+};
 
 Object.assign(window, { DesktopApp });
