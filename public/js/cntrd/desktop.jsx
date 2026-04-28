@@ -1,9 +1,9 @@
 // desktop.jsx — desktop web app for CNTRD
 // Three-column layout: left nav, center feed, right rail (gameday + trends)
 
-function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays, games, screen, onOpenGame, unreadMessages, ...rest }) {
+function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays, games, screen, onOpenGame, unreadMessages, unreadNotifs, ...rest }) {
   const [query, setQuery] = React.useState('');
-  const screenProps = { tweaks, setTweak, onNav, me, posts, plays, games, onOpenGame, unreadMessages, ...rest };
+  const screenProps = { tweaks, setTweak, onNav, me, posts, plays, games, onOpenGame, unreadMessages, unreadNotifs, ...rest };
   return (
     <div style={{
       width: '100%', height: '100%',
@@ -14,7 +14,7 @@ function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays, games, screen, 
       gridTemplateColumns: '232px 1fr 360px',
       overflow: 'hidden',
     }}>
-      <DesktopNav onNav={onNav} me={me} screen={screen} unreadMessages={unreadMessages} />
+      <DesktopNav onNav={onNav} me={me} screen={screen} unreadMessages={unreadMessages} unreadNotifs={unreadNotifs} />
       <div style={{
         position: 'relative',          // anchors absolutely-positioned children
         overflow: 'hidden',
@@ -78,24 +78,26 @@ function DesktopMainContent({ screen, ...props }) {
     terms:        TermsScreen,
     privacy:      PrivacyScreen,
     about:        AboutScreen,
-    gameDetail:   GameDetailScreen,
-    tagFeed:      TagFeedScreen,
-    messages:     MessagesRoot,
+    gameDetail:    GameDetailScreen,
+    tagFeed:       TagFeedScreen,
+    messages:      MessagesRoot,
+    notifications: NotificationsScreen,
   };
   const Comp = map[screen] || DesktopFeed;
   return <Comp {...props} />;
 }
 
-function DesktopNav({ onNav, me, screen, unreadMessages }) {
+function DesktopNav({ onNav, me, screen, unreadMessages, unreadNotifs }) {
   const meUser = me || ME;
   const items = [
-    { screen: 'home',         icon: 'home',     label: 'Feed' },
-    { screen: 'home',         icon: 'search',   label: 'Discover',     key: 'discover' },
-    { screen: 'messages',     icon: 'chat',     label: 'Messages',     count: unreadMessages || 0 },
-    { screen: 'chat',         icon: 'whistle',  label: 'Gameday',      badge: 'LIVE' },
-    { screen: 'playsCreator', icon: 'video',    label: 'Plays' },
-    { screen: 'profile',      icon: 'profile',  label: 'You' },
-    { screen: 'settings',     icon: 'settings', label: 'Settings' },
+    { screen: 'home',          icon: 'home',     label: 'Feed' },
+    { screen: 'home',          icon: 'search',   label: 'Discover',     key: 'discover' },
+    { screen: 'notifications', icon: 'bell',     label: 'Notifications', count: unreadNotifs || 0 },
+    { screen: 'messages',      icon: 'chat',     label: 'Messages',      count: unreadMessages || 0 },
+    { screen: 'chat',          icon: 'whistle',  label: 'Gameday',       badge: 'LIVE' },
+    { screen: 'playsCreator',  icon: 'video',    label: 'Plays' },
+    { screen: 'profile',       icon: 'profile',  label: 'You' },
+    { screen: 'settings',      icon: 'settings', label: 'Settings' },
     ...(meUser?.is_admin ? [{ screen: 'admin', icon: 'whistle', label: 'Admin', accent: true }] : []),
   ];
   const currentScreen = screen || 'home';

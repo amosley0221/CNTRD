@@ -26,6 +26,7 @@ app.use('/api/teams',  require('./routes/teams'));
 app.use('/api/leagues',require('./routes/leagues'));
 app.use('/api/pages',  require('./routes/pages'));
 app.use('/api/messages', require('./routes/messages'));
+app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/admin',  require('./routes/admin'));
 app.use('/api/static', require('./routes/static'));
 app.use('/api/upload', uploadRouter);
@@ -37,6 +38,12 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', app: 'CNTRD' }));
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
+
+// Background notifier — polls ESPN every 60s and creates a one-time
+// notification per user when a game involving their team / league goes live.
+if (process.env.DISABLE_LIVE_TICKER !== '1') {
+  require('./services/notifier').startLiveGameTicker(60_000);
+}
 
 app.listen(PORT, () => {
   console.log(`CNTRD running at http://localhost:${PORT}`);

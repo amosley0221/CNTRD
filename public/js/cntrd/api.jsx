@@ -64,6 +64,18 @@ const API = {
   page(slug)               { return request('GET',  `/api/pages/${slug}`); },
   updatePage(slug, body)   { return request('PUT',  `/api/pages/${slug}`, body); },
 
+  // Notifications
+  notifications()                       { return request('GET',  '/api/notifications'); },
+  notificationsUnread()                 { return request('GET',  '/api/notifications/unread'); },
+  markNotifRead(id)                     { return request('POST', `/api/notifications/${id}/read`); },
+  markAllNotifsRead()                   { return request('POST', '/api/notifications/read-all'); },
+
+  // Follow / privacy
+  followUser(username)                  { return request('POST', `/api/users/${username}/follow`); },
+  followRequests()                      { return request('GET',  '/api/users/me/follow-requests'); },
+  acceptFollowRequest(username)         { return request('POST', `/api/users/${username}/follow-request/accept`); },
+  rejectFollowRequest(username)         { return request('POST', `/api/users/${username}/follow-request/reject`); },
+
   // Messages
   conversations()                       { return request('GET',  '/api/messages'); },
   unreadCount()                         { return request('GET',  '/api/messages/unread'); },

@@ -119,8 +119,33 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS follow_requests (
+    requester_id TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (requester_id, target_id),
+    FOREIGN KEY (requester_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (target_id)    REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,        -- recipient
+    type TEXT NOT NULL,           -- follow | follow_request | follow_accept | message | live_game
+    actor_id TEXT,                -- optional triggering user
+    data TEXT DEFAULT '{}',       -- JSON blob with type-specific context
+    dedupe_key TEXT,              -- unique per (user_id, dedupe_key) when not null
+    read_at TEXT DEFAULT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_conv_members_user ON conversation_members(user_id);
   CREATE INDEX IF NOT EXISTS idx_messages_conv     ON messages(conversation_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_notif_user_recent ON notifications(user_id, created_at DESC);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_dedupe
+    ON notifications(user_id, dedupe_key) WHERE dedupe_key IS NOT NULL;
 `);
 
 // Idempotent column adds for upgrading older databases.
@@ -137,6 +162,7 @@ ensureColumn('users', 'city',             "TEXT DEFAULT ''");
 ensureColumn('users', 'is_admin',         "INTEGER DEFAULT 0");
 ensureColumn('users', 'banned',           "INTEGER DEFAULT 0");
 ensureColumn('users', 'followed_leagues', "TEXT DEFAULT '[]'");
+ensureColumn('users', 'is_private',       "INTEGER DEFAULT 0");
 
 // post type: take | photo | score | poll | clip | box | rumor
 ensureColumn('posts', 'type',  "TEXT DEFAULT 'take'");

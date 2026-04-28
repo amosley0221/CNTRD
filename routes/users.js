@@ -4,16 +4,45 @@ const db = require('../database/db');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { isValidTeamCode } = require('../data/teams');
 const leaguesRouter = require('./leagues');
+const { notify } = require('../services/notifier');
 
 const PUBLIC_USER_COLS =
   'id, username, display_name, bio, avatar, banner, team_tags, followed_leagues, ' +
-  'avatar_hue, pronouns, city, follower_count, following_count, post_count, created_at';
+  'avatar_hue, pronouns, city, is_private, follower_count, following_count, post_count, created_at';
 
 function hydrate(u) {
   if (!u) return u;
   u.team_tags        = JSON.parse(u.team_tags || '[]');
   u.followed_leagues = JSON.parse(u.followed_leagues || '[]');
+  u.is_private       = !!u.is_private;
   return u;
+}
+
+// Strip details from a private user when the viewer isn't an approved follower.
+function lockedView(user) {
+  return {
+    id: user.id,
+    username: user.username,
+    display_name: user.display_name,
+    avatar: user.avatar,
+    avatar_hue: user.avatar_hue,
+    is_private: true,
+    locked: true,                 // tells the client to show a "private" CTA
+    follower_count: user.follower_count,
+    following_count: user.following_count,
+    created_at: user.created_at,
+    team_tags: [],
+    followed_leagues: [],
+    bio: '',
+    pronouns: '',
+    city: '',
+    post_count: user.post_count,
+  };
+}
+
+function isApprovedFollower(viewerId, ownerId) {
+  if (!viewerId || viewerId === ownerId) return true;
+  return !!db.prepare('SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?').get(viewerId, ownerId);
 }
 
 // Get user by username
@@ -22,16 +51,23 @@ router.get('/:username', optionalAuth, (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   let is_following = false;
+  let request_pending = false;
   if (req.user) {
     is_following = !!db.prepare('SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?').get(req.user.id, user.id);
+    request_pending = !!db.prepare('SELECT 1 FROM follow_requests WHERE requester_id = ? AND target_id = ?').get(req.user.id, user.id);
   }
 
-  res.json({ ...user, is_following });
+  // Lock the response if private and the viewer isn't allowed in.
+  const allowed = isApprovedFollower(req.user?.id, user.id);
+  if (user.is_private && !allowed) {
+    return res.json({ ...lockedView(user), is_following: false, request_pending });
+  }
+  res.json({ ...user, is_following, request_pending });
 });
 
 // Update profile
 router.patch('/me/profile', requireAuth, (req, res) => {
-  const { display_name, bio, team_tags, followed_leagues, avatar_hue, pronouns, city } = req.body;
+  const { display_name, bio, team_tags, followed_leagues, avatar_hue, pronouns, city, is_private } = req.body;
 
   const updates = [];
   const values = [];
@@ -67,6 +103,7 @@ router.patch('/me/profile', requireAuth, (req, res) => {
   }
   if (pronouns !== undefined) { updates.push('pronouns = ?'); values.push(String(pronouns).slice(0, 30)); }
   if (city     !== undefined) { updates.push('city = ?');     values.push(String(city).slice(0, 80)); }
+  if (is_private !== undefined) { updates.push('is_private = ?'); values.push(is_private ? 1 : 0); }
 
   if (updates.length === 0) return res.status(400).json({ error: 'Nothing to update' });
 
@@ -77,28 +114,100 @@ router.patch('/me/profile', requireAuth, (req, res) => {
   res.json(updated);
 });
 
-// Follow / Unfollow
+// Follow / unfollow / request-follow.
+// - Already following → unfollow.
+// - Has a pending request → cancel it.
+// - Target is private → create a follow_request + notify target.
+// - Otherwise → instant follow + notify target.
 router.post('/:username/follow', requireAuth, (req, res) => {
-  const target = db.prepare('SELECT id FROM users WHERE username = ?').get(req.params.username);
+  const target = db.prepare('SELECT id, is_private FROM users WHERE username = ?').get(req.params.username);
   if (!target) return res.status(404).json({ error: 'User not found' });
   if (target.id === req.user.id) return res.status(400).json({ error: 'Cannot follow yourself' });
 
-  const existing = db.prepare('SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?').get(req.user.id, target.id);
-
-  if (existing) {
+  const existingFollow = db.prepare('SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?').get(req.user.id, target.id);
+  if (existingFollow) {
     db.prepare('DELETE FROM follows WHERE follower_id = ? AND following_id = ?').run(req.user.id, target.id);
     db.prepare('UPDATE users SET follower_count  = MAX(0, follower_count  - 1) WHERE id = ?').run(target.id);
     db.prepare('UPDATE users SET following_count = MAX(0, following_count - 1) WHERE id = ?').run(req.user.id);
-    return res.json({ following: false });
-  } else {
-    db.prepare('INSERT INTO follows (follower_id, following_id) VALUES (?, ?)').run(req.user.id, target.id);
-    db.prepare('UPDATE users SET follower_count  = follower_count  + 1 WHERE id = ?').run(target.id);
-    db.prepare('UPDATE users SET following_count = following_count + 1 WHERE id = ?').run(req.user.id);
-    return res.json({ following: true });
+    return res.json({ following: false, request_pending: false });
   }
+
+  const existingReq = db.prepare('SELECT 1 FROM follow_requests WHERE requester_id = ? AND target_id = ?').get(req.user.id, target.id);
+  if (existingReq) {
+    db.prepare('DELETE FROM follow_requests WHERE requester_id = ? AND target_id = ?').run(req.user.id, target.id);
+    return res.json({ following: false, request_pending: false });
+  }
+
+  if (target.is_private) {
+    db.prepare('INSERT INTO follow_requests (requester_id, target_id) VALUES (?, ?)').run(req.user.id, target.id);
+    notify({
+      userId: target.id, type: 'follow_request', actorId: req.user.id,
+      data: { username: req.user.username },
+      dedupeKey: `follow_req:${req.user.id}`,
+    });
+    return res.json({ following: false, request_pending: true });
+  }
+
+  db.prepare('INSERT INTO follows (follower_id, following_id) VALUES (?, ?)').run(req.user.id, target.id);
+  db.prepare('UPDATE users SET follower_count  = follower_count  + 1 WHERE id = ?').run(target.id);
+  db.prepare('UPDATE users SET following_count = following_count + 1 WHERE id = ?').run(req.user.id);
+  notify({
+    userId: target.id, type: 'follow', actorId: req.user.id,
+    data: { username: req.user.username },
+  });
+  return res.json({ following: true, request_pending: false });
 });
 
-// Followers / Following / Posts (delegated to posts route via username) ---------
+// Incoming follow requests for me.
+router.get('/me/follow-requests', requireAuth, (req, res) => {
+  const rows = db.prepare(`
+    SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags, fr.created_at
+    FROM follow_requests fr
+    JOIN users u ON u.id = fr.requester_id
+    WHERE fr.target_id = ?
+    ORDER BY fr.created_at DESC LIMIT 100
+  `).all(req.user.id);
+  res.json(rows.map(u => ({
+    id: u.id,
+    username: u.username,
+    displayName: u.display_name || u.username,
+    avatar: u.avatar,
+    avatarHue: u.avatar_hue ?? 200,
+    teams: JSON.parse(u.team_tags || '[]'),
+    requested_at: u.created_at,
+  })));
+});
+
+// Accept / decline a follow request from <username>.
+router.post('/:username/follow-request/accept', requireAuth, (req, res) => {
+  const requester = db.prepare('SELECT id, username FROM users WHERE username = ?').get(req.params.username);
+  if (!requester) return res.status(404).json({ error: 'User not found' });
+  const reqRow = db.prepare('SELECT 1 FROM follow_requests WHERE requester_id = ? AND target_id = ?').get(requester.id, req.user.id);
+  if (!reqRow) return res.status(404).json({ error: 'No pending request' });
+
+  db.prepare('DELETE FROM follow_requests WHERE requester_id = ? AND target_id = ?').run(requester.id, req.user.id);
+  // Don't double-create a follow row if one already exists.
+  const already = db.prepare('SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?').get(requester.id, req.user.id);
+  if (!already) {
+    db.prepare('INSERT INTO follows (follower_id, following_id) VALUES (?, ?)').run(requester.id, req.user.id);
+    db.prepare('UPDATE users SET follower_count  = follower_count  + 1 WHERE id = ?').run(req.user.id);
+    db.prepare('UPDATE users SET following_count = following_count + 1 WHERE id = ?').run(requester.id);
+  }
+  notify({
+    userId: requester.id, type: 'follow_accept', actorId: req.user.id,
+    data: { username: req.user.username },
+  });
+  res.json({ accepted: true });
+});
+
+router.post('/:username/follow-request/reject', requireAuth, (req, res) => {
+  const requester = db.prepare('SELECT id FROM users WHERE username = ?').get(req.params.username);
+  if (!requester) return res.status(404).json({ error: 'User not found' });
+  db.prepare('DELETE FROM follow_requests WHERE requester_id = ? AND target_id = ?').run(requester.id, req.user.id);
+  res.json({ rejected: true });
+});
+
+// Followers / Following / Posts ---------
 
 router.get('/:username/followers', (req, res) => {
   const target = db.prepare('SELECT id FROM users WHERE username = ?').get(req.params.username);
@@ -126,10 +235,14 @@ router.get('/:username/following', (req, res) => {
   res.json(following);
 });
 
-// Get user's posts
+// Get user's posts (private profiles return [] for non-approved viewers).
 router.get('/:username/posts', optionalAuth, (req, res) => {
-  const target = db.prepare('SELECT id FROM users WHERE username = ?').get(req.params.username);
+  const target = db.prepare('SELECT id, is_private FROM users WHERE username = ?').get(req.params.username);
   if (!target) return res.status(404).json({ error: 'User not found' });
+
+  if (target.is_private && !isApprovedFollower(req.user?.id, target.id)) {
+    return res.json([]);
+  }
 
   const cursor = req.query.cursor;
   const params = [target.id];

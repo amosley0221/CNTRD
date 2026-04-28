@@ -91,6 +91,7 @@ function CNTRDApp() {
   const [selectedTag, setSelectedTag]   = React.useState(null);  // 'NFL:PHI' or 'PHI'
   const [messageContext, setMessageContext] = React.useState({ mode: 'list' });
   const [unreadMessages, setUnreadMessages] = React.useState(0);
+  const [unreadNotifs, setUnreadNotifs]     = React.useState(0);
   const [screen, setScreen] = React.useState('login');
 
   const isWide = useMediaQuery('(min-width: 980px)');
@@ -262,18 +263,39 @@ function CNTRDApp() {
     try { localStorage.setItem(STORAGE.screen, 'gameDetail'); } catch {}
   }, []);
 
-  // Poll the unread count for the sidebar Messages badge.
+  // Poll the unread counts for the sidebar Messages + Notifications badges.
   React.useEffect(() => {
-    if (!authed) { setUnreadMessages(0); return; }
+    if (!authed) { setUnreadMessages(0); setUnreadNotifs(0); return; }
     let cancelled = false;
     const tick = async () => {
-      try { const r = await API.unreadCount(); if (!cancelled) setUnreadMessages(r?.unread || 0); }
-      catch { /* ignore */ }
+      try {
+        const [m, n] = await Promise.all([
+          API.unreadCount().catch(() => null),
+          API.notificationsUnread().catch(() => null),
+        ]);
+        if (cancelled) return;
+        if (m) setUnreadMessages(m.unread || 0);
+        if (n) setUnreadNotifs(n.unread || 0);
+      } catch { /* ignore */ }
     };
     tick();
     const id = setInterval(tick, 15 * 1000);
     return () => { cancelled = true; clearInterval(id); };
   }, [authed]);
+
+  // Notifications-screen "open game" handler — reuses the existing game
+  // detail flow so a live-game notification jumps straight into stats.
+  React.useEffect(() => {
+    const handler = (e) => {
+      const g = e.detail;
+      if (!g?.id || !g?.league) return;
+      setSelectedGame({ id: g.id, league: g.league });
+      setScreen('gameDetail');
+      try { localStorage.setItem(STORAGE.screen, 'gameDetail'); } catch {}
+    };
+    window.addEventListener('cntrd:open-game-from-notif', handler);
+    return () => window.removeEventListener('cntrd:open-game-from-notif', handler);
+  }, []);
 
   const screenMap = {
     home:         FeedScreen,
@@ -294,6 +316,7 @@ function CNTRDApp() {
     gameDetail:   GameDetailScreen,
     tagFeed:      TagFeedScreen,
     messages:     MessagesRoot,
+    notifications: NotificationsScreen,
   };
   const ScreenComp = screenMap[screen] || FeedScreen;
   const isAuthScreen = screen === 'login' || screen === 'signup';
@@ -308,8 +331,9 @@ function CNTRDApp() {
     me, posts, plays, games,
     selectedGame, selectedTag,
     messageContext, setMessageContext,
-    unreadMessages,
+    unreadMessages, unreadNotifs,
     onUnread: setUnreadMessages,
+    onUnreadNotifs: setUnreadNotifs,
     onLogin:     handleLogin,
     onSignup:    handleSignup,
     onPost:      handlePost,

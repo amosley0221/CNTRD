@@ -294,8 +294,16 @@ function Subhead({ children }) {
 }
 
 // ─── SETTINGS ─────────────────────────────────────────────────
-function SettingsScreen({ tweaks, setTweak, onNav, me }) {
+function SettingsScreen({ tweaks, setTweak, onNav, me, onMeUpdated, unreadNotifs }) {
   const meUser = me || ME;
+  const togglePrivate = async (next) => {
+    try {
+      const updated = await API.updateMe({ is_private: !!next });
+      onMeUpdated?.(updated);
+    } catch (e) {
+      alert(e.message || 'Failed to update');
+    }
+  };
   const Section = ({ title, children }) => (
     <div style={{ marginTop: 22 }}>
       <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1, textTransform: 'uppercase', padding: '0 16px 6px' }}>{title}</div>
@@ -330,8 +338,34 @@ function SettingsScreen({ tweaks, setTweak, onNav, me }) {
         <span style={{ width: 32 }} />
       </div>
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 40 }}>
-        <Section title="Messaging">
-          <Row label="Direct messages" sub="Chats with people you follow + groups" right={<Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />} onClick={() => onNav?.('messages')} last />
+        <Section title="Activity">
+          <Row
+            label="Notifications"
+            sub={unreadNotifs > 0 ? `${unreadNotifs} unread` : 'Live games, follows, messages'}
+            right={
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {unreadNotifs > 0 && <span style={{ padding: '0 6px', minWidth: 18, height: 18, borderRadius: 999, background: 'var(--cn-accent)', color: 'var(--cn-on-accent)', fontFamily: 'var(--cn-font-mono)', fontSize: 10, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{unreadNotifs > 99 ? '99+' : unreadNotifs}</span>}
+                <Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />
+              </div>
+            }
+            onClick={() => onNav?.('notifications')}
+          />
+          <Row
+            label="Direct messages"
+            sub="Chats with people you follow + groups"
+            right={<Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />}
+            onClick={() => onNav?.('messages')}
+            last
+          />
+        </Section>
+
+        <Section title="Privacy">
+          <Row
+            label="Private profile"
+            sub={meUser.is_private ? 'New followers must be approved by you' : 'Anyone can follow you and see your posts'}
+            right={<ToggleSwitch on={!!meUser.is_private} onChange={togglePrivate} />}
+            last
+          />
         </Section>
 
         <Section title="Appearance">
@@ -395,12 +429,6 @@ function SettingsScreen({ tweaks, setTweak, onNav, me }) {
             onClick={() => onNav?.('leagues')}
             last
           />
-        </Section>
-
-        <Section title="Notifications">
-          <Row label="Live game alerts" right={<ToggleSwitch on={true} onChange={() => {}} />} />
-          <Row label="Trade rumors" right={<ToggleSwitch on={true} onChange={() => {}} />} />
-          <Row label="Replies & mentions" right={<ToggleSwitch on={true} onChange={() => {}} />} last />
         </Section>
 
         {meUser.is_admin && (

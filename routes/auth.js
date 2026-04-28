@@ -11,7 +11,7 @@ const leaguesRouter = require('./leagues');
 const USER_COLUMNS =
   'id, username, email, display_name, bio, avatar, banner, team_tags, ' +
   'followed_leagues, avatar_hue, pronouns, city, is_admin, banned, ' +
-  'follower_count, following_count, post_count, created_at';
+  'is_private, follower_count, following_count, post_count, created_at';
 
 function hydrate(user) {
   if (!user) return user;
@@ -19,6 +19,7 @@ function hydrate(user) {
   user.followed_leagues = JSON.parse(user.followed_leagues || '[]');
   user.is_admin         = !!user.is_admin;
   user.banned           = !!user.banned;
+  user.is_private       = !!user.is_private;
   return user;
 }
 

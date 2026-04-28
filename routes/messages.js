@@ -3,6 +3,7 @@ const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const db = require('../database/db');
 const { requireAuth } = require('../middleware/auth');
+const { notify } = require('../services/notifier');
 
 router.use(requireAuth);
 
@@ -255,6 +256,19 @@ router.post('/:id/messages', (req, res) => {
   // Sender has read everything they just sent.
   db.prepare(`UPDATE conversation_members SET last_read_at = datetime('now')
               WHERE conversation_id = ? AND user_id = ?`).run(req.params.id, req.user.id);
+
+  // Notify other members. Dedupe per (recipient, conversation) so a flurry
+  // of messages collapses into one notification row.
+  const others = db.prepare(`
+    SELECT user_id FROM conversation_members WHERE conversation_id = ? AND user_id != ?
+  `).all(req.params.id, req.user.id);
+  for (const o of others) {
+    notify({
+      userId: o.user_id, type: 'message', actorId: req.user.id,
+      data: { conversation_id: req.params.id, preview: content.slice(0, 140) },
+      dedupeKey: `msg:${req.params.id}`,
+    });
+  }
 
   const row = db.prepare(`
     SELECT m.id, m.user_id, m.content, m.created_at,
