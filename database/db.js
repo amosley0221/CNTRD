@@ -173,6 +173,8 @@ ensureColumn('users', 'is_admin',         "INTEGER DEFAULT 0");
 ensureColumn('users', 'banned',           "INTEGER DEFAULT 0");
 ensureColumn('users', 'followed_leagues', "TEXT DEFAULT '[]'");
 ensureColumn('users', 'is_private',       "INTEGER DEFAULT 0");
+// JSON object: per-type opt-out flags for notifications. Missing key = on.
+ensureColumn('users', 'notification_prefs', "TEXT DEFAULT '{}'");
 
 // post type: take | photo | score | poll | clip | box | rumor
 ensureColumn('posts', 'type',  "TEXT DEFAULT 'take'");

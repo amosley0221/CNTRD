@@ -8,13 +8,19 @@ const { notify } = require('../services/notifier');
 
 const PUBLIC_USER_COLS =
   'id, username, display_name, bio, avatar, banner, team_tags, followed_leagues, ' +
-  'avatar_hue, pronouns, city, is_private, follower_count, following_count, post_count, created_at';
+  'avatar_hue, pronouns, city, is_private, notification_prefs, ' +
+  'follower_count, following_count, post_count, created_at';
+
+const { DEFAULT_PREFS: NOTIF_DEFAULTS } = require('../services/notifier');
 
 function hydrate(u) {
   if (!u) return u;
   u.team_tags        = JSON.parse(u.team_tags || '[]');
   u.followed_leagues = JSON.parse(u.followed_leagues || '[]');
   u.is_private       = !!u.is_private;
+  let prefs = {};
+  try { prefs = JSON.parse(u.notification_prefs || '{}'); } catch {}
+  u.notification_prefs = { ...NOTIF_DEFAULTS, ...prefs };
   return u;
 }
 
@@ -65,9 +71,11 @@ router.get('/:username', optionalAuth, (req, res) => {
   res.json({ ...user, is_following, request_pending });
 });
 
+const { KNOWN_TYPES: NOTIF_TYPES } = require('../services/notifier');
+
 // Update profile
 router.patch('/me/profile', requireAuth, (req, res) => {
-  const { display_name, bio, team_tags, followed_leagues, avatar_hue, pronouns, city, is_private } = req.body;
+  const { display_name, bio, team_tags, followed_leagues, avatar_hue, pronouns, city, is_private, notification_prefs } = req.body;
 
   const updates = [];
   const values = [];
@@ -104,6 +112,17 @@ router.patch('/me/profile', requireAuth, (req, res) => {
   if (pronouns !== undefined) { updates.push('pronouns = ?'); values.push(String(pronouns).slice(0, 30)); }
   if (city     !== undefined) { updates.push('city = ?');     values.push(String(city).slice(0, 80)); }
   if (is_private !== undefined) { updates.push('is_private = ?'); values.push(is_private ? 1 : 0); }
+  if (notification_prefs !== undefined) {
+    if (notification_prefs && typeof notification_prefs === 'object' && !Array.isArray(notification_prefs)) {
+      const cleaned = {};
+      for (const [k, v] of Object.entries(notification_prefs)) {
+        if (NOTIF_TYPES.includes(k)) cleaned[k] = !!v;
+      }
+      updates.push('notification_prefs = ?'); values.push(JSON.stringify(cleaned));
+    } else {
+      return res.status(400).json({ error: 'notification_prefs must be an object' });
+    }
+  }
 
   if (updates.length === 0) return res.status(400).json({ error: 'Nothing to update' });
 

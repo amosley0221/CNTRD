@@ -11,7 +11,10 @@ const leaguesRouter = require('./leagues');
 const USER_COLUMNS =
   'id, username, email, display_name, bio, avatar, banner, team_tags, ' +
   'followed_leagues, avatar_hue, pronouns, city, is_admin, banned, ' +
-  'is_private, follower_count, following_count, post_count, created_at';
+  'is_private, notification_prefs, ' +
+  'follower_count, following_count, post_count, created_at';
+
+const { DEFAULT_PREFS, KNOWN_TYPES } = require('../services/notifier');
 
 function hydrate(user) {
   if (!user) return user;
@@ -20,6 +23,9 @@ function hydrate(user) {
   user.is_admin         = !!user.is_admin;
   user.banned           = !!user.banned;
   user.is_private       = !!user.is_private;
+  let prefs = {};
+  try { prefs = JSON.parse(user.notification_prefs || '{}'); } catch {}
+  user.notification_prefs = { ...DEFAULT_PREFS, ...prefs };
   return user;
 }
 

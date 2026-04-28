@@ -77,6 +77,7 @@ function normalizeMe(u) {
     avatarHue: u.avatar_hue ?? 200,
     is_admin: !!u.is_admin,
     banned: !!u.banned,
+    notificationPrefs: u.notification_prefs || {},
   };
 }
 
@@ -359,6 +360,7 @@ function CNTRDApp() {
     leagues:      LeaguesEditorScreen,
     blocks:       BlockedAccountsScreen,
     account:      AccountScreen,
+    notificationPrefs: NotificationPrefsScreen,
     terms:        TermsScreen,
     privacy:      PrivacyScreen,
     about:        AboutScreen,

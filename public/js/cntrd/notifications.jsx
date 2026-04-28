@@ -178,6 +178,15 @@ function NotifIcon({ n }) {
 
 function renderNotifText(n) {
   const actor = n.actor?.displayName || (n.actor ? '@' + n.actor.username : 'Someone');
+  const d = n.data || {};
+  const matchup = (() => {
+    const home = d.home_name || d.home || '';
+    const away = d.away_name || d.away || '';
+    return away && home ? `${away} @ ${home}` : (away || home || 'Game');
+  })();
+  const score = (Number.isFinite(Number(d.away_score)) && Number.isFinite(Number(d.home_score)))
+    ? `${d.away_score}–${d.home_score}` : '';
+
   switch (n.type) {
     case 'follow':
       return { headline: `${actor} started following you`, body: n.actor ? '@' + n.actor.username : '' };
@@ -186,15 +195,17 @@ function renderNotifText(n) {
     case 'follow_accept':
       return { headline: `${actor} accepted your follow request`, body: '' };
     case 'message':
-      return { headline: `${actor} sent a message`, body: n.data?.preview || '' };
-    case 'live_game': {
-      const home = n.data?.home_name || n.data?.home || '';
-      const away = n.data?.away_name || n.data?.away || '';
-      return {
-        headline: `${away} @ ${home} just tipped off`,
-        body: `${n.data?.league || ''} · ${n.data?.period || 'Live'}`,
-      };
+      return { headline: `${actor} sent a message`, body: d.preview || '' };
+    case 'live_game':
+      return { headline: `${matchup} just tipped off`, body: `${d.league || ''} · ${d.period || 'Live'}` };
+    case 'score': {
+      const scoringTeam = d.scoring_side === 'home' ? (d.home_name || d.home) : (d.away_name || d.away);
+      return { headline: `${scoringTeam || 'A team'} scored`, body: `${matchup} · ${score}${d.period ? ' · ' + d.period : ''}` };
     }
+    case 'period_end':
+      return { headline: `${d.period || 'Period ended'}`, body: `${matchup}${score ? ' · ' + score : ''}` };
+    case 'final':
+      return { headline: 'Final', body: `${matchup}${score ? ' · ' + score : ''}` };
     default:
       return { headline: 'Notification', body: '' };
   }

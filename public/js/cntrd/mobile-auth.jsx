@@ -355,6 +355,12 @@ function SettingsScreen({ tweaks, setTweak, onNav, me, onMeUpdated, unreadNotifs
             sub="Chats with people you follow + groups"
             right={<Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />}
             onClick={() => onNav?.('messages')}
+          />
+          <Row
+            label="Notification preferences"
+            sub="Pick which game alerts and social pings you want"
+            right={<Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />}
+            onClick={() => onNav?.('notificationPrefs')}
             last
           />
         </Section>
