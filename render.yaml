@@ -29,6 +29,12 @@ services:
         value: production
       - key: JWT_SECRET
         generateValue: true
+      # ADMIN_EMAILS — comma-separated list of emails that are auto-promoted
+      # to admin on login/register. Set this *only* to your own email.
+      # Anyone whose email is in this list gets admin privileges (see all
+      # users, ban accounts, delete posts) the next time they sign in.
+      - key: ADMIN_EMAILS
+        sync: false              # don't commit your email to git; set in dashboard
       # ── Uncomment with the disk block below for persistent storage ──
       # - key: DATABASE_PATH
       #   value: /var/data/cntrd.db

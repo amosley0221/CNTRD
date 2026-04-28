@@ -4,16 +4,19 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../database/db');
-const { JWT_SECRET, requireAuth } = require('../middleware/auth');
+const { JWT_SECRET, requireAuth, isAdminEmail } = require('../middleware/auth');
 const { VALID_TEAM_CODES } = require('../data/teams');
 
 const USER_COLUMNS =
   'id, username, email, display_name, bio, avatar, banner, team_tags, ' +
-  'avatar_hue, pronouns, city, follower_count, following_count, post_count, created_at';
+  'avatar_hue, pronouns, city, is_admin, banned, ' +
+  'follower_count, following_count, post_count, created_at';
 
 function hydrate(user) {
   if (!user) return user;
   user.team_tags = JSON.parse(user.team_tags || '[]');
+  user.is_admin  = !!user.is_admin;
+  user.banned    = !!user.banned;
   return user;
 }
 
@@ -32,6 +35,17 @@ function passwordErrors(password) {
   if (!/[0-9]/.test(password))           errs.push('one number');
   if (!/[^A-Za-z0-9]/.test(password))    errs.push('one special character');
   return errs;
+}
+
+// If the user's email is in ADMIN_EMAILS, ensure their is_admin flag is set.
+// Idempotent — safe to call on every auth path.
+function syncAdminFlag(user) {
+  if (!user) return user;
+  if (isAdminEmail(user.email) && !user.is_admin) {
+    db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run(user.id);
+    user.is_admin = 1;
+  }
+  return user;
 }
 
 // Register
@@ -62,11 +76,12 @@ router.post('/register', (req, res) => {
   const name = display_name || username;
   const teamTagsJson = JSON.stringify(normalizeTeams(teams));
   const hue = Number.isFinite(+avatar_hue) ? Math.max(0, Math.min(360, +avatar_hue)) : 200;
+  const adminFlag = isAdminEmail(email) ? 1 : 0;
 
   db.prepare(`
-    INSERT INTO users (id, username, email, password, display_name, team_tags, avatar_hue, pronouns, city)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, username, email, hash, name, teamTagsJson, hue, pronouns || '', city || '');
+    INSERT INTO users (id, username, email, password, display_name, team_tags, avatar_hue, pronouns, city, is_admin)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, username, email, hash, name, teamTagsJson, hue, pronouns || '', city || '', adminFlag);
 
   const token = jwt.sign({ id, username }, JWT_SECRET, { expiresIn: '30d' });
   const user = hydrate(db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`).get(id));
@@ -86,6 +101,11 @@ router.post('/login', (req, res) => {
   if (!user || !bcrypt.compareSync(password, user.password)) {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
+  if (user.banned) {
+    return res.status(403).json({ error: 'This account has been suspended' });
+  }
+
+  syncAdminFlag(user);
 
   const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '30d' });
   const safe = hydrate(db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`).get(user.id));
@@ -97,6 +117,7 @@ router.post('/login', (req, res) => {
 router.get('/me', requireAuth, (req, res) => {
   const user = hydrate(db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`).get(req.user.id));
   if (!user) return res.status(404).json({ error: 'User not found' });
+  syncAdminFlag(user);
   res.json(user);
 });
 

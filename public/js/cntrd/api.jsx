@@ -55,6 +55,14 @@ const API = {
   plays()                  { return request('GET',  '/api/plays'); },
   createPlay(payload)      { return request('POST', '/api/plays', payload); },
 
+  // Admin (server enforces is_admin)
+  adminUsers(q)            { return request('GET',  '/api/admin/users' + (q ? '?q=' + encodeURIComponent(q) : '')); },
+  adminStats()             { return request('GET',  '/api/admin/stats'); },
+  adminUserPosts(id)       { return request('GET',  `/api/admin/users/${id}/posts`); },
+  adminBan(id)             { return request('POST', `/api/admin/users/${id}/ban`); },
+  adminUnban(id)           { return request('POST', `/api/admin/users/${id}/unban`); },
+  adminDeletePost(id)      { return request('DELETE', `/api/admin/posts/${id}`); },
+
   uploadAvatar(file) {
     const fd = new FormData();
     fd.append('avatar', file);

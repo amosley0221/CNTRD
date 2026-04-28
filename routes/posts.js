@@ -102,12 +102,13 @@ router.post('/', requireAuth, (req, res) => {
   res.status(201).json(hydrate(row));
 });
 
-// Following + own
+// Following + own (banned authors hidden)
 router.get('/feed', requireAuth, (req, res) => {
   const cursor = req.query.cursor;
   const params = [req.user.id, req.user.id];
   let query = `${SELECT_POST}
     WHERE p.reply_to IS NULL
+      AND u.banned = 0
       AND (
         p.user_id = ?
         OR p.user_id IN (SELECT following_id FROM follows WHERE follower_id = ?)
@@ -120,11 +121,11 @@ router.get('/feed', requireAuth, (req, res) => {
   res.json(rows.map(hydrate));
 });
 
-// Public global feed
+// Public global feed (banned authors hidden)
 router.get('/explore', optionalAuth, (req, res) => {
   const cursor = req.query.cursor;
   const params = [];
-  let query = `${SELECT_POST} WHERE p.reply_to IS NULL`;
+  let query = `${SELECT_POST} WHERE p.reply_to IS NULL AND u.banned = 0`;
   if (cursor) { query += ' AND p.created_at < ?'; params.push(cursor); }
   query += ' ORDER BY p.created_at DESC LIMIT 30';
 

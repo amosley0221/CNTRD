@@ -25,12 +25,12 @@ function DesktopNav({ view, setView, onNav, me }) {
   const items = [
     { id: 'feed',     icon: 'home',     label: 'Feed' },
     { id: 'discover', icon: 'search',   label: 'Discover' },
-    { id: 'gameday',  icon: 'whistle',  label: 'Gameday', badge: 'LIVE' },
+    { id: 'gameday',  icon: 'whistle',  label: 'Gameday', badge: 'LIVE', external: 'chat' },
     { id: 'plays',    icon: 'video',    label: 'Plays' },
     { id: 'rumors',   icon: 'flame',    label: 'Rumor mill' },
-    { id: 'notifs',   icon: 'bell',     label: 'Notifications', count: 7 },
-    { id: 'profile',  icon: 'profile',  label: 'You' },
-    { id: 'settings', icon: 'settings', label: 'Settings' },
+    { id: 'profile',  icon: 'profile',  label: 'You', external: 'profile' },
+    { id: 'settings', icon: 'settings', label: 'Settings', external: 'settings' },
+    ...(meUser?.is_admin ? [{ id: 'admin', icon: 'whistle', label: 'Admin', external: 'admin', accent: true }] : []),
   ];
   return (
     <nav style={{
@@ -48,15 +48,15 @@ function DesktopNav({ view, setView, onNav, me }) {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {items.map(it => {
-          const active = view === it.id;
+          const active = !it.external && view === it.id;
           return (
-            <button key={it.id} onClick={() => setView(it.id)} style={{
+            <button key={it.id} onClick={() => it.external ? onNav?.(it.external) : setView(it.id)} style={{
               display: 'flex', alignItems: 'center', gap: 12,
               padding: '10px 12px', borderRadius: 10,
               background: active ? 'var(--cn-bg-elev)' : 'transparent',
               border: 'none', cursor: 'pointer',
-              color: active ? 'var(--cn-text)' : 'var(--cn-text-dim)',
-              fontSize: 14, fontWeight: active ? 600 : 500,
+              color: it.accent ? 'var(--cn-accent)' : (active ? 'var(--cn-text)' : 'var(--cn-text-dim)'),
+              fontSize: 14, fontWeight: active || it.accent ? 600 : 500,
               textAlign: 'left',
               fontFamily: 'var(--cn-font-body)',
             }}>
@@ -69,15 +69,6 @@ function DesktopNav({ view, setView, onNav, me }) {
                   background: 'var(--cn-live)', color: '#fff',
                   padding: '2px 5px', borderRadius: 3,
                 }}>{it.badge}</span>
-              )}
-              {it.count != null && (
-                <span style={{
-                  fontFamily: 'var(--cn-font-mono)',
-                  fontSize: 10, fontWeight: 700,
-                  background: 'var(--cn-accent)', color: 'var(--cn-on-accent)',
-                  padding: '1px 6px', borderRadius: 999, minWidth: 18,
-                  textAlign: 'center',
-                }}>{it.count}</span>
               )}
             </button>
           );

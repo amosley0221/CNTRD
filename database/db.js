@@ -94,6 +94,8 @@ function ensureColumn(table, col, ddl) {
 ensureColumn('users', 'avatar_hue', "INTEGER DEFAULT 200");
 ensureColumn('users', 'pronouns',   "TEXT DEFAULT ''");
 ensureColumn('users', 'city',       "TEXT DEFAULT ''");
+ensureColumn('users', 'is_admin',   "INTEGER DEFAULT 0");
+ensureColumn('users', 'banned',     "INTEGER DEFAULT 0");
 
 // post type: take | photo | score | poll | clip | box | rumor
 ensureColumn('posts', 'type',  "TEXT DEFAULT 'take'");

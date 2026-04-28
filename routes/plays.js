@@ -33,9 +33,9 @@ function hydrate(p) {
   };
 }
 
-// List plays — public, recent first, capped at 30.
+// List plays — public, recent first, capped at 30 (banned authors hidden).
 router.get('/', optionalAuth, (req, res) => {
-  const rows = db.prepare(`${SELECT} ORDER BY p.created_at DESC LIMIT 30`).all();
+  const rows = db.prepare(`${SELECT} WHERE u.banned = 0 ORDER BY p.created_at DESC LIMIT 30`).all();
   res.json(rows.map(hydrate));
 });
 

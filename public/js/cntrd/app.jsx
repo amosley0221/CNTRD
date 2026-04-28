@@ -74,6 +74,8 @@ function normalizeMe(u) {
     posts: u.post_count ?? 0,
     avatar: u.avatar,
     avatarHue: u.avatar_hue ?? 200,
+    is_admin: !!u.is_admin,
+    banned: !!u.banned,
   };
 }
 
@@ -214,6 +216,7 @@ function CNTRDApp() {
     signup:       SignupScreen,
     plays:        PlaysViewerScreen,
     playsCreator: PlaysCreatorScreen,
+    admin:        AdminScreen,
   };
   const ScreenComp = screenMap[screen] || FeedScreen;
   const isAuthScreen = screen === 'login' || screen === 'signup';

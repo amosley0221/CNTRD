@@ -364,6 +364,18 @@ function SettingsScreen({ tweaks, setTweak, onNav, me }) {
           <Row label="Replies & mentions" right={<ToggleSwitch on={true} onChange={() => {}} />} last />
         </Section>
 
+        {meUser.is_admin && (
+          <Section title="Admin">
+            <Row
+              label={<span style={{ color: 'var(--cn-accent)' }}>Open admin console</span>}
+              sub="Manage users + moderate posts"
+              right={<Icon name="chevron-r" size={14} stroke="var(--cn-accent)" />}
+              onClick={() => onNav?.('admin')}
+              last
+            />
+          </Section>
+        )}
+
         <Section title="More">
           <Row label="Privacy" right={<Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />} />
           <Row label="About CNTRD" sub="v2.4 · build 1284" right={<Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />} />
@@ -375,10 +387,35 @@ function SettingsScreen({ tweaks, setTweak, onNav, me }) {
 }
 
 // ─── GAMEDAY CHAT ─────────────────────────────────────────────
-function GamedayScreen({ tweaks, onNav }) {
-  const game = LIVE_GAMES[0]; // LAL @ BOS
-  const home = TEAMS[game.home], away = TEAMS[game.away];
+function GamedayScreen({ tweaks, onNav, games }) {
   const [side, setSide] = React.useState('all');
+  const game = (games?.live || [])[0] || (games?.upcoming || [])[0] || null;
+
+  if (!game) {
+    return (
+      <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '0.5px solid var(--cn-border)' }}>
+          <button onClick={() => onNav?.('home')} style={iconBtnStyle()}>
+            <Icon name="chevron-l" size={22} stroke="var(--cn-text)" />
+          </button>
+          <span style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 14 }}>GAMEDAY</span>
+          <span style={{ width: 32 }} />
+        </div>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
+          <div>
+            <div style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 22 }}>No live games right now</div>
+            <div style={{ marginTop: 8, fontSize: 13, color: 'var(--cn-text-dim)', lineHeight: 1.45 }}>
+              When a game tips off, the chat opens here.
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const home = game.homeTeam || TEAMS[game.home] || { code: game.home, name: game.home, primary: '#666', accent: '#999' };
+  const away = game.awayTeam || TEAMS[game.away] || { code: game.away, name: game.away, primary: '#666', accent: '#999' };
+  const isLive = game.state === 'live';
   const filtered = side === 'all' ? CHAT_MESSAGES : CHAT_MESSAGES.filter(m => m.side === side || !m.side);
   return (
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
@@ -389,8 +426,8 @@ function GamedayScreen({ tweaks, onNav }) {
             <Icon name="chevron-l" size={22} stroke="var(--cn-text)" />
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--cn-live)' }} />
-            <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-live)', fontWeight: 800, letterSpacing: 1 }}>GAMEDAY · {game.viewers.toLocaleString()} HERE</span>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: isLive ? 'var(--cn-live)' : 'var(--cn-text-mute)', animation: isLive ? 'cn-pulse 1.5s ease-in-out infinite' : 'none' }} />
+            <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: isLive ? 'var(--cn-live)' : 'var(--cn-text-mute)', fontWeight: 800, letterSpacing: 1 }}>{isLive ? 'GAMEDAY · LIVE' : 'GAMEDAY · UPCOMING'}</span>
           </div>
           <button style={iconBtnStyle()}>
             <Icon name="bell" size={18} stroke="var(--cn-text-dim)" />
@@ -407,9 +444,9 @@ function GamedayScreen({ tweaks, onNav }) {
         {/* side filter */}
         <div style={{ display: 'flex', padding: '0 12px 10px', gap: 6 }}>
           {[
-            { id: 'all', label: 'All', color: null },
-            { id: away.code, label: away.code, color: away.primary },
-            { id: home.code, label: home.code, color: home.primary },
+            { id: 'all', label: 'All fans', color: null },
+            { id: away.code, label: `${away.name} only`, color: away.primary },
+            { id: home.code, label: `${home.name} only`, color: home.primary },
           ].map(s => (
             <button key={s.id} onClick={() => setSide(s.id)} style={{
               padding: '5px 14px', borderRadius: 999,
@@ -419,19 +456,22 @@ function GamedayScreen({ tweaks, onNav }) {
               fontSize: 11, fontWeight: 700, cursor: 'pointer',
               fontFamily: 'var(--cn-font-body)',
             }}>
-              {s.label === 'All' ? 'All fans' : `${TEAMS[s.id].name} only`}
+              {s.label}
             </button>
           ))}
         </div>
       </div>
 
       {/* messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 0', display: 'flex', flexDirection: 'column-reverse', gap: 8 }}>
-        {filtered.map(m => <ChatBubble key={m.id} m={m} />)}
-        {/* play-by-play interjections */}
-        <div style={{ alignSelf: 'center', margin: '6px 0', padding: '4px 12px', borderRadius: 999, background: 'var(--cn-bg-elev)', fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 0.5 }}>
-          📣 4:35 · J. Tatum makes 3PT (88-91)
-        </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 0', display: 'flex', flexDirection: filtered.length ? 'column-reverse' : 'column', gap: 8, alignItems: filtered.length ? 'stretch' : 'center', justifyContent: filtered.length ? 'flex-end' : 'center' }}>
+        {filtered.length === 0 ? (
+          <div style={{ textAlign: 'center', color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 11, padding: '20px 16px', lineHeight: 1.6 }}>
+            Be the first to chat.<br />
+            <span style={{ fontSize: 10 }}>Live chat is wired client-side only for now — messages will sync when the realtime backend ships.</span>
+          </div>
+        ) : (
+          filtered.map(m => <ChatBubble key={m.id} m={m} />)
+        )}
       </div>
 
       {/* input */}

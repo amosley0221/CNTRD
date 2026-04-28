@@ -64,6 +64,9 @@ If you'd rather click through the dashboard:
 3. Environment variables:
    - `NODE_ENV` = `production`
    - `JWT_SECRET` = (click *Generate*)
+   - `ADMIN_EMAILS` = your email (comma-separate for more, but for personal
+     use set just yours). Auto-promotes that account to admin on next
+     login/register. See **Becoming admin** below.
    - For persistent storage, also: `DATABASE_PATH` = `/var/data/cntrd.db`,
      `UPLOADS_PATH` = `/var/data/uploads`.
 4. (Persistent only) **Disks** → add `cntrd-data`, mount path
@@ -71,6 +74,29 @@ If you'd rather click through the dashboard:
 5. **Create Web Service**.
 
 ---
+
+## Becoming admin
+
+CNTRD has an admin role with three powers:
+- See every account that has signed up
+- Ban / unban accounts
+- Delete any post
+
+Only emails listed in `ADMIN_EMAILS` (comma-separated, env var on the
+service) become admin. Steps:
+
+1. Render dashboard → your service → **Environment** → add
+   `ADMIN_EMAILS` = `you@example.com`. Save.
+2. Wait for the redeploy.
+3. Sign up (or log in) with that exact email. Your account is flagged
+   as admin automatically — no DB poking needed.
+4. In the app: **Settings → Admin → Open admin console**. On desktop
+   the **Admin** item also appears in the left nav.
+
+Promotion is idempotent on every login/register and on `GET /me`, so
+adding or removing yourself from `ADMIN_EMAILS` takes effect on the
+next request without restarting. Admins cannot be banned by other
+admins, and you cannot ban yourself.
 
 ## Custom domain
 
