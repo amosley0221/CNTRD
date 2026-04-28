@@ -2,61 +2,54 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CNTRD</title>
-  <link rel="stylesheet" href="/css/style.css" />
+  <title>CNTRD — Where the game gets loud.</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="description" content="CNTRD — a sports-only social network. Hot takes, live scores, and Plays from the people who care most." />
+  <meta name="theme-color" content="#0A0A0B" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=Inter+Tight:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :root, html, body { margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: "Inter Tight", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      background: #0A0A0B;
+      color: #F4F1EA;
+      overflow: hidden;
+    }
+    @keyframes cn-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.5; transform: scale(1.4); }
+    }
+    *::-webkit-scrollbar { display: none; }
+    *                   { scrollbar-width: none; }
+    .cn-themed {
+      background: var(--cn-bg);
+      color: var(--cn-text);
+      font-family: var(--cn-font-body);
+    }
+    #root { width: 100vw; height: 100vh; overflow: hidden; }
+    a { color: inherit; text-decoration: none; }
+    button { font-family: inherit; }
+    input, textarea { font-family: inherit; }
+  </style>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
 </head>
-<body class="auth-page">
+<body>
+  <div id="root"></div>
 
-  <!-- Auth Modal -->
-  <div class="auth-container">
-    <div class="auth-brand">
-      <div class="brand-logo">C</div>
-      <h1 class="brand-name">CNTRD</h1>
-      <p class="brand-tagline">The center of every conversation.</p>
-    </div>
-
-    <div class="auth-card" id="auth-card">
-
-      <!-- Login Form -->
-      <div id="login-form" class="auth-form active">
-        <h2>Sign in</h2>
-        <div class="form-group">
-          <input type="text" id="login-field" placeholder="Username or email" autocomplete="username" />
-        </div>
-        <div class="form-group">
-          <input type="password" id="login-password" placeholder="Password" autocomplete="current-password" />
-        </div>
-        <div class="form-error" id="login-error"></div>
-        <button class="btn btn-primary btn-full" id="login-btn">Sign in</button>
-        <p class="auth-switch">Don't have an account? <a href="#" id="show-register">Sign up</a></p>
-      </div>
-
-      <!-- Register Form -->
-      <div id="register-form" class="auth-form">
-        <h2>Create account</h2>
-        <div class="form-group">
-          <input type="text" id="reg-display-name" placeholder="Display name" autocomplete="name" />
-        </div>
-        <div class="form-group">
-          <input type="text" id="reg-username" placeholder="Username (letters, numbers, _)" autocomplete="username" />
-        </div>
-        <div class="form-group">
-          <input type="email" id="reg-email" placeholder="Email address" autocomplete="email" />
-        </div>
-        <div class="form-group">
-          <input type="password" id="reg-password" placeholder="Password (min 6 characters)" autocomplete="new-password" />
-        </div>
-        <div class="form-error" id="register-error"></div>
-        <button class="btn btn-primary btn-full" id="register-btn">Create account</button>
-        <p class="auth-switch">Already have an account? <a href="#" id="show-login">Sign in</a></p>
-      </div>
-
-    </div>
-  </div>
-
-  <script src="/js/auth.js"></script>
+  <script type="text/babel" src="/js/cntrd/data.jsx"></script>
+  <script type="text/babel" src="/js/cntrd/theme.jsx"></script>
+  <script type="text/babel" src="/js/cntrd/posts.jsx"></script>
+  <script type="text/babel" src="/js/cntrd/mobile-feed.jsx"></script>
+  <script type="text/babel" src="/js/cntrd/mobile-screens.jsx"></script>
+  <script type="text/babel" src="/js/cntrd/mobile-auth.jsx"></script>
+  <script type="text/babel" src="/js/cntrd/desktop.jsx"></script>
+  <script type="text/babel" src="/js/cntrd/app.jsx"></script>
 </body>
 </html>
