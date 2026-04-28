@@ -180,6 +180,10 @@ ensureColumn('posts', 'tags',  "TEXT DEFAULT '[]'");      // JSON array of team 
 ensureColumn('posts', 'extra', "TEXT DEFAULT '{}'");       // JSON blob for type-specific data
 ensureColumn('posts', 'edited_at', "TEXT DEFAULT NULL");   // timestamp of last edit, null if never edited
 
+// Plays carry an optional uploaded photo or short clip.
+ensureColumn('plays', 'media_url',  "TEXT DEFAULT NULL");
+ensureColumn('plays', 'media_kind', "TEXT DEFAULT NULL");  // 'image' | 'video'
+
 // Seed Terms / Privacy / About if they don't exist yet. Admins can edit
 // them from the admin console at /api/pages/:slug.
 const PAGE_DEFAULTS = {

@@ -421,27 +421,76 @@ function ComposerScreen({ tweaks, onNav, onPost, me }) {
 }
 
 // ─── PLAYS CREATOR ────────────────────────────────────────────
+// Hard limits for Plays media. Users get an inline error if they try to
+// upload a clip longer than 30 seconds.
+const PLAY_VIDEO_MAX_SEC = 30;
+const PLAY_PHOTO_DURATION_MS = 10_000;
+
+// Read a video file's duration in the browser before sending it up. Resolves
+// to NaN if the file isn't a video or metadata can't be read.
+async function getVideoDuration(file) {
+  return new Promise((resolve) => {
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    const url = URL.createObjectURL(file);
+    v.onloadedmetadata = () => {
+      URL.revokeObjectURL(url);
+      resolve(Number(v.duration) || NaN);
+    };
+    v.onerror = () => { URL.revokeObjectURL(url); resolve(NaN); };
+    v.src = url;
+  });
+}
+
 function PlaysCreatorScreen({ tweaks, onNav, onCreate, me }) {
   const meUser = me || ME;
   const meTeams = (meUser.teams && meUser.teams.length) ? meUser.teams : ['LAL'];
   const [overlay, setOverlay] = React.useState(meTeams[0]);
   const [stickerKind, setStickerKind] = React.useState('score');
   const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState(null);
+  const fileInputRef = React.useRef(null);
   const overlayTeam = resolveTeam(overlay);
-  const capture = async () => {
-    if (busy) return;
+
+  const onFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setErr(null);
+
+    // Enforce ≤30s on videos client-side. (File-size cap on the server is
+    // 25 MB; that already implies short clips, but check duration too.)
+    if (file.type.startsWith('video/')) {
+      const dur = await getVideoDuration(file);
+      if (Number.isFinite(dur) && dur > PLAY_VIDEO_MAX_SEC + 0.5) {
+        setErr(`Video must be ${PLAY_VIDEO_MAX_SEC}s or shorter (this one is ${dur.toFixed(1)}s).`);
+        return;
+      }
+    }
+
     setBusy(true);
     try {
+      const { url, kind } = await window.API.uploadMedia(file);
       if (onCreate) {
         await onCreate({
           team_code: overlayTeam?.code || overlay,
           label: 'My ' + (overlayTeam?.name || 'play'),
           hue: meUser.avatarHue ?? 200,
+          media_url: url,
+          media_kind: kind,
         });
       }
       onNav?.('home');
-    } catch { /* swallow; already navigated for mock */ }
-    finally { setBusy(false); }
+    } catch (e) {
+      setErr(e.message || 'Upload failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const capture = () => {
+    if (busy) return;
+    fileInputRef.current?.click();
   };
   return (
     <div style={{ width: '100%', height: '100%', background: '#000', color: '#fff', display: 'flex', flexDirection: 'column', position: 'relative' }}>
@@ -537,9 +586,20 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me }) {
           </button>
         </div>
         <div style={{ textAlign: 'center', fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'rgba(255,255,255,0.6)', marginTop: 10, letterSpacing: 1 }}>
-          HOLD TO RECORD A {tweaks.playsLabel?.toUpperCase() || 'PLAY'}
+          {busy ? 'UPLOADING…' : `TAP TO PICK A PHOTO OR ≤${PLAY_VIDEO_MAX_SEC}s CLIP`}
         </div>
+        {err && (
+          <div style={{ marginTop: 6, textAlign: 'center', fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: '#FF6F61' }}>
+            {err}
+          </div>
+        )}
       </div>
+      <input
+        ref={fileInputRef} type="file"
+        accept="image/*,video/mp4,video/quicktime,video/webm"
+        onChange={onFile}
+        style={{ display: 'none' }}
+      />
     </div>
   );
 }
@@ -547,14 +607,59 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me }) {
 // ─── PLAYS VIEWER ─────────────────────────────────────────────
 function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePlay }) {
   const list = (plays && plays.length ? plays : PLAYS);
-  const idx = (() => {
+  const initialIdx = React.useMemo(() => {
     if (selectedPlay) {
       const i = list.findIndex(p => p.id === selectedPlay.id);
       if (i >= 0) return i;
     }
     return 0;
-  })();
-  const play = list[idx] || selectedPlay || null;
+  }, [selectedPlay?.id, list.length]);
+
+  const [idx, setIdx] = React.useState(initialIdx);
+  const [progress, setProgress] = React.useState(0);   // 0..1 for the current play
+  const videoRef = React.useRef(null);
+
+  React.useEffect(() => { setIdx(initialIdx); }, [initialIdx]);
+
+  const play = list[idx] || null;
+  const u = play && (typeof play.user === 'string' ? USERS[play.user] : play.user);
+  const team = play ? (TEAMS[play.team] || TEAMS.LAL) : TEAMS.LAL;
+  const isMine = !!me && u && u.id === me.id;
+  const isVideo = !!play && play.media_kind === 'video' && !!play.media_url;
+  const hasMedia = !!play?.media_url;
+
+  // Auto-advance: photos run on a 10s wall-clock; videos drive themselves.
+  React.useEffect(() => {
+    if (!play) return;
+    setProgress(0);
+    if (isVideo) return;                              // video updates progress via timeupdate
+    const start = Date.now();
+    const id = setInterval(() => {
+      const t = (Date.now() - start) / PLAY_PHOTO_DURATION_MS;
+      if (t >= 1) {
+        clearInterval(id);
+        setProgress(1);
+        goNext();
+      } else {
+        setProgress(t);
+      }
+    }, 100);
+    return () => clearInterval(id);
+  }, [play?.id, isVideo]);
+
+  const goNext = React.useCallback(() => {
+    setIdx(i => {
+      if (i >= list.length - 1) {
+        // Last play — close the viewer.
+        Promise.resolve().then(() => onNav?.('home'));
+        return i;
+      }
+      return i + 1;
+    });
+  }, [list.length, onNav]);
+
+  const goPrev = () => setIdx(i => Math.max(0, i - 1));
+
   if (!play) {
     return (
       <div style={{ width: '100%', height: '100%', background: '#000', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>
@@ -562,9 +667,7 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
       </div>
     );
   }
-  const u = (typeof play.user === 'string') ? USERS[play.user] : play.user;
-  const team = TEAMS[play.team] || TEAMS.LAL;
-  const isMine = !!me && u && u.id === me.id;
+
   const remove = async () => {
     if (typeof confirm === 'function' && !confirm('Delete this Play permanently?')) return;
     try {
@@ -572,15 +675,24 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
       onNav?.('home');
     } catch (e) { alert(e.message || 'Failed to delete'); }
   };
+
   return (
     <div style={{ width: '100%', height: '100%', background: '#000', position: 'relative', overflow: 'hidden' }}>
+      {/* Tap zones: left half → previous, right half → next.
+          z-index 1 sits above the gradient/media but below all UI controls. */}
+      <div onClick={goPrev} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '40%', zIndex: 1, cursor: 'pointer' }} />
+      <div onClick={goNext} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '40%', zIndex: 1, cursor: 'pointer' }} />
+
       {/* progress bars */}
       <div style={{ position: 'absolute', top: 56, left: 12, right: 12, display: 'flex', gap: 4, zIndex: 5 }}>
         {list.map((_, i) => (
           <div key={i} style={{ flex: 1, height: 2, borderRadius: 2, background: 'rgba(255,255,255,0.2)', overflow: 'hidden' }}>
             <div style={{
-              width: i < idx ? '100%' : i === idx ? '54%' : '0%',
+              width: i < idx ? '100%'
+                  : i === idx ? Math.round(progress * 100) + '%'
+                  : '0%',
               height: '100%', background: '#fff',
+              transition: i === idx ? 'width 0.1s linear' : 'none',
             }} />
           </div>
         ))}
@@ -614,24 +726,51 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
         </button>
       </div>
 
-      {/* simulated content: stadium-tinted */}
-      <div style={{
-        position: 'absolute', inset: 0,
-        background: `radial-gradient(ellipse at 50% 35%, ${team.accent}55 0%, ${team.primary}88 40%, #000 90%)`,
-      }} />
-      <div style={{ position: 'absolute', inset: 0, background: 'repeating-linear-gradient(0deg, transparent 0 22px, rgba(255,255,255,0.025) 22px 23px)' }} />
+      {/* Background — real media if present, otherwise the team-tinted
+          gradient that's been here since the design mock. */}
+      {hasMedia ? (
+        isVideo ? (
+          <video
+            key={play.id}                              // remount when play changes
+            ref={videoRef}
+            src={play.media_url}
+            autoPlay muted playsInline
+            onTimeUpdate={(e) => {
+              const v = e.currentTarget;
+              if (v.duration) setProgress(Math.min(1, v.currentTime / v.duration));
+            }}
+            onEnded={goNext}
+            style={{
+              position: 'absolute', inset: 0, width: '100%', height: '100%',
+              objectFit: 'contain', background: '#000',
+            }}
+          />
+        ) : (
+          <img src={play.media_url} alt={play.label || ''} style={{
+            position: 'absolute', inset: 0, width: '100%', height: '100%',
+            objectFit: 'contain', background: '#000',
+          }} />
+        )
+      ) : (
+        <>
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: `radial-gradient(ellipse at 50% 35%, ${team.accent}55 0%, ${team.primary}88 40%, #000 90%)`,
+          }} />
+          <div style={{ position: 'absolute', inset: 0, background: 'repeating-linear-gradient(0deg, transparent 0 22px, rgba(255,255,255,0.025) 22px 23px)' }} />
+        </>
+      )}
 
-      {/* big play caption */}
+      {/* Caption overlay (big label) — keeps the design's brand even with
+          real media underneath. */}
       <div style={{
-        position: 'absolute', left: 24, right: 80, top: '45%',
+        position: 'absolute', left: 24, right: 80, bottom: 110,
         fontFamily: 'var(--cn-font-display)', fontWeight: 800,
-        fontSize: 38, lineHeight: 0.95,
-        color: '#fff', textShadow: '0 4px 20px rgba(0,0,0,0.5)',
+        fontSize: 32, lineHeight: 0.95,
+        color: '#fff', textShadow: '0 4px 20px rgba(0,0,0,0.6)',
         textTransform: 'uppercase',
+        zIndex: 3, pointerEvents: 'none',
       }}>{play.label}.</div>
-      <div style={{ position: 'absolute', left: 24, top: 'calc(45% + 100px)', fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'rgba(255,255,255,0.7)', letterSpacing: 1.5 }}>
-        TD GARDEN · BOS vs LAL · Q4 4:21
-      </div>
 
       {/* reactions */}
       <div style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', display: 'flex', flexDirection: 'column', gap: 14, zIndex: 5 }}>
