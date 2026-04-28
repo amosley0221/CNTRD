@@ -2,14 +2,8 @@
 # Use the "Deploy to Render" button in the GitHub repo, or in the Render
 # dashboard: New + → Blueprint → connect this repo.
 #
-# Two deployment shapes are supported (pick one):
-#
-#  1) FREE TIER — ephemeral SQLite (data lost on restart/redeploy).
-#     Just deploy as-is. Service sleeps after ~15 min idle.
-#
-#  2) PERSISTENT — uncomment the `disk:` block and the two PATH env vars
-#     (DATABASE_PATH / UPLOADS_PATH) below, then upgrade `plan:` from
-#     `free` to `starter` (paid). A 1 GB persistent disk costs ~$1/mo.
+# Persistent setup: SQLite + uploaded avatars live on a 1GB disk mounted
+# at /var/data, so accounts and posts survive every redeploy.
 #
 # JWT_SECRET is auto-generated on first deploy and reused on subsequent
 # deploys; rotating it logs everyone out.
@@ -18,7 +12,7 @@ services:
   - type: web
     name: cntrd
     runtime: node
-    plan: free
+    plan: starter
     region: oregon
     buildCommand: npm install
     startCommand: npm start
@@ -35,14 +29,13 @@ services:
       # users, ban accounts, delete posts) the next time they sign in.
       - key: ADMIN_EMAILS
         sync: false              # don't commit your email to git; set in dashboard
-      # ── Uncomment with the disk block below for persistent storage ──
-      # - key: DATABASE_PATH
-      #   value: /var/data/cntrd.db
-      # - key: UPLOADS_PATH
-      #   value: /var/data/uploads
+      # SQLite + uploads live on the persistent disk mounted below.
+      - key: DATABASE_PATH
+        value: /var/data/cntrd.db
+      - key: UPLOADS_PATH
+        value: /var/data/uploads
 
-    # ── Persistent disk (paid plans only). Uncomment to enable. ──
-    # disk:
-    #   name: cntrd-data
-    #   mountPath: /var/data
-    #   sizeGB: 1
+    disk:
+      name: cntrd-data
+      mountPath: /var/data
+      sizeGB: 1

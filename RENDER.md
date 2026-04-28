@@ -1,53 +1,28 @@
 # Deploying CNTRD to Render
 
 CNTRD is a single Express app: API + static SPA, served from one Node
-process. SQLite for storage, multer-on-disk for uploads.
+process. SQLite for storage, multer-on-disk for uploads. Both live on a
+1 GB persistent disk so accounts and posts survive every redeploy.
 
-There are two ways to ship it on Render — pick one based on whether you
-need the data to survive deploys.
+Cost: ~$8/month (Starter web service + 1 GB disk).
 
 ---
 
-## Option A — Free tier (ephemeral)
-
-Best for demos and previews. The database resets on every restart or
-redeploy, and Render puts the service to sleep after ~15 minutes of
-inactivity (cold-start adds a few seconds on the next request).
+## Blueprint deploy
 
 1. Push this repo to GitHub.
 2. In Render dashboard: **New +** → **Blueprint** → connect the repo.
-3. Render reads `render.yaml` and provisions one **Web Service** named
-   `cntrd` on the free plan. `JWT_SECRET` is generated automatically.
-4. Wait for the first build (~2 minutes) and visit the public URL.
+3. Render reads `render.yaml` and provisions:
+   - Web Service `cntrd` on the **Starter** plan.
+   - 1 GB disk `cntrd-data` mounted at `/var/data`.
+   - `DATABASE_PATH` / `UPLOADS_PATH` / `JWT_SECRET` / `ADMIN_EMAILS`
+     env vars (the last is sync:false — set it in the dashboard).
+4. Set `ADMIN_EMAILS` to your email under **Environment**, then **Save
+   Changes** (triggers a redeploy).
+5. Sign up with that email — you're admin on next login.
 
-That's it — sign up creates a real account, posts persist… until the
-next restart.
-
-## Option B — Persistent storage (paid)
-
-Same setup, but with a small persistent disk so signups, posts, and
-uploaded avatars survive restarts. ~$8/month total ($7 web + $1 disk).
-
-In `render.yaml`, uncomment three things:
-
-```yaml
-plan: starter           # change `free` → `starter`
-…
-envVars:
-  - key: DATABASE_PATH        # uncomment
-    value: /var/data/cntrd.db
-  - key: UPLOADS_PATH         # uncomment
-    value: /var/data/uploads
-
-disk:                         # uncomment the whole block
-  name: cntrd-data
-  mountPath: /var/data
-  sizeGB: 1
-```
-
-Push, then in the dashboard **Manual Deploy → Clear build cache &
-deploy**. The disk mounts at `/var/data`; the app creates
-`cntrd.db` + `uploads/` there on first boot.
+The DB lives at `/var/data/cntrd.db`, uploaded avatars at
+`/var/data/uploads`. Future deploys keep them.
 
 ---
 
@@ -58,19 +33,17 @@ If you'd rather click through the dashboard:
 1. **New +** → **Web Service** → connect repo.
 2. Settings:
    - **Runtime:** Node
+   - **Plan:** Starter
    - **Build Command:** `npm install`
    - **Start Command:** `npm start`
    - **Health Check Path:** `/api/health`
 3. Environment variables:
    - `NODE_ENV` = `production`
    - `JWT_SECRET` = (click *Generate*)
-   - `ADMIN_EMAILS` = your email (comma-separate for more, but for personal
-     use set just yours). Auto-promotes that account to admin on next
-     login/register. See **Becoming admin** below.
-   - For persistent storage, also: `DATABASE_PATH` = `/var/data/cntrd.db`,
-     `UPLOADS_PATH` = `/var/data/uploads`.
-4. (Persistent only) **Disks** → add `cntrd-data`, mount path
-   `/var/data`, size `1 GB`.
+   - `ADMIN_EMAILS` = your email
+   - `DATABASE_PATH` = `/var/data/cntrd.db`
+   - `UPLOADS_PATH` = `/var/data/uploads`
+4. **Disks** → add `cntrd-data`, mount path `/var/data`, size `1 GB`.
 5. **Create Web Service**.
 
 ---
@@ -109,16 +82,24 @@ add the CNAME / A records Render shows you. TLS is automatic.
 
 - **Build fails on `better-sqlite3`** — Render's Node runtime ships
   Python and `gcc`, so the prebuilt binary should install fine. If it
-  doesn't, bump `engines.node` in `package.json` to `>=20` and redeploy
-  to pick up the right prebuild.
+  doesn't, the Node version in `package.json` (engines.node) is pinned
+  to a release that has matching prebuilds.
 - **502 / "Application failed to respond"** — check the **Logs** tab.
-  Most often it's `PORT` (the app already reads `process.env.PORT`, so
-  this is rare) or a missing env var.
-- **Cold starts on free tier** — that's the plan. Use a paid plan or
-  pair the free service with an external uptime ping (UptimeRobot etc.)
-  if you need it always-on.
-- **Data disappeared after a deploy** — you're on free tier; this is
-  expected. Move to Option B.
+  Most often a missing env var or a corrupted DB on the disk.
+- **Disk-full errors** — bump the disk to 2 GB in the Blueprint or
+  dashboard. The DB is small but uploaded avatars accumulate.
+
+---
+
+## Migrating off SQLite (if you ever outgrow it)
+
+The whole storage layer goes through `database/db.js`. If you outgrow
+SQLite, swap to Postgres in one place — the schema and queries are
+standard SQL except for `datetime('now')` and a few `INSERT OR IGNORE`
+shortcuts. Provision **Render Postgres** alongside the web service,
+add a `DATABASE_URL` env var, and replace `better-sqlite3` with `pg`.
+A few hours of work; not urgent until you have hundreds of active
+users.
 
 ---
 
@@ -128,8 +109,10 @@ add the CNAME / A records Render shows you. TLS is automatic.
 server.js              Express app + SPA fallback
 database/db.js         SQLite + idempotent schema migrations
 data/teams.js          Static team registry (server-side)
-routes/                REST API (auth, users, posts, plays, upload, static)
+services/espn.js       ESPN scoreboards / teams / game detail / cache
+routes/                REST API (auth, users, posts, plays, games,
+                       teams, leagues, messages, pages, admin, upload)
 middleware/auth.js     JWT bearer-token middleware
 public/                Static SPA — index.html + js/cntrd/*.jsx
-render.yaml            Render Blueprint
+render.yaml            Render Blueprint (Starter + 1 GB disk)
 ```
