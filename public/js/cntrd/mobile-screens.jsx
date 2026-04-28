@@ -22,15 +22,7 @@ function ProfileScreen({ tweaks, onNav, me, posts }) {
         <button style={iconBtnStyle()} onClick={() => onNav?.('settings')}><Icon name="settings" size={20} stroke="var(--cn-text)" /></button>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 96 }}>
-        {/* Cover band: striped placeholder */}
-        <div style={{
-          height: 96, position: 'relative',
-          background: `linear-gradient(135deg, ${coverFrom.primary} 0%, ${coverTo.primary} 100%)`,
-        }}>
-          <div style={{ position: 'absolute', inset: 0, opacity: 0.3, background: 'repeating-linear-gradient(45deg, transparent 0 8px, rgba(0,0,0,0.2) 8px 16px)' }} />
-        </div>
-
-        <div style={{ padding: '0 16px', marginTop: -36 }}>
+        <div style={{ padding: '20px 16px 0' }}>
           <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 12 }}>
             <Avatar user={u} size={88} ring />
             <button style={{
