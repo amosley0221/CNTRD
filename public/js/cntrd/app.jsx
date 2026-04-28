@@ -220,7 +220,10 @@ function CNTRDApp() {
   };
   const ScreenComp = screenMap[screen] || FeedScreen;
   const isAuthScreen = screen === 'login' || screen === 'signup';
-  const useDesktop = authed && isWide && !isAuthScreen;
+  // The desktop 3-column layout is the home view. Anywhere else (profile,
+  // compose, settings, chat, plays, admin) renders the mobile-style screen
+  // even on desktop so navigation actually changes the page.
+  const useDesktop = authed && isWide && !isAuthScreen && screen === 'home';
 
   // Common props for every screen — extras are ignored where unused.
   const screenProps = {

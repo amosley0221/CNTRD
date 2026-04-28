@@ -2,7 +2,7 @@
 // Three-column layout: left nav, center feed, right rail (gameday + trends)
 
 function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays, games }) {
-  const [view, setView] = React.useState('feed');
+  const [query, setQuery] = React.useState('');
   return (
     <div style={{
       width: '100%', height: '100%',
@@ -13,25 +13,31 @@ function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays, games }) {
       gridTemplateColumns: '232px 1fr 360px',
       overflow: 'hidden',
     }}>
-      <DesktopNav view={view} setView={setView} onNav={onNav} me={me} />
-      <DesktopMain view={view} tweaks={tweaks} onNav={onNav} posts={posts} plays={plays} />
-      <DesktopRail tweaks={tweaks} onNav={onNav} games={games} />
+      <DesktopNav onNav={onNav} me={me} />
+      <DesktopMain tweaks={tweaks} onNav={onNav} posts={posts} plays={plays} query={query} />
+      <DesktopRail tweaks={tweaks} onNav={onNav} games={games} query={query} setQuery={setQuery} />
     </div>
   );
 }
 
-function DesktopNav({ view, setView, onNav, me }) {
+function DesktopNav({ onNav, me }) {
   const meUser = me || ME;
+  // Each item routes via onNav to a real screen. `screen` is the screen-key
+  // app.jsx uses; multiple labels can share a screen (e.g. Discover/Feed).
   const items = [
-    { id: 'feed',     icon: 'home',     label: 'Feed' },
-    { id: 'discover', icon: 'search',   label: 'Discover' },
-    { id: 'gameday',  icon: 'whistle',  label: 'Gameday', badge: 'LIVE', external: 'chat' },
-    { id: 'plays',    icon: 'video',    label: 'Plays' },
-    { id: 'rumors',   icon: 'flame',    label: 'Rumor mill' },
-    { id: 'profile',  icon: 'profile',  label: 'You', external: 'profile' },
-    { id: 'settings', icon: 'settings', label: 'Settings', external: 'settings' },
-    ...(meUser?.is_admin ? [{ id: 'admin', icon: 'whistle', label: 'Admin', external: 'admin', accent: true }] : []),
+    { screen: 'home',         icon: 'home',     label: 'Feed' },
+    { screen: 'home',         icon: 'search',   label: 'Discover',     key: 'discover' },
+    { screen: 'chat',         icon: 'whistle',  label: 'Gameday',      badge: 'LIVE' },
+    { screen: 'playsCreator', icon: 'video',    label: 'Plays' },
+    { screen: 'profile',      icon: 'profile',  label: 'You' },
+    { screen: 'settings',     icon: 'settings', label: 'Settings' },
+    ...(meUser?.is_admin ? [{ screen: 'admin', icon: 'whistle', label: 'Admin', accent: true }] : []),
   ];
+  // Active highlight is based on the screen the app is currently on.
+  // Falls back via the global STORAGE.screen because app.jsx already persists it.
+  let currentScreen = 'home';
+  try { currentScreen = localStorage.getItem('cntrd:screen') || 'home'; } catch {}
+
   return (
     <nav style={{
       borderRight: '0.5px solid var(--cn-border)',
@@ -48,9 +54,9 @@ function DesktopNav({ view, setView, onNav, me }) {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {items.map(it => {
-          const active = !it.external && view === it.id;
+          const active = !it.accent && currentScreen === it.screen && !it.key;
           return (
-            <button key={it.id} onClick={() => it.external ? onNav?.(it.external) : setView(it.id)} style={{
+            <button key={it.key || it.screen} onClick={() => onNav?.(it.screen)} style={{
               display: 'flex', alignItems: 'center', gap: 12,
               padding: '10px 12px', borderRadius: 10,
               background: active ? 'var(--cn-bg-elev)' : 'transparent',
@@ -101,11 +107,19 @@ function DesktopNav({ view, setView, onNav, me }) {
       </div>
     </nav>
   );
-}
-
-function DesktopMain({ view, tweaks, onNav, posts, plays }) {
-  const items = (posts && posts.length ? posts : POSTS);
+function DesktopMain({ tweaks, onNav, posts, plays, query }) {
+  const allItems = (posts && posts.length ? posts : POSTS);
   const playList = (plays && plays.length ? plays : PLAYS);
+  const q = (query || '').trim().toLowerCase();
+  const items = q
+    ? allItems.filter(p => {
+        const text = (p.text || p.content || '').toLowerCase();
+        const user = (p.user?.username || (typeof p.user === 'string' ? p.user : '')).toLowerCase();
+        const name = (p.user?.displayName || '').toLowerCase();
+        const tags = (p.tags || []).join(' ').toLowerCase();
+        return text.includes(q) || user.includes(q) || name.includes(q) || tags.includes(q);
+      })
+    : allItems;
   return (
     <main style={{ overflowY: 'auto', borderRight: '0.5px solid var(--cn-border)' }}>
       <div style={{
@@ -122,7 +136,7 @@ function DesktopMain({ view, tweaks, onNav, posts, plays }) {
           textTransform: 'var(--cn-display-case)',
           letterSpacing: 'var(--cn-display-spacing)',
           fontSize: 18,
-        }}>{view === 'feed' ? 'YOUR FEED' : view.toUpperCase()}</span>
+        }}>{q ? `RESULTS · "${query}"` : 'YOUR FEED'}</span>
         <div style={{ display: 'flex', gap: 4, padding: 3, borderRadius: 8, background: 'var(--cn-bg-elev)' }}>
           {['For you', 'Following', 'Live'].map((t, i) => (
             <button key={t} style={{
@@ -153,13 +167,18 @@ function DesktopMain({ view, tweaks, onNav, posts, plays }) {
 
       {/* Feed */}
       <div style={{ maxWidth: 620 }}>
+        {items.length === 0 && (
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>
+            {q ? `No posts match "${query}".` : 'Nothing in your feed yet — follow people, or post something.'}
+          </div>
+        )}
         {items.map(p => <Post key={p.id} post={p} />)}
       </div>
     </main>
   );
 }
 
-function DesktopRail({ tweaks, onNav, games }) {
+function DesktopRail({ tweaks, onNav, games, query, setQuery }) {
   const live = games?.live || [];
   const upcoming = games?.upcoming || [];
   const recent = games?.recent || [];
@@ -170,15 +189,32 @@ function DesktopRail({ tweaks, onNav, games }) {
   return (
     <aside style={{ overflowY: 'auto', padding: '20px 22px 40px', display: 'flex', flexDirection: 'column', gap: 18 }}>
       {/* Search */}
-      <div style={{
+      <label style={{
         display: 'flex', alignItems: 'center', gap: 10,
-        padding: '10px 14px', borderRadius: 10,
+        padding: '8px 14px', borderRadius: 10,
         background: 'var(--cn-bg-elev)',
         border: '0.5px solid var(--cn-border)',
       }}>
         <Icon name="search" size={16} stroke="var(--cn-text-mute)" />
-        <span style={{ fontSize: 13, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-body)' }}>Search teams, players, fans</span>
-      </div>
+        <input
+          value={query || ''}
+          onChange={e => setQuery?.(e.target.value)}
+          placeholder="Search posts, users, teams"
+          style={{
+            flex: 1, background: 'transparent', border: 'none', outline: 'none',
+            color: 'var(--cn-text)', fontSize: 13,
+            fontFamily: 'var(--cn-font-body)',
+          }}
+        />
+        {query && (
+          <button onClick={() => setQuery?.('')} style={{
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            color: 'var(--cn-text-mute)', padding: 0, display: 'flex',
+          }}>
+            <Icon name="x" size={14} />
+          </button>
+        )}
+      </label>
 
       {/* Featured (live > upcoming) */}
       {featured ? (
