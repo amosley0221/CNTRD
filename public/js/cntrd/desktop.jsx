@@ -107,6 +107,8 @@ function DesktopNav({ onNav, me }) {
       </div>
     </nav>
   );
+}
+
 function DesktopMain({ tweaks, onNav, posts, plays, query }) {
   const allItems = (posts && posts.length ? posts : POSTS);
   const playList = (plays && plays.length ? plays : PLAYS);
