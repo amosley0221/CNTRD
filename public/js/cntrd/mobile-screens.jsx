@@ -679,9 +679,11 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
   return (
     <div style={{ width: '100%', height: '100%', background: '#000', position: 'relative', overflow: 'hidden' }}>
       {/* Tap zones: left half → previous, right half → next.
-          z-index 1 sits above the gradient/media but below all UI controls. */}
-      <div onClick={goPrev} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '40%', zIndex: 1, cursor: 'pointer' }} />
-      <div onClick={goNext} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '40%', zIndex: 1, cursor: 'pointer' }} />
+          z-index 1 sits above the gradient/media but below all UI controls.
+          `bottom: 60` keeps the lower edge clear so a video's native
+          controls bar (and the reply input) stay tappable. */}
+      <div onClick={goPrev} style={{ position: 'absolute', left: 0, top: 0, bottom: 60, width: '40%', zIndex: 1, cursor: 'pointer' }} />
+      <div onClick={goNext} style={{ position: 'absolute', right: 0, top: 0, bottom: 60, width: '40%', zIndex: 1, cursor: 'pointer' }} />
 
       {/* progress bars */}
       <div style={{ position: 'absolute', top: 56, left: 12, right: 12, display: 'flex', gap: 4, zIndex: 5 }}>
@@ -734,7 +736,8 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
             key={play.id}                              // remount when play changes
             ref={videoRef}
             src={play.media_url}
-            autoPlay muted playsInline
+            autoPlay muted playsInline controls
+            controlsList="nodownload"
             onTimeUpdate={(e) => {
               const v = e.currentTarget;
               if (v.duration) setProgress(Math.min(1, v.currentTime / v.duration));
