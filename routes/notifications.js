@@ -68,4 +68,16 @@ router.post('/:id/read', (req, res) => {
   res.json({ success: true });
 });
 
+// Dismiss one (permanent delete).
+router.delete('/:id', (req, res) => {
+  db.prepare('DELETE FROM notifications WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
+  res.json({ success: true });
+});
+
+// Dismiss all read (clears the activity log of stuff already seen).
+router.delete('/', (req, res) => {
+  db.prepare('DELETE FROM notifications WHERE user_id = ? AND read_at IS NOT NULL').run(req.user.id);
+  res.json({ success: true });
+});
+
 module.exports = router;

@@ -350,6 +350,19 @@ async function getGameDetail(leagueCode, eventId) {
       title: a.headline || a.title,
       description: a.description || '',
     })),
+    // Play-by-play used by the live notifier to push per-event notifications.
+    plays: (json.plays || []).map(p => ({
+      id: String(p.id ?? ''),
+      text: p.text || '',
+      scoringPlay: !!p.scoringPlay,
+      scoreValue: Number(p.scoreValue || 0),
+      type: p.type?.text || p.type?.name || '',
+      period: Number(p.period?.number || 0),
+      clock: p.clock?.displayValue || '',
+      team: p.team?.abbreviation || null,
+      homeScore: Number(p.homeScore || 0),
+      awayScore: Number(p.awayScore || 0),
+    })),
   };
 
   detailCache.set(key, { ts: Date.now(), data: detail });

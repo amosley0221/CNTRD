@@ -73,6 +73,8 @@ const API = {
   notificationsUnread()                 { return request('GET',  '/api/notifications/unread'); },
   markNotifRead(id)                     { return request('POST', `/api/notifications/${id}/read`); },
   markAllNotifsRead()                   { return request('POST', '/api/notifications/read-all'); },
+  dismissNotif(id)                      { return request('DELETE', `/api/notifications/${id}`); },
+  dismissReadNotifs()                   { return request('DELETE', '/api/notifications'); },
 
   // Follow / privacy / blocks
   followUser(username)                  { return request('POST', `/api/users/${username}/follow`); },

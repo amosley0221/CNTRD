@@ -132,7 +132,7 @@ async function liveGameTick() {
     // the game live at least once during this process's lifetime).
     const all = [...(data.live || []), ...(data.recent || [])];
     for (const g of all) {
-      const state = gameState.get(g.id) || { everLive: false, finalSent: false };
+      const state = gameState.get(g.id) || { everLive: false, finalSent: false, seenPlayIds: new Set() };
       const recipients = recipientsForGame(g);
       const basketball = isBasketball(g.league);
 
@@ -145,23 +145,40 @@ async function liveGameTick() {
         }
       }
 
-      // — score: emit per side that increased. Skip basketball entirely.
-      if (g.state === 'live' && state.everLive && !basketball) {
-        const lastH = Number.isFinite(state.homeScore) ? state.homeScore : null;
-        const lastA = Number.isFinite(state.awayScore) ? state.awayScore : null;
-        const newH = Number(g.homeScore);
-        const newA = Number(g.awayScore);
-        if (lastH !== null && Number.isFinite(newH) && newH > lastH) {
-          const dedupeKey = `score:${g.id}:H:${newH}-${newA}`;
-          for (const userId of recipients) {
-            notify({ userId, type: 'score', data: { ...gamePayload(g), scoring_side: 'home' }, dedupeKey, bumpOnDedupe: false });
+      // — score: walk the play-by-play. Each new scoring play emits one
+      //   notification (with the full play text). Basketball skips per-play
+      //   scoring entirely — quarter and final still fire below.
+      if (state.everLive && (g.state === 'live' || (g.state === 'final' && !state.finalSent))) {
+        try {
+          const detail = await getEspn().getGameDetail(g.league, g.id);
+          if (detail?.plays?.length) {
+            for (const play of detail.plays) {
+              if (!play.id || state.seenPlayIds.has(play.id)) continue;
+              state.seenPlayIds.add(play.id);
+              if (!play.scoringPlay) continue;
+              if (basketball) continue;
+              const scoringSide = play.team
+                ? (play.team === g.home ? 'home' : (play.team === g.away ? 'away' : null))
+                : null;
+              const dedupeKey = `play:${g.id}:${play.id}`;
+              const data = {
+                ...gamePayload(g),
+                home_score: play.homeScore || g.homeScore,
+                away_score: play.awayScore || g.awayScore,
+                play_text: play.text,
+                play_team: play.team,
+                play_period: play.period,
+                play_clock: play.clock,
+                scoring_side: scoringSide,
+              };
+              for (const userId of recipients) {
+                notify({ userId, type: 'score', data, dedupeKey, bumpOnDedupe: false });
+              }
+            }
           }
-        }
-        if (lastA !== null && Number.isFinite(newA) && newA > lastA) {
-          const dedupeKey = `score:${g.id}:A:${newH}-${newA}`;
-          for (const userId of recipients) {
-            notify({ userId, type: 'score', data: { ...gamePayload(g), scoring_side: 'away' }, dedupeKey, bumpOnDedupe: false });
-          }
+        } catch (e) {
+          // ESPN summary missing or rate-limited — fall through; status-text
+          // detection below still gives us period/final coverage.
         }
       }
 
@@ -182,10 +199,8 @@ async function liveGameTick() {
           notify({ userId, type: 'final', data: gamePayload(g), dedupeKey, bumpOnDedupe: false });
         }
       }
-      // Allow a final without ever seeing it live (process restart, etc.).
       if (g.state === 'final' && !state.everLive && !state.finalSent) {
         state.finalSent = true;
-        // Don't notify retroactively — we missed the game; just record.
       }
 
       // Update the cache.
