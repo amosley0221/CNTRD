@@ -121,6 +121,7 @@ function SignupScreen({ tweaks, onNav, onSignup }) {
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [picks, setPicks] = React.useState([]);
+  const [leaguePicks, setLeaguePicks] = React.useState([]);
   const [avatarHue, setAvatarHue] = React.useState(280);
   const [busy, setBusy] = React.useState(false);
   const [err, setErr]   = React.useState(null);
@@ -128,6 +129,25 @@ function SignupScreen({ tweaks, onNav, onSignup }) {
   const togglePick = (code) => {
     setPicks(p => p.includes(code) ? p.filter(c => c !== code) : [...p, code]);
   };
+  const toggleLeague = (code) => {
+    setLeaguePicks(p => p.includes(code) ? p.filter(c => c !== code) : [...p, code]);
+  };
+
+  // When the user reaches the leagues step, pre-select the leagues their
+  // picked teams belong to (a 76ers fan auto-follows NBA). They can edit.
+  const seededLeaguesRef = React.useRef(false);
+  React.useEffect(() => {
+    if (step === 4 && !seededLeaguesRef.current) {
+      const inferred = Array.from(new Set(
+        picks.map(k => k.includes(':') ? k.split(':')[0] : null).filter(Boolean)
+      ));
+      setLeaguePicks(prev => {
+        const merged = new Set([...prev, ...inferred]);
+        return Array.from(merged);
+      });
+      seededLeaguesRef.current = true;
+    }
+  }, [step, picks]);
 
   const finish = async () => {
     if (busy) return;
@@ -139,6 +159,7 @@ function SignupScreen({ tweaks, onNav, onSignup }) {
           username: username.trim(),
           password,
           teams: picks,
+          leagues: leaguePicks,
           avatar_hue: avatarHue,
         });
       }
@@ -154,7 +175,8 @@ function SignupScreen({ tweaks, onNav, onSignup }) {
     step === 0 ? (email.includes('@') && passwordOK(password)) :
     step === 1 ? (username.length >= 3) :
     step === 2 ? true :
-    /* step 3 */ (picks.length > 0);
+    step === 3 ? (picks.length > 0) :
+    /* step 4 */ (leaguePicks.length > 0);
 
   return (
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
@@ -164,8 +186,8 @@ function SignupScreen({ tweaks, onNav, onSignup }) {
           <Icon name="chevron-l" size={20} stroke="var(--cn-text)" />
         </button>
         <div style={{ display: 'flex', gap: 4 }}>
-          {[0,1,2,3].map(i => (
-            <div key={i} style={{ width: 24, height: 3, borderRadius: 2, background: i <= step ? 'var(--cn-accent)' : 'var(--cn-border)' }} />
+          {[0,1,2,3,4].map(i => (
+            <div key={i} style={{ width: 22, height: 3, borderRadius: 2, background: i <= step ? 'var(--cn-accent)' : 'var(--cn-border)' }} />
           ))}
         </div>
         <span style={{ width: 32 }} />
@@ -234,18 +256,31 @@ function SignupScreen({ tweaks, onNav, onSignup }) {
             </div>
           </>
         )}
+        {step === 4 && (
+          <>
+            <H1>Follow leagues</H1>
+            <Subhead>These decide what you see in Next Up + Recent Finals. Your favorite teams' leagues are pre-selected. Add UFC, golf, tennis, racing, or anything else you watch.</Subhead>
+            <div style={{ marginTop: 18 }}>
+              <LeaguesPicker picks={leaguePicks} onTogglePick={toggleLeague} />
+            </div>
+          </>
+        )}
       </div>
 
       <div style={{ padding: '12px 24px 28px', borderTop: '0.5px solid var(--cn-border)' }}>
         {err && <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--cn-danger)', fontFamily: 'var(--cn-font-mono)' }}>{err}</div>}
-        <button onClick={() => step < 3 ? (stepValid && setStep(step + 1)) : finish()} disabled={!stepValid || busy} style={{
+        <button onClick={() => step < 4 ? (stepValid && setStep(step + 1)) : finish()} disabled={!stepValid || busy} style={{
           width: '100%', padding: '14px', borderRadius: 12,
           background: (stepValid && !busy) ? 'var(--cn-accent)' : 'var(--cn-bg-elev2)',
           color: (stepValid && !busy) ? 'var(--cn-on-accent)' : 'var(--cn-text-mute)',
           border: 'none', fontWeight: 700, fontSize: 15,
           cursor: (stepValid && !busy) ? 'pointer' : 'not-allowed',
           fontFamily: 'var(--cn-font-body)',
-        }}>{busy ? 'Creating account…' : (step < 3 ? 'Continue' : `Finish · ${picks.length} team${picks.length === 1 ? '' : 's'}`)}</button>
+        }}>{busy
+          ? 'Creating account…'
+          : (step < 4
+              ? 'Continue'
+              : `Finish · ${picks.length} team${picks.length === 1 ? '' : 's'} · ${leaguePicks.length} league${leaguePicks.length === 1 ? '' : 's'}`)}</button>
       </div>
     </div>
   );
@@ -328,7 +363,7 @@ function SettingsScreen({ tweaks, setTweak, onNav, me }) {
           <Row label="Profile picture" right={<Avatar user={meUser} size={28} />} last />
         </Section>
 
-        <Section title="Teams">
+        <Section title="Following">
           <Row
             label="My teams"
             sub={(meUser.teams && meUser.teams.length) ? `${meUser.teams.length} selected` : 'Pick the teams you root for'}
@@ -339,6 +374,21 @@ function SettingsScreen({ tweaks, setTweak, onNav, me }) {
               </div>
             }
             onClick={() => onNav?.('teams')}
+          />
+          <Row
+            label="My leagues"
+            sub={(meUser.leagues && meUser.leagues.length) ? `${meUser.leagues.length} followed` : 'Pick the sports + leagues you watch'}
+            right={
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {(meUser.leagues || []).slice(0, 4).length > 0 && (
+                  <span style={{ display: 'inline-flex', gap: 4, fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)' }}>
+                    {(meUser.leagues || []).slice(0, 4).join(' · ')}
+                  </span>
+                )}
+                <Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />
+              </div>
+            }
+            onClick={() => onNav?.('leagues')}
             last
           />
         </Section>

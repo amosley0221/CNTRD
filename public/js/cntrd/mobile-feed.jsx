@@ -102,6 +102,15 @@ function _favCodeSet(me) {
   for (const t of (me?.teams || [])) set.add(_bareCode(t));
   return set;
 }
+function _followedSet(me) {
+  return new Set(me?.leagues || []);
+}
+function _filterFollowed(games, favCodes, followed) {
+  if (!games) return [];
+  return games.filter(g =>
+    followed.has(g.league) || favCodes.has(g.home) || favCodes.has(g.away)
+  );
+}
 function _favoriteFirst(games, favCodes) {
   if (!favCodes || !favCodes.size) return games;
   const fav = [], rest = [];
@@ -117,8 +126,9 @@ function _isFav(g, favCodes) {
 
 function LiveGamesStrip({ onJoin, games, me, onOpenGame }) {
   const favCodes = _favCodeSet(me);
-  const live = _favoriteFirst(games?.live || [], favCodes);
-  const upcoming = _favoriteFirst(games?.upcoming || [], favCodes);
+  const followed = _followedSet(me);
+  const live = _favoriteFirst(_filterFollowed(games?.live, favCodes, followed), favCodes);
+  const upcoming = _favoriteFirst(_filterFollowed(games?.upcoming, favCodes, followed), favCodes);
   const showing = live.length ? live : upcoming.slice(0, 3);
   if (!showing.length) return null;
   const empty = !live.length;
@@ -158,7 +168,8 @@ function LiveGamesStrip({ onJoin, games, me, onOpenGame }) {
 
 function RecentGamesStrip({ games, me, onOpenGame }) {
   const favCodes = _favCodeSet(me);
-  const recent = _favoriteFirst(games?.recent || [], favCodes);
+  const followed = _followedSet(me);
+  const recent = _favoriteFirst(_filterFollowed(games?.recent, favCodes, followed), favCodes);
   if (!recent.length) return null;
   return (
     <div style={{

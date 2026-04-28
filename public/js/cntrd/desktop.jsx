@@ -61,6 +61,7 @@ function DesktopMainContent({ screen, ...props }) {
     playsCreator: PlaysCreatorScreen,
     admin:        AdminScreen,
     teams:        TeamsEditorScreen,
+    leagues:      LeaguesEditorScreen,
     terms:        TermsScreen,
     privacy:      PrivacyScreen,
     about:        AboutScreen,
@@ -233,10 +234,17 @@ function DesktopRail({ tweaks, onNav, games, me, onOpenGame, query, setQuery }) 
     for (const t of (me?.teams || [])) set.add(bareTeamCode(t));
     return set;
   }, [me]);
+  const followed = React.useMemo(() => new Set(me?.leagues || []), [me]);
 
-  const live     = favoriteFirst(games?.live     || [], favCodes).slice(0, 3);
-  const upcoming = favoriteFirst(games?.upcoming || [], favCodes).slice(0, 5);
-  const recent   = favoriteFirst(games?.recent   || [], favCodes).slice(0, 8);
+  // Show a game only if its league is followed, or one of its teams is a
+  // favorite. With nothing followed, show nothing — sensible since we just
+  // asked the user what they care about during signup.
+  const includeGame = (g) =>
+    followed.has(g.league) || favCodes.has(g.home) || favCodes.has(g.away);
+
+  const live     = favoriteFirst((games?.live     || []).filter(includeGame), favCodes).slice(0, 3);
+  const upcoming = favoriteFirst((games?.upcoming || []).filter(includeGame), favCodes).slice(0, 5);
+  const recent   = favoriteFirst((games?.recent   || []).filter(includeGame), favCodes).slice(0, 8);
   const teamFor = (g, side) => g[side + 'Team'] || TEAMS[g[side]] || { code: g[side], name: g[side], primary: '#666', accent: '#999' };
   return (
     <aside style={{ overflowY: 'auto', padding: '20px 22px 40px', display: 'flex', flexDirection: 'column', gap: 18 }}>

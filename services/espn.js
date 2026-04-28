@@ -5,17 +5,31 @@
 const fs = require('fs');
 
 const LEAGUES = [
-  { code: 'NFL',         path: 'football/nfl' },
-  { code: 'NBA',         path: 'basketball/nba' },
-  { code: 'MLB',         path: 'baseball/mlb' },
-  { code: 'NHL',         path: 'hockey/nhl' },
-  { code: 'MLS',         path: 'soccer/usa.1' },
-  { code: 'EPL',         path: 'soccer/eng.1' },
-  { code: 'LaLiga',      path: 'soccer/esp.1' },
-  { code: 'Bundesliga',  path: 'soccer/ger.1' },
-  { code: 'SerieA',      path: 'soccer/ita.1' },
-  { code: 'NCAAF',       path: 'football/college-football' },
-  { code: 'NCAAM',       path: 'basketball/mens-college-basketball' },
+  // Team sports — full home/away scoreboards + rosters.
+  { code: 'NFL',         path: 'football/nfl',                          label: 'NFL',                    sport: 'Football',   hasTeams: true  },
+  { code: 'NCAAF',       path: 'football/college-football',             label: 'NCAA Football',          sport: 'Football',   hasTeams: true  },
+  { code: 'NBA',         path: 'basketball/nba',                        label: 'NBA',                    sport: 'Basketball', hasTeams: true  },
+  { code: 'WNBA',        path: 'basketball/wnba',                       label: 'WNBA',                   sport: 'Basketball', hasTeams: true  },
+  { code: 'NCAAM',       path: 'basketball/mens-college-basketball',    label: "NCAA Men's Basketball",  sport: 'Basketball', hasTeams: true  },
+  { code: 'MLB',         path: 'baseball/mlb',                          label: 'MLB',                    sport: 'Baseball',   hasTeams: true  },
+  { code: 'NHL',         path: 'hockey/nhl',                            label: 'NHL',                    sport: 'Hockey',     hasTeams: true  },
+  { code: 'MLS',         path: 'soccer/usa.1',                          label: 'MLS',                    sport: 'Soccer',     hasTeams: true  },
+  { code: 'EPL',         path: 'soccer/eng.1',                          label: 'Premier League',         sport: 'Soccer',     hasTeams: true  },
+  { code: 'LaLiga',      path: 'soccer/esp.1',                          label: 'La Liga',                sport: 'Soccer',     hasTeams: true  },
+  { code: 'Bundesliga',  path: 'soccer/ger.1',                          label: 'Bundesliga',             sport: 'Soccer',     hasTeams: true  },
+  { code: 'SerieA',      path: 'soccer/ita.1',                          label: 'Serie A',                sport: 'Soccer',     hasTeams: true  },
+  { code: 'UCL',         path: 'soccer/uefa.champions',                 label: 'Champions League',       sport: 'Soccer',     hasTeams: true  },
+  // Individual / combat — fights or matches are 2-competitor events; no rosters.
+  { code: 'UFC',         path: 'mma/ufc',                               label: 'UFC',                    sport: 'MMA',        hasTeams: false },
+  { code: 'Boxing',      path: 'boxing',                                label: 'Boxing',                 sport: 'Boxing',     hasTeams: false },
+  { code: 'ATP',         path: 'tennis/atp',                            label: 'ATP Tennis',             sport: 'Tennis',     hasTeams: false },
+  { code: 'WTA',         path: 'tennis/wta',                            label: 'WTA Tennis',             sport: 'Tennis',     hasTeams: false },
+  // Tournament-style — no home/away. Scoreboard yields events; we surface
+  // them as single cards (no head-to-head score).
+  { code: 'PGA',         path: 'golf/pga',                              label: 'PGA Tour',               sport: 'Golf',       hasTeams: false },
+  { code: 'LPGA',        path: 'golf/lpga',                             label: 'LPGA Tour',              sport: 'Golf',       hasTeams: false },
+  { code: 'F1',          path: 'racing/f1',                             label: 'Formula 1',              sport: 'Racing',     hasTeams: false },
+  { code: 'NASCAR',      path: 'racing/nascar-cup',                     label: 'NASCAR Cup',             sport: 'Racing',     hasTeams: false },
 ];
 
 const TTL_OK_MS  = 30 * 1000;       // 30s while requests are succeeding
@@ -349,9 +363,12 @@ async function getAllTeams() {
 
   teamsInflight = (async () => {
     try {
-      const lists = await Promise.allSettled(LEAGUES.map(fetchLeagueTeams));
+      // Only fetch rosters for leagues that actually have teams. Combat
+      // and tournament leagues skip the call entirely.
+      const teamLeagues = LEAGUES.filter(l => l.hasTeams);
+      const lists = await Promise.allSettled(teamLeagues.map(fetchLeagueTeams));
       const out = {};
-      LEAGUES.forEach((l, i) => {
+      teamLeagues.forEach((l, i) => {
         out[l.code] = lists[i].status === 'fulfilled'
           ? lists[i].value.sort((a, b) => a.name.localeCompare(b.name))
           : [];

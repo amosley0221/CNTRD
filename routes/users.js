@@ -3,14 +3,16 @@ const router = express.Router();
 const db = require('../database/db');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { isValidTeamCode } = require('../data/teams');
+const leaguesRouter = require('./leagues');
 
 const PUBLIC_USER_COLS =
-  'id, username, display_name, bio, avatar, banner, team_tags, ' +
+  'id, username, display_name, bio, avatar, banner, team_tags, followed_leagues, ' +
   'avatar_hue, pronouns, city, follower_count, following_count, post_count, created_at';
 
 function hydrate(u) {
   if (!u) return u;
-  u.team_tags = JSON.parse(u.team_tags || '[]');
+  u.team_tags        = JSON.parse(u.team_tags || '[]');
+  u.followed_leagues = JSON.parse(u.followed_leagues || '[]');
   return u;
 }
 
@@ -29,7 +31,7 @@ router.get('/:username', optionalAuth, (req, res) => {
 
 // Update profile
 router.patch('/me/profile', requireAuth, (req, res) => {
-  const { display_name, bio, team_tags, avatar_hue, pronouns, city } = req.body;
+  const { display_name, bio, team_tags, followed_leagues, avatar_hue, pronouns, city } = req.body;
 
   const updates = [];
   const values = [];
@@ -53,6 +55,11 @@ router.patch('/me/profile', requireAuth, (req, res) => {
       seen.add(code); cleaned.push(code);
     }
     updates.push('team_tags = ?'); values.push(JSON.stringify(cleaned));
+  }
+  if (followed_leagues !== undefined) {
+    if (!Array.isArray(followed_leagues)) return res.status(400).json({ error: 'followed_leagues must be an array' });
+    const cleaned = leaguesRouter.normalizeLeagues(followed_leagues);
+    updates.push('followed_leagues = ?'); values.push(JSON.stringify(cleaned));
   }
   if (avatar_hue !== undefined) {
     const h = Math.max(0, Math.min(360, +avatar_hue || 0));

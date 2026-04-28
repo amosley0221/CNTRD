@@ -6,17 +6,19 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../database/db');
 const { JWT_SECRET, requireAuth, isAdminEmail } = require('../middleware/auth');
 const { isValidTeamCode } = require('../data/teams');
+const leaguesRouter = require('./leagues');
 
 const USER_COLUMNS =
   'id, username, email, display_name, bio, avatar, banner, team_tags, ' +
-  'avatar_hue, pronouns, city, is_admin, banned, ' +
+  'followed_leagues, avatar_hue, pronouns, city, is_admin, banned, ' +
   'follower_count, following_count, post_count, created_at';
 
 function hydrate(user) {
   if (!user) return user;
-  user.team_tags = JSON.parse(user.team_tags || '[]');
-  user.is_admin  = !!user.is_admin;
-  user.banned    = !!user.banned;
+  user.team_tags        = JSON.parse(user.team_tags || '[]');
+  user.followed_leagues = JSON.parse(user.followed_leagues || '[]');
+  user.is_admin         = !!user.is_admin;
+  user.banned           = !!user.banned;
   return user;
 }
 
@@ -57,7 +59,7 @@ function syncAdminFlag(user) {
 
 // Register
 router.post('/register', (req, res) => {
-  const { username, email, password, display_name, teams, avatar_hue, pronouns, city } = req.body;
+  const { username, email, password, display_name, teams, leagues, avatar_hue, pronouns, city } = req.body;
 
   if (!username || !email || !password) {
     return res.status(400).json({ error: 'Username, email, and password are required' });
@@ -81,14 +83,24 @@ router.post('/register', (req, res) => {
   const hash = bcrypt.hashSync(password, 10);
   const id = uuidv4();
   const name = display_name || username;
-  const teamTagsJson = JSON.stringify(normalizeTeams(teams));
+  const cleanedTeams = normalizeTeams(teams);
+  const teamTagsJson = JSON.stringify(cleanedTeams);
+  // Default followed leagues = the leagues of any picked teams (so a fan
+  // who picks the Eagles auto-follows NFL). User can edit on the next step.
+  const inferredLeagues = Array.from(new Set(
+    cleanedTeams.map(c => c.includes(':') ? c.split(':')[0] : null).filter(Boolean)
+  ));
+  const finalLeagues = leaguesRouter.normalizeLeagues(
+    Array.isArray(leagues) ? leagues : inferredLeagues
+  );
+  const leaguesJson = JSON.stringify(finalLeagues);
   const hue = Number.isFinite(+avatar_hue) ? Math.max(0, Math.min(360, +avatar_hue)) : 200;
   const adminFlag = isAdminEmail(email) ? 1 : 0;
 
   db.prepare(`
-    INSERT INTO users (id, username, email, password, display_name, team_tags, avatar_hue, pronouns, city, is_admin)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, username, email, hash, name, teamTagsJson, hue, pronouns || '', city || '', adminFlag);
+    INSERT INTO users (id, username, email, password, display_name, team_tags, followed_leagues, avatar_hue, pronouns, city, is_admin)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, username, email, hash, name, teamTagsJson, leaguesJson, hue, pronouns || '', city || '', adminFlag);
 
   const token = jwt.sign({ id, username }, JWT_SECRET, { expiresIn: '30d' });
   const user = hydrate(db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`).get(id));

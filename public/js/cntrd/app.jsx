@@ -68,7 +68,8 @@ function normalizeMe(u) {
     pronouns: u.pronouns || '',
     city: u.city || '',
     joined,
-    teams: Array.isArray(u.team_tags) ? u.team_tags : [],
+    teams:   Array.isArray(u.team_tags)        ? u.team_tags        : [],
+    leagues: Array.isArray(u.followed_leagues) ? u.followed_leagues : [],
     followers: u.follower_count ?? 0,
     following: u.following_count ?? 0,
     posts: u.post_count ?? 0,
@@ -116,9 +117,11 @@ function CNTRDApp() {
       if (API.hasToken()) tasks.push(API.me().catch(() => { API.setToken(null); return null; }));
       else tasks.push(Promise.resolve(null));
       tasks.push(API.allTeams().catch(() => null));
+      tasks.push(API.leagueCatalog().catch(() => null));
 
-      const [serverMe, byLeague] = await Promise.all(tasks);
+      const [serverMe, byLeague, catalog] = await Promise.all(tasks);
       if (cancelled) return;
+      if (catalog && catalog.length) window.LEAGUE_CATALOG = catalog;
 
       // Merge dynamic team registry into globals for the rest of the app.
       if (byLeague && Object.keys(byLeague).length) {
@@ -205,11 +208,11 @@ function CNTRDApp() {
     setMe(normalizeMe(user));
   }, []);
 
-  const handleSignup = React.useCallback(async ({ email, username, password, teams, avatar_hue }) => {
+  const handleSignup = React.useCallback(async ({ email, username, password, teams, leagues, avatar_hue }) => {
     const { token, user } = await API.register({
       email, username, password,
       display_name: username,
-      teams, avatar_hue,
+      teams, leagues, avatar_hue,
     });
     API.setToken(token);
     setMe(normalizeMe(user));
@@ -254,6 +257,7 @@ function CNTRDApp() {
     playsCreator: PlaysCreatorScreen,
     admin:        AdminScreen,
     teams:        TeamsEditorScreen,
+    leagues:      LeaguesEditorScreen,
     terms:        TermsScreen,
     privacy:      PrivacyScreen,
     about:        AboutScreen,

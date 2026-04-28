@@ -23,6 +23,7 @@ app.use('/api/posts',  require('./routes/posts'));
 app.use('/api/plays',  require('./routes/plays'));
 app.use('/api/games',  require('./routes/games'));
 app.use('/api/teams',  require('./routes/teams'));
+app.use('/api/leagues',require('./routes/leagues'));
 app.use('/api/pages',  require('./routes/pages'));
 app.use('/api/admin',  require('./routes/admin'));
 app.use('/api/static', require('./routes/static'));
