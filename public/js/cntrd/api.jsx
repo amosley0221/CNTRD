@@ -43,6 +43,7 @@ const API = {
   teams()                  { return request('GET',  '/api/static/teams'); },
   allTeams()               { return request('GET',  '/api/teams/all'); },
   games()                  { return request('GET',  '/api/games'); },
+  gameDetail(league, id)   { return request('GET',  `/api/games/${encodeURIComponent(league)}/${encodeURIComponent(id)}`); },
 
   feed()                   { return request('GET',  '/api/posts/feed'); },
   explore()                { return request('GET',  '/api/posts/explore'); },

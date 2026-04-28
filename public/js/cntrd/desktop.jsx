@@ -1,9 +1,9 @@
 // desktop.jsx — desktop web app for CNTRD
 // Three-column layout: left nav, center feed, right rail (gameday + trends)
 
-function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays, games, screen, ...rest }) {
+function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays, games, screen, onOpenGame, ...rest }) {
   const [query, setQuery] = React.useState('');
-  const screenProps = { tweaks, setTweak, onNav, me, posts, plays, games, ...rest };
+  const screenProps = { tweaks, setTweak, onNav, me, posts, plays, games, onOpenGame, ...rest };
   return (
     <div style={{
       width: '100%', height: '100%',
@@ -22,9 +22,31 @@ function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays, games, screen, 
       }}>
         <DesktopMainContent screen={screen} query={query} {...screenProps} />
       </div>
-      <DesktopRail tweaks={tweaks} onNav={onNav} games={games} query={query} setQuery={setQuery} />
+      <DesktopRail tweaks={tweaks} onNav={onNav} games={games} me={me} onOpenGame={onOpenGame} query={query} setQuery={setQuery} />
     </div>
   );
+}
+
+// Strip the league prefix off composite team identifiers ("NFL:PHI" → "PHI")
+// so we can match user picks against ESPN game home/away (bare codes).
+function bareTeamCode(idOrCode) {
+  return String(idOrCode || '').toUpperCase().split(':').pop();
+}
+
+// Move games involving any of the user's teams to the top, preserving the
+// original order within each group.
+function favoriteFirst(games, favoriteCodes) {
+  if (!favoriteCodes || !favoriteCodes.size) return games;
+  const fav = [], rest = [];
+  for (const g of games) {
+    if (favoriteCodes.has(g.home) || favoriteCodes.has(g.away)) fav.push(g);
+    else rest.push(g);
+  }
+  return [...fav, ...rest];
+}
+
+function isFavoriteGame(game, favoriteCodes) {
+  return !!favoriteCodes && (favoriteCodes.has(game.home) || favoriteCodes.has(game.away));
 }
 
 // Picks what fills the main column based on the current route.
@@ -42,6 +64,7 @@ function DesktopMainContent({ screen, ...props }) {
     terms:        TermsScreen,
     privacy:      PrivacyScreen,
     about:        AboutScreen,
+    gameDetail:   GameDetailScreen,
   };
   const Comp = map[screen] || DesktopFeed;
   return <Comp {...props} />;
@@ -204,13 +227,16 @@ function DesktopFeed({ tweaks, onNav, posts, plays, query }) {
   );
 }
 
-function DesktopRail({ tweaks, onNav, games, query, setQuery }) {
-  const live = games?.live || [];
-  const upcoming = games?.upcoming || [];
-  const recent = games?.recent || [];
-  const featured = live[0] || upcoming[0] || null;
-  const featuredIsLive = featured && live.length > 0;
-  const otherLive = live.slice(1);
+function DesktopRail({ tweaks, onNav, games, me, onOpenGame, query, setQuery }) {
+  const favCodes = React.useMemo(() => {
+    const set = new Set();
+    for (const t of (me?.teams || [])) set.add(bareTeamCode(t));
+    return set;
+  }, [me]);
+
+  const live     = favoriteFirst(games?.live     || [], favCodes).slice(0, 3);
+  const upcoming = favoriteFirst(games?.upcoming || [], favCodes).slice(0, 5);
+  const recent   = favoriteFirst(games?.recent   || [], favCodes).slice(0, 8);
   const teamFor = (g, side) => g[side + 'Team'] || TEAMS[g[side]] || { code: g[side], name: g[side], primary: '#666', accent: '#999' };
   return (
     <aside style={{ overflowY: 'auto', padding: '20px 22px 40px', display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -242,89 +268,45 @@ function DesktopRail({ tweaks, onNav, games, query, setQuery }) {
         )}
       </label>
 
-      {/* Featured (live > upcoming) */}
-      {featured ? (
-        <div style={{
-          borderRadius: 14, overflow: 'hidden',
-          border: '0.5px solid var(--cn-border)',
-          background: 'var(--cn-bg-elev)',
-        }}>
-          <div style={{
-            padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            background: 'var(--cn-bg-elev2)',
-            borderBottom: '0.5px solid var(--cn-border)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: featuredIsLive ? 'var(--cn-live)' : 'var(--cn-text-mute)', animation: featuredIsLive ? 'cn-pulse 1.5s ease-in-out infinite' : 'none' }} />
-              <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: featuredIsLive ? 'var(--cn-live)' : 'var(--cn-text-mute)', fontWeight: 800, letterSpacing: 0.7 }}>
-                {featuredIsLive ? 'GAMEDAY · LIVE' : 'NEXT UP'}
-              </span>
-            </div>
-            <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)' }}>{featured.period}{featured.clock ? ' ' + featured.clock : ''}</span>
-          </div>
-          <div style={{ padding: '12px 14px' }}>
-            <ScoreRow team={teamFor(featured, 'away')} score={featured.awayScore} winner={Number(featured.awayScore) > Number(featured.homeScore)} />
-            <div style={{ height: 6 }} />
-            <ScoreRow team={teamFor(featured, 'home')} score={featured.homeScore} winner={Number(featured.homeScore) > Number(featured.awayScore)} />
-          </div>
-          {featuredIsLive && (
-            <div style={{ borderTop: '0.5px solid var(--cn-border)', padding: '10px 14px', background: 'var(--cn-bg-elev2)' }}>
-              <button onClick={() => onNav?.('chat')} style={{
-                width: '100%', padding: '7px', borderRadius: 8,
-                background: 'var(--cn-text)', color: 'var(--cn-bg)',
-                border: 'none', cursor: 'pointer',
-                fontWeight: 700, fontSize: 12, fontFamily: 'var(--cn-font-body)',
-              }}>Join the chat →</button>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div style={{ padding: '14px 16px', borderRadius: 14, border: '0.5px solid var(--cn-border)', background: 'var(--cn-bg-elev)', fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>
-          No live or upcoming games right now.
-        </div>
+      {/* Live now */}
+      {live.length > 0 && (
+        <RailGameSection
+          label="GAMEDAY · LIVE"
+          live
+          games={live}
+          favCodes={favCodes}
+          teamFor={teamFor}
+          onOpenGame={onOpenGame}
+          onJoin={() => onNav?.('chat')}
+        />
       )}
 
-      {/* Other live games */}
-      {otherLive.length > 0 && (
-        <div>
-          <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Also live</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {otherLive.map(g => (
-              <div key={g.id} style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '8px 12px', borderRadius: 10,
-                background: 'var(--cn-bg-elev)',
-                border: '0.5px solid var(--cn-border)',
-              }}>
-                <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, padding: '2px 5px', background: 'var(--cn-bg-elev2)', borderRadius: 3, color: 'var(--cn-text-mute)' }}>{g.league}</span>
-                <CompactScoreRow team={teamFor(g, 'away')} score={g.awayScore} />
-                <span style={{ color: 'var(--cn-text-mute)', fontSize: 10 }}>·</span>
-                <CompactScoreRow team={teamFor(g, 'home')} score={g.homeScore} />
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* Next up */}
+      {upcoming.length > 0 && (
+        <RailGameSection
+          label="NEXT UP"
+          games={upcoming.slice(0, 3)}
+          favCodes={favCodes}
+          teamFor={teamFor}
+          onOpenGame={onOpenGame}
+        />
       )}
 
       {/* Recent finals */}
       {recent.length > 0 && (
-        <div>
-          <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Recent finals</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {recent.slice(0, 8).map(g => (
-              <div key={g.id} style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '8px 12px', borderRadius: 10,
-                background: 'var(--cn-bg-elev)',
-                border: '0.5px solid var(--cn-border)',
-              }}>
-                <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, padding: '2px 5px', background: 'var(--cn-bg-elev2)', borderRadius: 3, color: 'var(--cn-text-mute)' }}>{g.league}</span>
-                <CompactScoreRow team={teamFor(g, 'away')} score={g.awayScore} />
-                <span style={{ color: 'var(--cn-text-mute)', fontSize: 10 }}>·</span>
-                <CompactScoreRow team={teamFor(g, 'home')} score={g.homeScore} />
-              </div>
-            ))}
-          </div>
+        <RailGameSection
+          label="RECENT FINALS"
+          games={recent}
+          favCodes={favCodes}
+          teamFor={teamFor}
+          onOpenGame={onOpenGame}
+          finals
+        />
+      )}
+
+      {(live.length === 0 && upcoming.length === 0 && recent.length === 0) && (
+        <div style={{ padding: '14px 16px', borderRadius: 14, border: '0.5px solid var(--cn-border)', background: 'var(--cn-bg-elev)', fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>
+          No games to show right now.
         </div>
       )}
 
@@ -356,6 +338,89 @@ function DesktopRail({ tweaks, onNav, games, query, setQuery }) {
         <a onClick={() => onNav?.('about')}   style={footerLinkStyle}>About</a>
       </div>
     </aside>
+  );
+}
+
+function RailGameSection({ label, live, finals, games, favCodes, teamFor, onOpenGame, onJoin }) {
+  return (
+    <div>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8,
+      }}>
+        {live && <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--cn-live)', animation: 'cn-pulse 1.5s ease-in-out infinite' }} />}
+        <span style={{
+          fontFamily: 'var(--cn-font-mono)', fontSize: 10,
+          color: live ? 'var(--cn-live)' : 'var(--cn-text-mute)',
+          fontWeight: 800, letterSpacing: 0.7, textTransform: 'uppercase',
+        }}>{label}</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {games.map(g => (
+          <RailGameCard
+            key={g.id}
+            game={g}
+            favorite={isFavoriteGame(g, favCodes)}
+            teamFor={teamFor}
+            live={live}
+            finals={finals}
+            onOpenGame={onOpenGame}
+            onJoin={onJoin}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RailGameCard({ game, favorite, teamFor, live, finals, onOpenGame, onJoin }) {
+  const home = teamFor(game, 'home');
+  const away = teamFor(game, 'away');
+  const onClick = () => onOpenGame?.(game);
+  return (
+    <div style={{
+      borderRadius: 10,
+      background: 'var(--cn-bg-elev)',
+      border: '0.5px solid var(--cn-border)',
+      overflow: 'hidden',
+      cursor: onOpenGame ? 'pointer' : 'default',
+      transition: 'border-color 0.15s, transform 0.05s',
+    }}
+      onClick={onClick}
+      onMouseDown={e => e.currentTarget.style.transform = 'scale(0.995)'}
+      onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
+      onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+    >
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        padding: '6px 10px',
+        background: 'var(--cn-bg-elev2)',
+        borderBottom: '0.5px solid var(--cn-border)',
+      }}>
+        <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, padding: '1px 5px', background: 'var(--cn-bg-elev)', borderRadius: 3, color: 'var(--cn-text-mute)', fontWeight: 700, letterSpacing: 0.5 }}>{game.league}</span>
+        <span style={{ flex: 1, fontFamily: 'var(--cn-font-mono)', fontSize: 9, color: 'var(--cn-text-mute)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {game.period}{game.clock ? ' ' + game.clock : ''}
+        </span>
+        {favorite && (
+          <span title="Your team" style={{
+            color: 'var(--cn-accent)', fontSize: 12, lineHeight: 1, fontWeight: 800,
+          }}>★</span>
+        )}
+      </div>
+      <div style={{ padding: '8px 10px' }}>
+        <CompactScoreRow team={away} score={game.awayScore} />
+        <CompactScoreRow team={home} score={game.homeScore} />
+      </div>
+      {live && onJoin && (
+        <button onClick={e => { e.stopPropagation(); onJoin(); }} style={{
+          width: '100%', padding: '7px',
+          background: 'var(--cn-text)', color: 'var(--cn-bg)',
+          border: 'none', cursor: 'pointer',
+          fontWeight: 700, fontSize: 11,
+          fontFamily: 'var(--cn-font-body)',
+          borderTop: '0.5px solid var(--cn-border)',
+        }}>Join the chat →</button>
+      )}
+    </div>
   );
 }
 

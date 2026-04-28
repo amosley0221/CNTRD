@@ -215,6 +215,133 @@ async function fetchLeagueTeams(league) {
   });
 }
 
+// ── Per-game summary (box / leaders) ────────────────────────────────────
+const DETAIL_TTL_LIVE_MS  = 20 * 1000;       // live games update fast
+const DETAIL_TTL_FINAL_MS = 60 * 60 * 1000;  // finals don't move
+const detailCache = new Map();   // `${league}|${id}` → { ts, data }
+
+function leagueByCode(code) {
+  const c = String(code || '').toUpperCase();
+  return LEAGUES.find(l => l.code.toUpperCase() === c);
+}
+
+function pickStatRow(stats, candidates) {
+  if (!Array.isArray(stats)) return null;
+  const cand = candidates.map(s => s.toLowerCase());
+  for (const s of stats) {
+    const name = String(s.name || s.abbreviation || '').toLowerCase();
+    if (cand.includes(name)) return s.displayValue ?? s.value ?? '';
+  }
+  return null;
+}
+
+function summarizeTeamStats(team) {
+  // ESPN stats vary per sport. Try the most useful candidates.
+  const stats = team?.statistics || [];
+  return [
+    ['PTS / R',     pickStatRow(stats, ['points', 'runs', 'goals', 'pts'])],
+    ['Field goal', pickStatRow(stats, ['fieldGoalPct', 'fieldGoalsMade-fieldGoalsAttempted', 'fieldGoals', 'fg'])],
+    ['3PT',         pickStatRow(stats, ['threePointPct', 'threePointFieldGoalsMade-threePointFieldGoalsAttempted'])],
+    ['Rebounds',    pickStatRow(stats, ['rebounds', 'totalRebounds'])],
+    ['Assists',     pickStatRow(stats, ['assists'])],
+    ['Hits',        pickStatRow(stats, ['hits'])],
+    ['Errors',      pickStatRow(stats, ['errors'])],
+    ['Yards',       pickStatRow(stats, ['totalYards', 'netTotalYards'])],
+    ['1st downs',   pickStatRow(stats, ['firstDowns'])],
+    ['Turnovers',   pickStatRow(stats, ['turnovers', 'totalTurnovers'])],
+    ['Shots',       pickStatRow(stats, ['shotsOnGoal', 'totalShots'])],
+    ['Possession',  pickStatRow(stats, ['possessionTime', 'possession'])],
+    ['Fouls',       pickStatRow(stats, ['totalFouls', 'fouls'])],
+  ].filter(([_, v]) => v !== null && v !== undefined && v !== '');
+}
+
+function normalizeLeaders(leaders) {
+  if (!Array.isArray(leaders)) return [];
+  const out = [];
+  for (const cat of leaders) {
+    const top = (cat.leaders || [])[0];
+    if (!top) continue;
+    const a = top.athlete || {};
+    out.push({
+      category: cat.displayName || cat.name || '',
+      name: a.shortName || a.displayName || a.fullName || '',
+      stat: top.displayValue || top.value || '',
+      teamId: top.team?.id || a.team?.id || null,
+    });
+  }
+  return out.slice(0, 6);
+}
+
+async function getGameDetail(leagueCode, eventId) {
+  const league = leagueByCode(leagueCode);
+  if (!league) throw new Error('Unknown league');
+  const id = String(eventId).replace(/[^0-9]/g, '');
+  if (!id) throw new Error('Invalid event id');
+
+  const key = `${league.code}|${id}`;
+  const now = Date.now();
+  const cached = detailCache.get(key);
+  if (cached) {
+    const ttl = cached.data?.state === 'live' ? DETAIL_TTL_LIVE_MS : DETAIL_TTL_FINAL_MS;
+    if (now - cached.ts < ttl) return cached.data;
+  }
+
+  const url = `https://site.api.espn.com/apis/site/v2/sports/${league.path}/summary?event=${id}`;
+  const res = await fetch(url, { headers: { 'Accept': 'application/json', 'User-Agent': 'cntrd/1.0' } });
+  if (!res.ok) throw new Error(`ESPN summary HTTP ${res.status}`);
+  const json = await res.json();
+
+  const header = json.header || {};
+  const comp   = header.competitions?.[0] || {};
+  const status = comp.status?.type || {};
+  const home = comp.competitors?.find(c => c.homeAway === 'home') || {};
+  const away = comp.competitors?.find(c => c.homeAway === 'away') || {};
+
+  const state =
+    status.state === 'in'   ? 'live' :
+    status.state === 'post' ? 'final' :
+    status.state === 'pre'  ? 'scheduled' :
+    'unknown';
+
+  const detail = {
+    id,
+    league: league.code,
+    state,
+    period: status.shortDetail || status.detail || '',
+    venue: comp.venue?.fullName || '',
+    date: header.competitions?.[0]?.date || '',
+    home: {
+      code: (home.team?.abbreviation || '').toUpperCase(),
+      name: home.team?.shortDisplayName || home.team?.displayName || '',
+      logo: (home.team?.logos?.[0]?.href) || home.team?.logo || '',
+      primary: colorHex(home.team?.color),
+      score: state === 'scheduled' ? '–' : Number(home.score ?? 0),
+      record: (home.records || []).find(r => r.type === 'total')?.summary || '',
+      stats: summarizeTeamStats((json.boxscore?.teams || []).find(t => t?.team?.id === home.team?.id)),
+    },
+    away: {
+      code: (away.team?.abbreviation || '').toUpperCase(),
+      name: away.team?.shortDisplayName || away.team?.displayName || '',
+      logo: (away.team?.logos?.[0]?.href) || away.team?.logo || '',
+      primary: colorHex(away.team?.color),
+      score: state === 'scheduled' ? '–' : Number(away.score ?? 0),
+      record: (away.records || []).find(r => r.type === 'total')?.summary || '',
+      stats: summarizeTeamStats((json.boxscore?.teams || []).find(t => t?.team?.id === away.team?.id)),
+    },
+    leaders: [
+      ...normalizeLeaders(home.leaders).map(l => ({ ...l, side: 'home' })),
+      ...normalizeLeaders(away.leaders).map(l => ({ ...l, side: 'away' })),
+    ],
+    headlines: (json.news?.articles || json.headlines || []).slice(0, 3).map(a => ({
+      title: a.headline || a.title,
+      description: a.description || '',
+    })),
+  };
+
+  detailCache.set(key, { ts: Date.now(), data: detail });
+  return detail;
+}
+
 async function getAllTeams() {
   const now = Date.now();
   if (teamsCache && now - teamsCachedAt < TEAMS_TTL_MS) return teamsCache;
@@ -239,4 +366,4 @@ async function getAllTeams() {
   return teamsInflight;
 }
 
-module.exports = { getAll, getAllTeams, LEAGUES };
+module.exports = { getAll, getAllTeams, getGameDetail, LEAGUES };

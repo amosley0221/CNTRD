@@ -96,10 +96,30 @@ function PlayBubble({ play, add, onClick }) {
   );
 }
 
-function LiveGamesStrip({ onJoin, games }) {
-  const live = (games?.live || []);
-  const upcoming = (games?.upcoming || []);
-  const showing = live.length ? live : upcoming;
+function _bareCode(s) { return String(s || '').toUpperCase().split(':').pop(); }
+function _favCodeSet(me) {
+  const set = new Set();
+  for (const t of (me?.teams || [])) set.add(_bareCode(t));
+  return set;
+}
+function _favoriteFirst(games, favCodes) {
+  if (!favCodes || !favCodes.size) return games;
+  const fav = [], rest = [];
+  for (const g of games) {
+    if (favCodes.has(g.home) || favCodes.has(g.away)) fav.push(g);
+    else rest.push(g);
+  }
+  return [...fav, ...rest];
+}
+function _isFav(g, favCodes) {
+  return !!favCodes && (favCodes.has(g.home) || favCodes.has(g.away));
+}
+
+function LiveGamesStrip({ onJoin, games, me, onOpenGame }) {
+  const favCodes = _favCodeSet(me);
+  const live = _favoriteFirst(games?.live || [], favCodes);
+  const upcoming = _favoriteFirst(games?.upcoming || [], favCodes);
+  const showing = live.length ? live : upcoming.slice(0, 3);
   if (!showing.length) return null;
   const empty = !live.length;
   return (
@@ -119,18 +139,26 @@ function LiveGamesStrip({ onJoin, games }) {
           color: empty ? 'var(--cn-text-mute)' : 'var(--cn-live)',
           fontWeight: 700, letterSpacing: 0.7,
         }}>
-          {empty ? 'NOTHING LIVE · UPCOMING TODAY' : 'LIVE NOW · TAP TO JOIN GAMEDAY CHAT'}
+          {empty ? 'NEXT UP' : 'LIVE NOW · TAP TO JOIN GAMEDAY CHAT'}
         </span>
       </div>
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none' }}>
-        {showing.map(g => <LiveGameCard key={g.id} game={g} onClick={empty ? undefined : onJoin} />)}
+        {showing.map(g => (
+          <LiveGameCard
+            key={g.id}
+            game={g}
+            favorite={_isFav(g, favCodes)}
+            onClick={() => (empty ? onOpenGame?.(g) : (onOpenGame ? onOpenGame(g) : onJoin?.()))}
+          />
+        ))}
       </div>
     </div>
   );
 }
 
-function RecentGamesStrip({ games }) {
-  const recent = games?.recent || [];
+function RecentGamesStrip({ games, me, onOpenGame }) {
+  const favCodes = _favCodeSet(me);
+  const recent = _favoriteFirst(games?.recent || [], favCodes);
   if (!recent.length) return null;
   return (
     <div style={{
@@ -145,13 +173,20 @@ function RecentGamesStrip({ games }) {
         }}>RECENT FINALS</span>
       </div>
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none' }}>
-        {recent.map(g => <LiveGameCard key={g.id} game={g} />)}
+        {recent.map(g => (
+          <LiveGameCard
+            key={g.id}
+            game={g}
+            favorite={_isFav(g, favCodes)}
+            onClick={() => onOpenGame?.(g)}
+          />
+        ))}
       </div>
     </div>
   );
 }
 
-function LiveGameCard({ game, onClick }) {
+function LiveGameCard({ game, onClick, favorite }) {
   const home = game.homeTeam || TEAMS[game.home] || { code: game.home, name: game.home, primary: '#666', accent: '#999' };
   const away = game.awayTeam || TEAMS[game.away] || { code: game.away, name: game.away, primary: '#666', accent: '#999' };
   return (
@@ -160,7 +195,7 @@ function LiveGameCard({ game, onClick }) {
       minWidth: 184,
       padding: '10px 12px',
       background: 'var(--cn-bg-elev)',
-      border: '0.5px solid var(--cn-border)',
+      border: `0.5px solid ${favorite ? 'var(--cn-accent)' : 'var(--cn-border)'}`,
       borderRadius: 10,
       cursor: onClick ? 'pointer' : 'default',
     }}>
@@ -168,6 +203,9 @@ function LiveGameCard({ game, onClick }) {
         <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, color: 'var(--cn-text-mute)', letterSpacing: 0.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {game.league} · {game.period}{game.clock ? ' ' + game.clock : ''}
         </span>
+        {favorite && (
+          <span title="Your team" style={{ color: 'var(--cn-accent)', fontSize: 11, lineHeight: 1, fontWeight: 800 }}>★</span>
+        )}
       </div>
       <CompactScoreRow team={away} score={game.awayScore} />
       <CompactScoreRow team={home} score={game.homeScore} />
@@ -315,7 +353,7 @@ function BottomNav({ active = 'home', onChange }) {
 }
 
 // ─── FEED SCREEN ──────────────────────────────────────────────
-function FeedScreen({ tweaks, onNav, posts, plays, games }) {
+function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame }) {
   const editorial = tweaks.homeStyle === 'editorial';
   const items = (posts && posts.length ? posts : POSTS);
   return (
@@ -334,8 +372,15 @@ function FeedScreen({ tweaks, onNav, posts, plays, games }) {
           onPlay={() => onNav?.('plays')}
           onAdd={() => onNav?.('playsCreator')}
         />
-        {tweaks.showLiveStrip !== false && <LiveGamesStrip games={games} onJoin={() => onNav?.('chat')} />}
-        <RecentGamesStrip games={games} />
+        {tweaks.showLiveStrip !== false && (
+          <LiveGamesStrip
+            games={games}
+            me={me}
+            onOpenGame={onOpenGame}
+            onJoin={() => onNav?.('chat')}
+          />
+        )}
+        <RecentGamesStrip games={games} me={me} onOpenGame={onOpenGame} />
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           {items.map(p => <Post key={p.id} post={p} />)}
         </div>

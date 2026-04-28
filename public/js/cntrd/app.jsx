@@ -86,6 +86,7 @@ function CNTRDApp() {
   const [posts, setPosts] = React.useState([]);
   const [plays, setPlays] = React.useState([]);
   const [games, setGames] = React.useState({ live: [], upcoming: [], recent: [] });
+  const [selectedGame, setSelectedGame] = React.useState(null);  // { id, league }
   const [screen, setScreen] = React.useState('login');
 
   const isWide = useMediaQuery('(min-width: 980px)');
@@ -233,6 +234,14 @@ function CNTRDApp() {
     if (updated) setMe(prev => ({ ...(prev || {}), ...normalizeMe(updated) }));
   }, []);
 
+  // Click a game card → load the detail screen.
+  const handleOpenGame = React.useCallback((game) => {
+    if (!game?.id || !game?.league) return;
+    setSelectedGame({ id: game.id, league: game.league });
+    setScreen('gameDetail');
+    try { localStorage.setItem(STORAGE.screen, 'gameDetail'); } catch {}
+  }, []);
+
   const screenMap = {
     home:         FeedScreen,
     profile:      ProfileScreen,
@@ -248,6 +257,7 @@ function CNTRDApp() {
     terms:        TermsScreen,
     privacy:      PrivacyScreen,
     about:        AboutScreen,
+    gameDetail:   GameDetailScreen,
   };
   const ScreenComp = screenMap[screen] || FeedScreen;
   const isAuthScreen = screen === 'login' || screen === 'signup';
@@ -260,11 +270,13 @@ function CNTRDApp() {
   const screenProps = {
     tweaks, setTweak, onNav: handleNav,
     me, posts, plays, games,
+    selectedGame,
     onLogin:     handleLogin,
     onSignup:    handleSignup,
     onPost:      handlePost,
     onCreate:    handleCreatePlay,
     onMeUpdated: handleMeUpdated,
+    onOpenGame:  handleOpenGame,
   };
 
   const themedShell = (children) => (
