@@ -69,6 +69,51 @@ function Field({ label, value, onChange, placeholder, type = 'text' }) {
   );
 }
 
+// ─── PASSWORD RULES (shared) ──────────────────────────────────
+function passwordChecks(p) {
+  const s = p || '';
+  return {
+    length:  s.length >= 8,
+    capital: /[A-Z]/.test(s),
+    number:  /[0-9]/.test(s),
+    special: /[^A-Za-z0-9]/.test(s),
+  };
+}
+function passwordOK(p) {
+  const c = passwordChecks(p);
+  return c.length && c.capital && c.number && c.special;
+}
+function PasswordChecklist({ password }) {
+  const c = passwordChecks(password);
+  const items = [
+    { key: 'length',  label: '8+ characters' },
+    { key: 'capital', label: 'A capital letter' },
+    { key: 'number',  label: 'A number' },
+    { key: 'special', label: 'A special character' },
+  ];
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px',
+      marginTop: 4, fontFamily: 'var(--cn-font-mono)', fontSize: 11,
+    }}>
+      {items.map(it => (
+        <div key={it.key} style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          color: c[it.key] ? 'var(--cn-success)' : 'var(--cn-text-mute)',
+        }}>
+          <span style={{
+            width: 14, height: 14, borderRadius: '50%',
+            border: `1px solid ${c[it.key] ? 'var(--cn-success)' : 'var(--cn-border-s)'}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 9,
+          }}>{c[it.key] ? '✓' : ''}</span>
+          {it.label}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── SIGNUP / ONBOARDING ──────────────────────────────────────
 function SignupScreen({ tweaks, onNav, onSignup }) {
   const [step, setStep] = React.useState(0);
@@ -106,7 +151,7 @@ function SignupScreen({ tweaks, onNav, onSignup }) {
   };
 
   const stepValid =
-    step === 0 ? (email.includes('@') && password.length >= 6) :
+    step === 0 ? (email.includes('@') && passwordOK(password)) :
     step === 1 ? (username.length >= 3) :
     step === 2 ? true :
     /* step 3 */ (picks.length > 0);
@@ -133,7 +178,8 @@ function SignupScreen({ tweaks, onNav, onSignup }) {
             <Subhead>You'll need an email and a password. We'll never share either.</Subhead>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 24 }}>
               <Field label="Email" value={email} onChange={setEmail} placeholder="you@email.com" />
-              <Field label="Password" value={password} onChange={setPassword} placeholder="At least 8 characters" type="password" />
+              <Field label="Password" value={password} onChange={setPassword} placeholder="8+ chars, 1 capital, 1 number, 1 symbol" type="password" />
+              <PasswordChecklist password={password} />
             </div>
           </>
         )}

@@ -25,6 +25,15 @@ function normalizeTeams(input) {
     .slice(0, 8);
 }
 
+function passwordErrors(password) {
+  const errs = [];
+  if (!password || password.length < 8) errs.push('at least 8 characters');
+  if (!/[A-Z]/.test(password))           errs.push('one capital letter');
+  if (!/[0-9]/.test(password))           errs.push('one number');
+  if (!/[^A-Za-z0-9]/.test(password))    errs.push('one special character');
+  return errs;
+}
+
 // Register
 router.post('/register', (req, res) => {
   const { username, email, password, display_name, teams, avatar_hue, pronouns, city } = req.body;
@@ -38,8 +47,9 @@ router.post('/register', (req, res) => {
   if (!/^[a-zA-Z0-9_]+$/.test(username)) {
     return res.status(400).json({ error: 'Username may only contain letters, numbers, and underscores' });
   }
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  const pwErrs = passwordErrors(password);
+  if (pwErrs.length) {
+    return res.status(400).json({ error: 'Password needs ' + pwErrs.join(', ') });
   }
 
   const existingUser = db.prepare('SELECT id FROM users WHERE username = ? OR email = ?').get(username, email);
