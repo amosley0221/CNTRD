@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../database/db');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
-const { VALID_TEAM_CODES } = require('../data/teams');
+const { isValidTeamCode } = require('../data/teams');
 
 const PUBLIC_USER_COLS =
   'id, username, display_name, bio, avatar, banner, team_tags, ' +
@@ -44,10 +44,14 @@ router.patch('/me/profile', requireAuth, (req, res) => {
   }
   if (team_tags !== undefined) {
     if (!Array.isArray(team_tags)) return res.status(400).json({ error: 'team_tags must be an array' });
-    if (team_tags.length > 8) return res.status(400).json({ error: 'Maximum 8 team tags allowed' });
-    const cleaned = team_tags
-      .map(t => String(t).trim().toUpperCase())
-      .filter(t => VALID_TEAM_CODES.has(t));
+    if (team_tags.length > 30) return res.status(400).json({ error: 'Maximum 30 team tags allowed' });
+    const seen = new Set();
+    const cleaned = [];
+    for (const raw of team_tags) {
+      const code = String(raw).trim().toUpperCase();
+      if (!isValidTeamCode(code) || seen.has(code)) continue;
+      seen.add(code); cleaned.push(code);
+    }
     updates.push('team_tags = ?'); values.push(JSON.stringify(cleaned));
   }
   if (avatar_hue !== undefined) {

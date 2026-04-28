@@ -105,16 +105,31 @@ function CNTRDApp() {
   React.useEffect(() => { window.ME = me || (window.__originalME ||= window.ME); }, [me]);
 
   // Bootstrap: try existing token → /me; pick a sensible initial screen.
+  // Also fetch the full league/team registry once and merge it into globals
+  // so pickers + pills have real colors and names without re-asking later.
   React.useEffect(() => {
     let cancelled = false;
     async function boot() {
       window.__originalME = window.ME;
-      let user = null;
-      if (API.hasToken()) {
-        try { user = normalizeMe(await API.me()); }
-        catch { API.setToken(null); }
-      }
+      const tasks = [];
+      if (API.hasToken()) tasks.push(API.me().catch(() => { API.setToken(null); return null; }));
+      else tasks.push(Promise.resolve(null));
+      tasks.push(API.allTeams().catch(() => null));
+
+      const [serverMe, byLeague] = await Promise.all(tasks);
       if (cancelled) return;
+
+      // Merge dynamic team registry into globals for the rest of the app.
+      if (byLeague && Object.keys(byLeague).length) {
+        window.TEAMS_BY_LEAGUE = byLeague;
+        const flat = { ...(window.TEAMS || {}) };
+        for (const list of Object.values(byLeague)) {
+          for (const t of (list || [])) flat[t.code] = flat[t.code] || t;
+        }
+        window.TEAMS = flat;
+      }
+
+      const user = serverMe ? normalizeMe(serverMe) : null;
       setMe(user);
       try {
         const stored = localStorage.getItem(STORAGE.screen);
@@ -206,6 +221,12 @@ function CNTRDApp() {
     setPlays(prev => [norm, ...prev]);
   }, []);
 
+  // Profile updates (e.g. saving teams from TeamsEditorScreen) push the
+  // freshest server snapshot back into ME so other screens reflect it.
+  const handleMeUpdated = React.useCallback((updated) => {
+    if (updated) setMe(prev => ({ ...(prev || {}), ...normalizeMe(updated) }));
+  }, []);
+
   const screenMap = {
     home:         FeedScreen,
     profile:      ProfileScreen,
@@ -217,6 +238,7 @@ function CNTRDApp() {
     plays:        PlaysViewerScreen,
     playsCreator: PlaysCreatorScreen,
     admin:        AdminScreen,
+    teams:        TeamsEditorScreen,
   };
   const ScreenComp = screenMap[screen] || FeedScreen;
   const isAuthScreen = screen === 'login' || screen === 'signup';
@@ -229,10 +251,11 @@ function CNTRDApp() {
   const screenProps = {
     tweaks, setTweak, onNav: handleNav,
     me, posts, plays, games,
-    onLogin:  handleLogin,
-    onSignup: handleSignup,
-    onPost:   handlePost,
-    onCreate: handleCreatePlay,
+    onLogin:     handleLogin,
+    onSignup:    handleSignup,
+    onPost:      handlePost,
+    onCreate:    handleCreatePlay,
+    onMeUpdated: handleMeUpdated,
   };
 
   const themedShell = (children) => (

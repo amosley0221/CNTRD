@@ -168,4 +168,73 @@ async function getAll() {
   };
 }
 
-module.exports = { getAll, LEAGUES };
+// ── League team rosters ──────────────────────────────────────────────────
+const TEAMS_TTL_MS = 24 * 60 * 60 * 1000;   // 24h
+let teamsCache = null;
+let teamsCachedAt = 0;
+let teamsInflight = null;
+
+async function fetchLeagueTeams(league) {
+  // ESPN paginates large leagues (e.g. NCAA basketball ~360 teams). Walk
+  // pages until we've collected everything.
+  const out = [];
+  let page = 1;
+  while (true) {
+    const url = `https://site.api.espn.com/apis/site/v2/sports/${league.path}/teams?limit=200&page=${page}`;
+    const res = await fetch(url, { headers: { 'Accept': 'application/json', 'User-Agent': 'cntrd/1.0' } });
+    if (!res.ok) throw new Error(`ESPN ${league.code} teams HTTP ${res.status}`);
+    const json = await res.json();
+    const wrap = json.sports?.[0]?.leagues?.[0] || {};
+    const list = wrap.teams || [];
+    for (const item of list) {
+      const t = item.team || {};
+      out.push({
+        code: (t.abbreviation || (t.shortDisplayName || t.displayName || '???').slice(0, 4)).toUpperCase(),
+        name: t.shortDisplayName || t.name || t.displayName || '',
+        fullName: t.displayName || t.name || '',
+        location: t.location || '',
+        league: league.code,
+        primary: colorHex(t.color),
+        accent:  colorHex(t.alternateColor),
+        espnId: t.id,
+      });
+    }
+    if (!list.length || list.length < 200) break;     // last page
+    page += 1;
+    if (page > 5) break;                                // safety stop ~1000 teams
+  }
+  // Drop dupes that share an abbreviation (rare in pro leagues, common in NCAA).
+  const seen = new Set();
+  return out.filter(t => {
+    const key = t.code + '|' + t.fullName;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function getAllTeams() {
+  const now = Date.now();
+  if (teamsCache && now - teamsCachedAt < TEAMS_TTL_MS) return teamsCache;
+  if (teamsInflight) return teamsInflight;
+
+  teamsInflight = (async () => {
+    try {
+      const lists = await Promise.allSettled(LEAGUES.map(fetchLeagueTeams));
+      const out = {};
+      LEAGUES.forEach((l, i) => {
+        out[l.code] = lists[i].status === 'fulfilled'
+          ? lists[i].value.sort((a, b) => a.name.localeCompare(b.name))
+          : [];
+      });
+      teamsCache = out;
+      teamsCachedAt = Date.now();
+      return out;
+    } finally {
+      teamsInflight = null;
+    }
+  })();
+  return teamsInflight;
+}
+
+module.exports = { getAll, getAllTeams, LEAGUES };

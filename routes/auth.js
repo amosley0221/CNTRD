@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../database/db');
 const { JWT_SECRET, requireAuth, isAdminEmail } = require('../middleware/auth');
-const { VALID_TEAM_CODES } = require('../data/teams');
+const { isValidTeamCode } = require('../data/teams');
 
 const USER_COLUMNS =
   'id, username, email, display_name, bio, avatar, banner, team_tags, ' +
@@ -22,10 +22,17 @@ function hydrate(user) {
 
 function normalizeTeams(input) {
   if (!Array.isArray(input)) return [];
-  return input
-    .map(t => String(t).trim().toUpperCase())
-    .filter(t => VALID_TEAM_CODES.has(t))
-    .slice(0, 8);
+  const seen = new Set();
+  const out = [];
+  for (const raw of input) {
+    const code = String(raw).trim().toUpperCase();
+    if (!isValidTeamCode(code)) continue;
+    if (seen.has(code)) continue;
+    seen.add(code);
+    out.push(code);
+    if (out.length >= 30) break;
+  }
+  return out;
 }
 
 function passwordErrors(password) {

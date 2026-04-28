@@ -228,35 +228,9 @@ function SignupScreen({ tweaks, onNav, onSignup }) {
         {step === 3 && (
           <>
             <H1>Pick your teams</H1>
-            <Subhead>These show next to your name. Tap as many as you want — pick at least one.</Subhead>
+            <Subhead>Tap a league to expand. Pick as many as you want — at least one. You can change these any time from Settings.</Subhead>
             <div style={{ marginTop: 18 }}>
-              {Object.entries(
-                Object.values(TEAMS).reduce((acc, t) => { (acc[t.league] = acc[t.league] || []).push(t); return acc; }, {})
-              ).map(([league, list]) => (
-                <div key={league} style={{ marginBottom: 16 }}>
-                  <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, letterSpacing: 1, color: 'var(--cn-text-mute)', marginBottom: 6, textTransform: 'uppercase' }}>{league}</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {list.map(t => {
-                      const sel = picks.includes(t.code);
-                      return (
-                        <button key={t.code} onClick={() => togglePick(t.code)} style={{
-                          display: 'flex', alignItems: 'center', gap: 6,
-                          padding: '7px 12px', borderRadius: 999,
-                          background: sel ? t.primary : 'var(--cn-bg-elev)',
-                          border: `0.5px solid ${sel ? t.primary : 'var(--cn-border-s)'}`,
-                          color: sel ? pickContrast(t.primary) : 'var(--cn-text)',
-                          fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                          fontFamily: 'var(--cn-font-body)',
-                        }}>
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: sel ? t.accent : t.primary }} />
-                          {t.name}
-                          {sel && <Icon name="check" size={12} stroke={pickContrast(t.primary)} sw={2.5} />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+              <LeaguePicker picks={picks} onTogglePick={togglePick} />
             </div>
           </>
         )}
@@ -355,7 +329,18 @@ function SettingsScreen({ tweaks, setTweak, onNav, me }) {
         </Section>
 
         <Section title="Teams">
-          <Row label="My teams" sub="Showing on your username" right={<TeamTagsRow codes={meUser.teams || []} size="sm" />} last />
+          <Row
+            label="My teams"
+            sub={(meUser.teams && meUser.teams.length) ? `${meUser.teams.length} selected` : 'Pick the teams you root for'}
+            right={
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {(meUser.teams || []).slice(0, 4).length > 0 && <TeamTagsRow codes={(meUser.teams || []).slice(0, 4)} size="xs" />}
+                <Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />
+              </div>
+            }
+            onClick={() => onNav?.('teams')}
+            last
+          />
         </Section>
 
         <Section title="Notifications">

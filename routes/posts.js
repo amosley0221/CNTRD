@@ -3,7 +3,7 @@ const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const db = require('../database/db');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
-const { VALID_TEAM_CODES } = require('../data/teams');
+const { isValidTeamCode } = require('../data/teams');
 
 const VALID_TYPES = new Set(['take', 'photo', 'score', 'poll', 'clip', 'box', 'rumor']);
 
@@ -52,10 +52,15 @@ function hydrate(p) {
 
 function normalizeTags(input) {
   if (!Array.isArray(input)) return [];
-  return input
-    .map(t => String(t).trim().toUpperCase())
-    .filter(t => VALID_TEAM_CODES.has(t))
-    .slice(0, 5);
+  const seen = new Set();
+  const out = [];
+  for (const raw of input) {
+    const code = String(raw).trim().toUpperCase();
+    if (!isValidTeamCode(code) || seen.has(code)) continue;
+    seen.add(code); out.push(code);
+    if (out.length >= 5) break;
+  }
+  return out;
 }
 
 function attachInteraction(p, userId) {

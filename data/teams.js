@@ -30,4 +30,10 @@ const TEAMS = {
 
 const VALID_TEAM_CODES = new Set(Object.keys(TEAMS));
 
-module.exports = { TEAMS, VALID_TEAM_CODES };
+// Real ESPN data has hundreds of teams; we don't keep a static whitelist.
+// Validate the *shape* of a code instead — uppercase letters/digits, 1–8 chars.
+function isValidTeamCode(code) {
+  return typeof code === 'string' && /^[A-Z0-9]{1,8}$/.test(code.trim().toUpperCase());
+}
+
+module.exports = { TEAMS, VALID_TEAM_CODES, isValidTeamCode };
