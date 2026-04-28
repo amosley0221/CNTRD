@@ -1,7 +1,8 @@
 // mobile-feed.jsx — home feed screen for CNTRD (mobile)
 // Includes top header, Plays rail (stories), live games strip, feed.
 
-function PlaysRail({ playsLabel = 'PLAYS', onPlay, onAdd }) {
+function PlaysRail({ playsLabel = 'PLAYS', onPlay, onAdd, plays }) {
+  const items = (plays && plays.length ? plays : PLAYS);
   return (
     <div style={{
       padding: '12px 16px 14px',
@@ -20,7 +21,7 @@ function PlaysRail({ playsLabel = 'PLAYS', onPlay, onAdd }) {
           fontSize: 14, color: 'var(--cn-text)',
         }}>{playsLabel}</span>
         <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)' }}>
-          {PLAYS.length} from people you follow
+          {items.length} from people you follow
         </span>
       </div>
       <div style={{
@@ -29,7 +30,7 @@ function PlaysRail({ playsLabel = 'PLAYS', onPlay, onAdd }) {
       }}>
         {/* Add new play */}
         <PlayBubble add onClick={onAdd} />
-        {PLAYS.map(p => <PlayBubble key={p.id} play={p} onClick={onPlay} />)}
+        {items.map(p => <PlayBubble key={p.id} play={p} onClick={onPlay} />)}
       </div>
     </div>
   );
@@ -54,8 +55,9 @@ function PlayBubble({ play, add, onClick }) {
       </div>
     );
   }
-  const u = USERS[play.user];
-  const team = TEAMS[play.team];
+  const u = (typeof play.user === 'string') ? USERS[play.user] : play.user;
+  if (!u) return null;
+  const team = TEAMS[play.team] || { primary: '#666', accent: '#999' };
   return (
     <div onClick={() => onClick?.(play)} style={{ flexShrink: 0, width: 64, textAlign: 'center', cursor: onClick ? 'pointer' : 'default' }}>
       <div style={{
@@ -285,8 +287,9 @@ function BottomNav({ active = 'home', onChange }) {
 }
 
 // ─── FEED SCREEN ──────────────────────────────────────────────
-function FeedScreen({ tweaks, onNav }) {
+function FeedScreen({ tweaks, onNav, posts, plays }) {
   const editorial = tweaks.homeStyle === 'editorial';
+  const items = (posts && posts.length ? posts : POSTS);
   return (
     <div style={{
       width: '100%', height: '100%',
@@ -299,12 +302,13 @@ function FeedScreen({ tweaks, onNav }) {
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 96 }}>
         <PlaysRail
           playsLabel={tweaks.playsLabel || 'PLAYS'}
+          plays={plays}
           onPlay={() => onNav?.('plays')}
           onAdd={() => onNav?.('playsCreator')}
         />
         {tweaks.showLiveStrip !== false && <LiveGamesStrip onJoin={() => onNav?.('chat')} />}
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {POSTS.map(p => <Post key={p.id} post={p} />)}
+          {items.map(p => <Post key={p.id} post={p} />)}
         </div>
       </div>
       <BottomNav active="home" onChange={onNav} />

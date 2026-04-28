@@ -2,9 +2,16 @@
 // profile, composer, plays creator, plays viewer, signup, login, settings, gameday chat
 
 // ─── PROFILE ──────────────────────────────────────────────────
-function ProfileScreen({ tweaks, onNav }) {
-  const u = ME;
-  const myPosts = POSTS.filter(p => p.user === 'mike_b').concat(POSTS.slice(0, 3));
+function ProfileScreen({ tweaks, onNav, me, posts }) {
+  const u = me || ME;
+  const teams = (u.teams && u.teams.length) ? u.teams : ['LAL'];
+  const coverFrom = TEAMS[teams[0]] || TEAMS.LAL;
+  const coverTo   = TEAMS[teams[teams.length - 1]] || coverFrom;
+  const myPosts = (posts && posts.length)
+    ? posts
+    : POSTS.filter(p =>
+        (typeof p.user === 'string' ? p.user : p.user?.username) === u.username
+      ).concat(POSTS.slice(0, 3));
   const [tab, setTab] = React.useState('posts');
   return (
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
@@ -18,7 +25,7 @@ function ProfileScreen({ tweaks, onNav }) {
         {/* Cover band: striped placeholder */}
         <div style={{
           height: 96, position: 'relative',
-          background: `linear-gradient(135deg, ${TEAMS[u.teams[0]].primary} 0%, ${TEAMS[u.teams[2]].primary} 100%)`,
+          background: `linear-gradient(135deg, ${coverFrom.primary} 0%, ${coverTo.primary} 100%)`,
         }}>
           <div style={{ position: 'absolute', inset: 0, opacity: 0.3, background: 'repeating-linear-gradient(45deg, transparent 0 8px, rgba(0,0,0,0.2) 8px 16px)' }} />
         </div>
@@ -40,22 +47,24 @@ function ProfileScreen({ tweaks, onNav }) {
           }}>{u.displayName}</div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
             <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 12, color: 'var(--cn-text-dim)' }}>@{u.username}</span>
-            <span style={{ color: 'var(--cn-text-mute)' }}>·</span>
-            {u.teams.map(t => <TeamPill key={t} code={t} size="sm" />)}
+            {(u.teams && u.teams.length > 0) && <span style={{ color: 'var(--cn-text-mute)' }}>·</span>}
+            {(u.teams || []).map(t => <TeamPill key={t} code={t} size="sm" />)}
           </div>
-          <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.45, color: 'var(--cn-text)', textWrap: 'pretty' }}>
-            {u.bio}
-          </div>
+          {u.bio && (
+            <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.45, color: 'var(--cn-text)', textWrap: 'pretty' }}>
+              {u.bio}
+            </div>
+          )}
           <div style={{ marginTop: 10, display: 'flex', gap: 16, fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>
-            <span>📍 {u.city}</span>
-            <span>{u.joined}</span>
+            {u.city && <span>📍 {u.city}</span>}
+            {u.joined && <span>{u.joined}</span>}
           </div>
           <div style={{ marginTop: 14, display: 'flex', gap: 18 }}>
-            <Stat label="Posts" value={u.posts} />
-            <Stat label="Followers" value={u.followers} />
-            <Stat label="Following" value={u.following} />
+            <Stat label="Posts" value={u.posts ?? 0} />
+            <Stat label="Followers" value={u.followers ?? 0} />
+            <Stat label="Following" value={u.following ?? 0} />
           </div>
-          <FanCard teams={u.teams} />
+          <FanCard teams={u.teams || []} />
         </div>
 
         {/* Tabs */}
@@ -78,18 +87,23 @@ function ProfileScreen({ tweaks, onNav }) {
         </div>
 
         <div>
-          {tab === 'posts' && myPosts.slice(0, 4).map((p, i) => <Post key={i} post={{ ...p, user: 'mike_b' }} />)}
+          {tab === 'posts' && myPosts.slice(0, 6).map((p, i) => (
+            <Post key={p.id || i} post={typeof p.user === 'string' ? { ...p, user: u } : p} />
+          ))}
           {tab === 'plays' && (
             <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
-              {Array.from({ length: 9 }).map((_, i) => (
-                <div key={i} style={{
-                  aspectRatio: 9/16, borderRadius: 6, overflow: 'hidden',
-                  background: `linear-gradient(135deg, ${TEAMS[u.teams[i % u.teams.length]].primary}, ${TEAMS[u.teams[i % u.teams.length]].accent})`,
-                  display: 'flex', alignItems: 'flex-end', padding: 6,
-                  fontFamily: 'var(--cn-font-mono)', fontSize: 9,
-                  color: '#fff',
-                }}>{i + 1}d</div>
-              ))}
+              {Array.from({ length: 9 }).map((_, i) => {
+                const t = TEAMS[teams[i % teams.length]] || coverFrom;
+                return (
+                  <div key={i} style={{
+                    aspectRatio: 9/16, borderRadius: 6, overflow: 'hidden',
+                    background: `linear-gradient(135deg, ${t.primary}, ${t.accent})`,
+                    display: 'flex', alignItems: 'flex-end', padding: 6,
+                    fontFamily: 'var(--cn-font-mono)', fontSize: 9,
+                    color: '#fff',
+                  }}>{i + 1}d</div>
+                );
+              })}
             </div>
           )}
           {tab === 'media' && (
@@ -148,11 +162,30 @@ function FanCard({ teams }) {
 }
 
 // ─── COMPOSER ─────────────────────────────────────────────────
-function ComposerScreen({ tweaks, onNav }) {
+function ComposerScreen({ tweaks, onNav, onPost, me }) {
+  const meUser = me || ME;
+  const meTeams = (meUser.teams && meUser.teams.length) ? meUser.teams : ['LAL', 'NYG', 'ARS'];
   const [text, setText] = React.useState('');
   const [type, setType] = React.useState('take');
-  const [tag, setTag] = React.useState('LAL');
+  const [tag, setTag] = React.useState(meTeams[0]);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr]   = React.useState(null);
   const max = 280;
+  const submit = async () => {
+    if (!text.trim() || busy) return;
+    setBusy(true); setErr(null);
+    try {
+      if (onPost) {
+        await onPost({ content: text.trim(), type, tags: [tag] });
+      }
+      setText('');
+      onNav?.('home');
+    } catch (e) {
+      setErr(e.message || 'Failed to post');
+    } finally {
+      setBusy(false);
+    }
+  };
   const types = [
     { id: 'take',  icon: 'flame',  label: 'Take' },
     { id: 'photo', icon: 'image',  label: 'Photo' },
@@ -165,14 +198,15 @@ function ComposerScreen({ tweaks, onNav }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: '0.5px solid var(--cn-border)' }}>
         <button onClick={() => onNav?.('home')} style={{ background: 'transparent', border: 'none', color: 'var(--cn-text-dim)', fontSize: 14, fontFamily: 'var(--cn-font-body)', cursor: 'pointer' }}>Cancel</button>
         <span style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 14 }}>NEW POST</span>
-        <button style={{ padding: '7px 14px', borderRadius: 999, background: text ? 'var(--cn-accent)' : 'var(--cn-bg-elev2)', color: text ? 'var(--cn-on-accent)' : 'var(--cn-text-mute)', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Post</button>
+        <button onClick={submit} disabled={!text.trim() || busy} style={{ padding: '7px 14px', borderRadius: 999, background: text.trim() && !busy ? 'var(--cn-accent)' : 'var(--cn-bg-elev2)', color: text.trim() && !busy ? 'var(--cn-on-accent)' : 'var(--cn-text-mute)', border: 'none', fontWeight: 700, fontSize: 13, cursor: text.trim() && !busy ? 'pointer' : 'not-allowed' }}>{busy ? 'Posting…' : 'Post'}</button>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+        {err && <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: 'color-mix(in srgb, var(--cn-danger) 18%, transparent)', color: 'var(--cn-danger)', fontSize: 12, fontFamily: 'var(--cn-font-mono)' }}>{err}</div>}
         <div style={{ display: 'flex', gap: 10 }}>
-          <Avatar user="mike_b" size={36} />
+          <Avatar user={meUser} size={36} />
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
-              {ME.teams.map(t => (
+              {meTeams.map(t => (
                 <button key={t} onClick={() => setTag(t)} style={{
                   background: tag === t ? TEAMS[t].primary : 'transparent',
                   border: `0.5px solid ${tag === t ? TEAMS[t].primary : 'var(--cn-border-s)'}`,
@@ -235,9 +269,27 @@ function ComposerScreen({ tweaks, onNav }) {
 }
 
 // ─── PLAYS CREATOR ────────────────────────────────────────────
-function PlaysCreatorScreen({ tweaks, onNav }) {
-  const [overlay, setOverlay] = React.useState('LAL');
+function PlaysCreatorScreen({ tweaks, onNav, onCreate, me }) {
+  const meUser = me || ME;
+  const meTeams = (meUser.teams && meUser.teams.length) ? meUser.teams : ['LAL'];
+  const [overlay, setOverlay] = React.useState(meTeams[0]);
   const [stickerKind, setStickerKind] = React.useState('score');
+  const [busy, setBusy] = React.useState(false);
+  const capture = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (onCreate) {
+        await onCreate({
+          team_code: overlay,
+          label: 'My ' + (TEAMS[overlay]?.name || 'play'),
+          hue: meUser.avatarHue ?? 200,
+        });
+      }
+      onNav?.('home');
+    } catch { /* swallow; already navigated for mock */ }
+    finally { setBusy(false); }
+  };
   return (
     <div style={{ width: '100%', height: '100%', background: '#000', color: '#fff', display: 'flex', flexDirection: 'column', position: 'relative' }}>
       {/* fake camera viewport */}
@@ -324,7 +376,7 @@ function PlaysCreatorScreen({ tweaks, onNav }) {
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: 28, padding: '0 24px', zIndex: 3 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <button style={{ width: 44, height: 44, borderRadius: 8, background: 'rgba(255,255,255,0.15)', border: 'none', backdropFilter: 'blur(10px)', cursor: 'pointer' }} />
-          <button style={{ width: 72, height: 72, borderRadius: '50%', background: 'transparent', border: '4px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+          <button onClick={capture} disabled={busy} style={{ width: 72, height: 72, borderRadius: '50%', background: 'transparent', border: '4px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}>
             <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#fff' }} />
           </button>
           <button style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(10px)', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -340,16 +392,18 @@ function PlaysCreatorScreen({ tweaks, onNav }) {
 }
 
 // ─── PLAYS VIEWER ─────────────────────────────────────────────
-function PlaysViewerScreen({ tweaks, onNav }) {
-  const idx = 1; // viewing the 2nd play (live one)
-  const play = PLAYS[idx];
-  const u = USERS[play.user];
-  const team = TEAMS[play.team];
+function PlaysViewerScreen({ tweaks, onNav, plays }) {
+  const list = (plays && plays.length ? plays : PLAYS);
+  const idx = Math.min(1, list.length - 1);
+  const play = list[Math.max(0, idx)];
+  if (!play) return null;
+  const u = (typeof play.user === 'string') ? USERS[play.user] : play.user;
+  const team = TEAMS[play.team] || TEAMS.LAL;
   return (
     <div style={{ width: '100%', height: '100%', background: '#000', position: 'relative', overflow: 'hidden' }}>
       {/* progress bars */}
       <div style={{ position: 'absolute', top: 56, left: 12, right: 12, display: 'flex', gap: 4, zIndex: 5 }}>
-        {PLAYS.map((_, i) => (
+        {list.map((_, i) => (
           <div key={i} style={{ flex: 1, height: 2, borderRadius: 2, background: 'rgba(255,255,255,0.2)', overflow: 'hidden' }}>
             <div style={{
               width: i < idx ? '100%' : i === idx ? '54%' : '0%',

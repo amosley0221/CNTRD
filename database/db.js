@@ -1,7 +1,12 @@
 const Database = require('better-sqlite3');
 const path = require('path');
+const fs = require('fs');
 
-const db = new Database(path.join(__dirname, 'cntrd.db'));
+const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, 'cntrd.db');
+const dbDir = path.dirname(DB_PATH);
+if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
+
+const db = new Database(DB_PATH);
 
 // Enable WAL mode for better performance
 db.pragma('journal_mode = WAL');
@@ -65,6 +70,34 @@ db.exec(`
     FOREIGN KEY (follower_id) REFERENCES users(id),
     FOREIGN KEY (following_id) REFERENCES users(id)
   );
+
+  CREATE TABLE IF NOT EXISTS plays (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    team_code TEXT,
+    label TEXT NOT NULL,
+    hue INTEGER DEFAULT 200,
+    live INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
 `);
+
+// Idempotent column adds for upgrading older databases.
+function ensureColumn(table, col, ddl) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
+  if (!cols.includes(col)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${ddl}`);
+  }
+}
+
+ensureColumn('users', 'avatar_hue', "INTEGER DEFAULT 200");
+ensureColumn('users', 'pronouns',   "TEXT DEFAULT ''");
+ensureColumn('users', 'city',       "TEXT DEFAULT ''");
+
+// post type: take | photo | score | poll | clip | box | rumor
+ensureColumn('posts', 'type',  "TEXT DEFAULT 'take'");
+ensureColumn('posts', 'tags',  "TEXT DEFAULT '[]'");      // JSON array of team codes
+ensureColumn('posts', 'extra', "TEXT DEFAULT '{}'");       // JSON blob for type-specific data
 
 module.exports = db;

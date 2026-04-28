@@ -1,0 +1,42 @@
+# Render Blueprint for CNTRD.
+# Use the "Deploy to Render" button in the GitHub repo, or in the Render
+# dashboard: New + → Blueprint → connect this repo.
+#
+# Two deployment shapes are supported (pick one):
+#
+#  1) FREE TIER — ephemeral SQLite (data lost on restart/redeploy).
+#     Just deploy as-is. Service sleeps after ~15 min idle.
+#
+#  2) PERSISTENT — uncomment the `disk:` block and the two PATH env vars
+#     (DATABASE_PATH / UPLOADS_PATH) below, then upgrade `plan:` from
+#     `free` to `starter` (paid). A 1 GB persistent disk costs ~$1/mo.
+#
+# JWT_SECRET is auto-generated on first deploy and reused on subsequent
+# deploys; rotating it logs everyone out.
+
+services:
+  - type: web
+    name: cntrd
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      # ── Uncomment with the disk block below for persistent storage ──
+      # - key: DATABASE_PATH
+      #   value: /var/data/cntrd.db
+      # - key: UPLOADS_PATH
+      #   value: /var/data/uploads
+
+    # ── Persistent disk (paid plans only). Uncomment to enable. ──
+    # disk:
+    #   name: cntrd-data
+    #   mountPath: /var/data
+    #   sizeGB: 1

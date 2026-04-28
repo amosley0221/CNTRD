@@ -2,7 +2,9 @@
 // Renders the different post types: take, photo, score, poll, clip, box, rumor.
 
 function PostHeader({ user, time, tags }) {
-  const u = USERS[user] || USERS.mike_b;
+  const u = (typeof user === 'string')
+    ? (USERS[user] || USERS.mike_b)
+    : (user || USERS.mike_b);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
       <Avatar user={u} size={36} />
@@ -36,8 +38,8 @@ function iconBtnStyle() {
   };
 }
 
-function PostFooter({ likes, replies, reposts, postId }) {
-  const [liked, setLiked] = React.useState(false);
+function PostFooter({ likes, replies, reposts, postId, initiallyLiked }) {
+  const [liked, setLiked] = React.useState(!!initiallyLiked);
   const [n, setN] = React.useState(likes);
   const fmt = (k) => k >= 1000 ? (k / 1000).toFixed(1) + 'k' : k;
   const Btn = ({ icon, label, color, onClick, active }) => (
@@ -64,7 +66,17 @@ function PostFooter({ likes, replies, reposts, postId }) {
         label={n}
         color="var(--cn-danger)"
         active={liked}
-        onClick={() => { setLiked(!liked); setN(n + (liked ? -1 : 1)); }}
+        onClick={async () => {
+          const next = !liked;
+          setLiked(next); setN(n + (next ? 1 : -1));
+          if (postId && window.API && window.API.hasToken && window.API.hasToken()) {
+            try {
+              const r = await window.API.likePost(postId);
+              if (typeof r.like_count === 'number') setN(r.like_count);
+              if (typeof r.liked === 'boolean') setLiked(r.liked);
+            } catch { /* mock post or offline — keep local toggle */ }
+          }
+        }}
       />
       <button style={{ ...iconBtnStyle(), color: 'var(--cn-text-mute)' }}>
         <Icon name="bookmark" size={17} sw={1.6} />
@@ -88,7 +100,7 @@ function PostShell({ children, post }) {
     }}>
       <PostHeader user={post.user} time={post.time} tags={post.tags} />
       {children}
-      <PostFooter likes={post.likes} replies={post.replies} reposts={post.reposts} postId={post.id} />
+      <PostFooter likes={post.likes} replies={post.replies} reposts={post.reposts} postId={post.id} initiallyLiked={post.liked} />
     </article>
   );
 }

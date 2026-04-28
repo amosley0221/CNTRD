@@ -3,16 +3,82 @@ const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const db = require('../database/db');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
+const { VALID_TEAM_CODES } = require('../data/teams');
+
+const VALID_TYPES = new Set(['take', 'photo', 'score', 'poll', 'clip', 'box', 'rumor']);
+
+const SELECT_POST = `
+  SELECT p.id, p.user_id, p.content, p.image, p.like_count, p.repost_count,
+         p.reply_count, p.reply_to, p.created_at, p.type, p.tags, p.extra,
+         u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
+  FROM posts p
+  JOIN users u ON u.id = p.user_id
+`;
+
+function hydrate(p) {
+  if (!p) return p;
+  let extra = {};
+  try { extra = JSON.parse(p.extra || '{}') || {}; } catch {}
+  let tags = [];
+  try { tags = JSON.parse(p.tags || '[]') || []; } catch {}
+  let userTeams = [];
+  try { userTeams = JSON.parse(p.team_tags || '[]') || []; } catch {}
+  return {
+    id: p.id,
+    type: p.type || 'take',
+    content: p.content,
+    text: p.content,                // alias for design components
+    image: p.image,
+    tags,
+    extra,
+    ...extra,                       // spread type-specific fields onto top level
+    likes: p.like_count,
+    reposts: p.repost_count,
+    replies: p.reply_count,
+    reply_to: p.reply_to,
+    created_at: p.created_at,
+    liked: !!p.liked,
+    reposted: !!p.reposted,
+    user: {
+      id: p.user_id,
+      username: p.username,
+      displayName: p.display_name,
+      avatar: p.avatar,
+      avatarHue: p.avatar_hue ?? 200,
+      teams: userTeams,
+    },
+  };
+}
+
+function normalizeTags(input) {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map(t => String(t).trim().toUpperCase())
+    .filter(t => VALID_TEAM_CODES.has(t))
+    .slice(0, 5);
+}
+
+function attachInteraction(p, userId) {
+  if (!userId) { p.liked = 0; p.reposted = 0; return; }
+  p.liked    = db.prepare('SELECT 1 FROM likes   WHERE user_id = ? AND post_id = ?').get(userId, p.id) ? 1 : 0;
+  p.reposted = db.prepare('SELECT 1 FROM reposts WHERE user_id = ? AND post_id = ?').get(userId, p.id) ? 1 : 0;
+}
 
 // Create post
 router.post('/', requireAuth, (req, res) => {
-  const { content, reply_to } = req.body;
+  const { content, reply_to, type, tags, extra, image } = req.body;
 
   if (!content || !content.trim()) {
     return res.status(400).json({ error: 'Content is required' });
   }
   if (content.length > 280) {
     return res.status(400).json({ error: 'Post must be 280 characters or fewer' });
+  }
+  const postType = VALID_TYPES.has(type) ? type : 'take';
+  const tagsJson = JSON.stringify(normalizeTags(tags));
+  let extraJson = '{}';
+  if (extra && typeof extra === 'object') {
+    try { extraJson = JSON.stringify(extra).slice(0, 4000); } catch {}
   }
 
   if (reply_to) {
@@ -22,134 +88,64 @@ router.post('/', requireAuth, (req, res) => {
 
   const id = uuidv4();
   db.prepare(`
-    INSERT INTO posts (id, user_id, content, reply_to)
-    VALUES (?, ?, ?, ?)
-  `).run(id, req.user.id, content.trim(), reply_to || null);
+    INSERT INTO posts (id, user_id, content, image, reply_to, type, tags, extra)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, req.user.id, content.trim(), image || null, reply_to || null, postType, tagsJson, extraJson);
 
   db.prepare('UPDATE users SET post_count = post_count + 1 WHERE id = ?').run(req.user.id);
   if (reply_to) {
     db.prepare('UPDATE posts SET reply_count = reply_count + 1 WHERE id = ?').run(reply_to);
   }
 
-  const post = db.prepare(`
-    SELECT p.*, u.username, u.display_name, u.avatar, u.team_tags
-    FROM posts p JOIN users u ON u.id = p.user_id
-    WHERE p.id = ?
-  `).get(id);
-
-  post.team_tags = JSON.parse(post.team_tags || '[]');
-  post.liked = false;
-  post.reposted = false;
-
-  res.status(201).json(post);
+  const row = db.prepare(`${SELECT_POST} WHERE p.id = ?`).get(id);
+  attachInteraction(row, req.user.id);
+  res.status(201).json(hydrate(row));
 });
 
-// Get feed (following + own posts)
+// Following + own
 router.get('/feed', requireAuth, (req, res) => {
   const cursor = req.query.cursor;
-  let params = [req.user.id, req.user.id];
-  let query = `
-    SELECT p.*, u.username, u.display_name, u.avatar, u.team_tags
-    FROM posts p
-    JOIN users u ON u.id = p.user_id
+  const params = [req.user.id, req.user.id];
+  let query = `${SELECT_POST}
     WHERE p.reply_to IS NULL
       AND (
         p.user_id = ?
         OR p.user_id IN (SELECT following_id FROM follows WHERE follower_id = ?)
-      )
-  `;
+      )`;
+  if (cursor) { query += ' AND p.created_at < ?'; params.push(cursor); }
+  query += ' ORDER BY p.created_at DESC LIMIT 30';
 
-  if (cursor) {
-    query += ' AND p.created_at < ?';
-    params.push(cursor);
-  }
-
-  query += ' ORDER BY p.created_at DESC LIMIT 20';
-
-  const posts = db.prepare(query).all(...params);
-
-  posts.forEach(p => {
-    p.team_tags = JSON.parse(p.team_tags || '[]');
-    p.liked = !!db.prepare('SELECT 1 FROM likes WHERE user_id = ? AND post_id = ?').get(req.user.id, p.id);
-    p.reposted = !!db.prepare('SELECT 1 FROM reposts WHERE user_id = ? AND post_id = ?').get(req.user.id, p.id);
-  });
-
-  res.json(posts);
+  const rows = db.prepare(query).all(...params);
+  rows.forEach(r => attachInteraction(r, req.user.id));
+  res.json(rows.map(hydrate));
 });
 
-// Get explore / global feed
+// Public global feed
 router.get('/explore', optionalAuth, (req, res) => {
   const cursor = req.query.cursor;
-  let params = [];
-  let query = `
-    SELECT p.*, u.username, u.display_name, u.avatar, u.team_tags
-    FROM posts p
-    JOIN users u ON u.id = p.user_id
-    WHERE p.reply_to IS NULL
-  `;
+  const params = [];
+  let query = `${SELECT_POST} WHERE p.reply_to IS NULL`;
+  if (cursor) { query += ' AND p.created_at < ?'; params.push(cursor); }
+  query += ' ORDER BY p.created_at DESC LIMIT 30';
 
-  if (cursor) {
-    query += ' AND p.created_at < ?';
-    params.push(cursor);
-  }
-
-  query += ' ORDER BY p.created_at DESC LIMIT 20';
-
-  const posts = db.prepare(query).all(...params);
-
-  posts.forEach(p => {
-    p.team_tags = JSON.parse(p.team_tags || '[]');
-    if (req.user) {
-      p.liked = !!db.prepare('SELECT 1 FROM likes WHERE user_id = ? AND post_id = ?').get(req.user.id, p.id);
-      p.reposted = !!db.prepare('SELECT 1 FROM reposts WHERE user_id = ? AND post_id = ?').get(req.user.id, p.id);
-    } else {
-      p.liked = false;
-      p.reposted = false;
-    }
-  });
-
-  res.json(posts);
+  const rows = db.prepare(query).all(...params);
+  rows.forEach(r => attachInteraction(r, req.user?.id));
+  res.json(rows.map(hydrate));
 });
 
-// Get single post + replies
+// Single post + replies
 router.get('/:id', optionalAuth, (req, res) => {
-  const post = db.prepare(`
-    SELECT p.*, u.username, u.display_name, u.avatar, u.team_tags
-    FROM posts p JOIN users u ON u.id = p.user_id
-    WHERE p.id = ?
-  `).get(req.params.id);
+  const row = db.prepare(`${SELECT_POST} WHERE p.id = ?`).get(req.params.id);
+  if (!row) return res.status(404).json({ error: 'Post not found' });
+  attachInteraction(row, req.user?.id);
 
-  if (!post) return res.status(404).json({ error: 'Post not found' });
-
-  post.team_tags = JSON.parse(post.team_tags || '[]');
-  if (req.user) {
-    post.liked = !!db.prepare('SELECT 1 FROM likes WHERE user_id = ? AND post_id = ?').get(req.user.id, post.id);
-    post.reposted = !!db.prepare('SELECT 1 FROM reposts WHERE user_id = ? AND post_id = ?').get(req.user.id, post.id);
-  } else {
-    post.liked = false;
-    post.reposted = false;
-  }
-
-  const replies = db.prepare(`
-    SELECT p.*, u.username, u.display_name, u.avatar, u.team_tags
-    FROM posts p JOIN users u ON u.id = p.user_id
+  const replies = db.prepare(`${SELECT_POST}
     WHERE p.reply_to = ?
     ORDER BY p.created_at ASC
-    LIMIT 50
-  `).all(req.params.id);
+    LIMIT 50`).all(req.params.id);
+  replies.forEach(r => attachInteraction(r, req.user?.id));
 
-  replies.forEach(p => {
-    p.team_tags = JSON.parse(p.team_tags || '[]');
-    if (req.user) {
-      p.liked = !!db.prepare('SELECT 1 FROM likes WHERE user_id = ? AND post_id = ?').get(req.user.id, p.id);
-      p.reposted = !!db.prepare('SELECT 1 FROM reposts WHERE user_id = ? AND post_id = ?').get(req.user.id, p.id);
-    } else {
-      p.liked = false;
-      p.reposted = false;
-    }
-  });
-
-  res.json({ post, replies });
+  res.json({ post: hydrate(row), replies: replies.map(hydrate) });
 });
 
 // Like / Unlike
@@ -198,9 +194,9 @@ router.delete('/:id', requireAuth, (req, res) => {
   if (!post) return res.status(404).json({ error: 'Post not found' });
   if (post.user_id !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
 
-  db.prepare('DELETE FROM likes WHERE post_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM likes   WHERE post_id = ?').run(req.params.id);
   db.prepare('DELETE FROM reposts WHERE post_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM posts WHERE id = ?').run(req.params.id);
+  db.prepare('DELETE FROM posts   WHERE id = ?').run(req.params.id);
   db.prepare('UPDATE users SET post_count = MAX(0, post_count - 1) WHERE id = ?').run(req.user.id);
   if (post.reply_to) {
     db.prepare('UPDATE posts SET reply_count = MAX(0, reply_count - 1) WHERE id = ?').run(post.reply_to);

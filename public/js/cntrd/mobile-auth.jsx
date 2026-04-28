@@ -1,9 +1,23 @@
 // mobile-auth.jsx — signup, login, settings, gameday chat for CNTRD
 
 // ─── LOGIN ────────────────────────────────────────────────────
-function LoginScreen({ tweaks, onNav }) {
+function LoginScreen({ tweaks, onNav, onLogin }) {
   const [email, setEmail] = React.useState('');
   const [pw, setPw] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [err,  setErr]  = React.useState(null);
+  const submit = async () => {
+    if (!email || !pw || busy) return;
+    setBusy(true); setErr(null);
+    try {
+      if (onLogin) await onLogin({ login: email.trim(), password: pw });
+      onNav?.('home');
+    } catch (e) {
+      setErr(e.message || 'Sign-in failed');
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column', padding: '60px 24px 40px' }}>
       <div style={{ flex: 1 }}>
@@ -11,14 +25,15 @@ function LoginScreen({ tweaks, onNav }) {
         <div style={{ marginTop: 8, fontSize: 14, color: 'var(--cn-text-dim)', fontStyle: 'italic' }}>Where the game gets loud.</div>
 
         <div style={{ marginTop: 56, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Field label="Email" value={email} onChange={setEmail} placeholder="you@email.com" />
+          <Field label="Email or username" value={email} onChange={setEmail} placeholder="you@email.com" />
           <Field label="Password" value={pw} onChange={setPw} placeholder="••••••••" type="password" />
-          <button onClick={() => onNav?.('home')} style={{
+          {err && <div style={{ fontSize: 12, color: 'var(--cn-danger)', fontFamily: 'var(--cn-font-mono)' }}>{err}</div>}
+          <button onClick={submit} disabled={busy} style={{
             marginTop: 8, padding: '14px', borderRadius: 12,
             background: 'var(--cn-accent)', color: 'var(--cn-on-accent)',
-            border: 'none', fontWeight: 700, fontSize: 15, cursor: 'pointer',
-            fontFamily: 'var(--cn-font-body)',
-          }}>Sign in</button>
+            border: 'none', fontWeight: 700, fontSize: 15, cursor: busy ? 'not-allowed' : 'pointer',
+            fontFamily: 'var(--cn-font-body)', opacity: busy ? 0.6 : 1,
+          }}>{busy ? 'Signing in…' : 'Sign in'}</button>
           <a style={{ alignSelf: 'center', marginTop: 4, color: 'var(--cn-text-dim)', fontSize: 12, fontFamily: 'var(--cn-font-mono)', cursor: 'pointer' }}>Forgot password?</a>
         </div>
       </div>
@@ -55,17 +70,46 @@ function Field({ label, value, onChange, placeholder, type = 'text' }) {
 }
 
 // ─── SIGNUP / ONBOARDING ──────────────────────────────────────
-function SignupScreen({ tweaks, onNav }) {
+function SignupScreen({ tweaks, onNav, onSignup }) {
   const [step, setStep] = React.useState(0);
   const [email, setEmail] = React.useState('');
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [picks, setPicks] = React.useState([]);
   const [avatarHue, setAvatarHue] = React.useState(280);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr]   = React.useState(null);
 
   const togglePick = (code) => {
     setPicks(p => p.includes(code) ? p.filter(c => c !== code) : [...p, code]);
   };
+
+  const finish = async () => {
+    if (busy) return;
+    setBusy(true); setErr(null);
+    try {
+      if (onSignup) {
+        await onSignup({
+          email: email.trim(),
+          username: username.trim(),
+          password,
+          teams: picks,
+          avatar_hue: avatarHue,
+        });
+      }
+      onNav?.('home');
+    } catch (e) {
+      setErr(e.message || 'Signup failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const stepValid =
+    step === 0 ? (email.includes('@') && password.length >= 6) :
+    step === 1 ? (username.length >= 3) :
+    step === 2 ? true :
+    /* step 3 */ (picks.length > 0);
 
   return (
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
@@ -173,12 +217,15 @@ function SignupScreen({ tweaks, onNav }) {
       </div>
 
       <div style={{ padding: '12px 24px 28px', borderTop: '0.5px solid var(--cn-border)' }}>
-        <button onClick={() => step < 3 ? setStep(step + 1) : onNav?.('home')} style={{
+        {err && <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--cn-danger)', fontFamily: 'var(--cn-font-mono)' }}>{err}</div>}
+        <button onClick={() => step < 3 ? (stepValid && setStep(step + 1)) : finish()} disabled={!stepValid || busy} style={{
           width: '100%', padding: '14px', borderRadius: 12,
-          background: 'var(--cn-accent)', color: 'var(--cn-on-accent)',
-          border: 'none', fontWeight: 700, fontSize: 15, cursor: 'pointer',
+          background: (stepValid && !busy) ? 'var(--cn-accent)' : 'var(--cn-bg-elev2)',
+          color: (stepValid && !busy) ? 'var(--cn-on-accent)' : 'var(--cn-text-mute)',
+          border: 'none', fontWeight: 700, fontSize: 15,
+          cursor: (stepValid && !busy) ? 'pointer' : 'not-allowed',
           fontFamily: 'var(--cn-font-body)',
-        }}>{step < 3 ? 'Continue' : `Finish · ${picks.length} team${picks.length === 1 ? '' : 's'}`}</button>
+        }}>{busy ? 'Creating account…' : (step < 3 ? 'Continue' : `Finish · ${picks.length} team${picks.length === 1 ? '' : 's'}`)}</button>
       </div>
     </div>
   );
@@ -192,15 +239,16 @@ function Subhead({ children }) {
 }
 
 // ─── SETTINGS ─────────────────────────────────────────────────
-function SettingsScreen({ tweaks, setTweak, onNav }) {
+function SettingsScreen({ tweaks, setTweak, onNav, me }) {
+  const meUser = me || ME;
   const Section = ({ title, children }) => (
     <div style={{ marginTop: 22 }}>
       <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1, textTransform: 'uppercase', padding: '0 16px 6px' }}>{title}</div>
       <div style={{ background: 'var(--cn-bg-elev)', borderTop: '0.5px solid var(--cn-border)', borderBottom: '0.5px solid var(--cn-border)' }}>{children}</div>
     </div>
   );
-  const Row = ({ label, sub, right, last }) => (
-    <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: last ? 'none' : '0.5px solid var(--cn-border)', minHeight: 52 }}>
+  const Row = ({ label, sub, right, last, onClick }) => (
+    <div onClick={onClick} style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: last ? 'none' : '0.5px solid var(--cn-border)', minHeight: 52, cursor: onClick ? 'pointer' : 'default' }}>
       <div style={{ flex: 1 }}>
         <div style={{ fontSize: 14, color: 'var(--cn-text)' }}>{label}</div>
         {sub && <div style={{ fontSize: 11, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', marginTop: 2 }}>{sub}</div>}
@@ -254,14 +302,14 @@ function SettingsScreen({ tweaks, setTweak, onNav }) {
         </Section>
 
         <Section title="Account">
-          <Row label="Username" right={<span style={{ fontSize: 13, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)' }}>@{ME.username}</span>} />
-          <Row label="Email" right={<span style={{ fontSize: 13, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)' }}>m••••@gmail.com</span>} />
+          <Row label="Username" right={<span style={{ fontSize: 13, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)' }}>@{meUser.username}</span>} />
+          <Row label="Email" right={<span style={{ fontSize: 13, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)' }}>{meUser.email || '—'}</span>} />
           <Row label="Change password" right={<Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />} />
-          <Row label="Profile picture" right={<Avatar user={ME} size={28} />} last />
+          <Row label="Profile picture" right={<Avatar user={meUser} size={28} />} last />
         </Section>
 
         <Section title="Teams">
-          <Row label="My teams" sub="Showing on your username" right={<TeamTagsRow codes={ME.teams} size="sm" />} last />
+          <Row label="My teams" sub="Showing on your username" right={<TeamTagsRow codes={meUser.teams || []} size="sm" />} last />
         </Section>
 
         <Section title="Notifications">
@@ -273,7 +321,7 @@ function SettingsScreen({ tweaks, setTweak, onNav }) {
         <Section title="More">
           <Row label="Privacy" right={<Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />} />
           <Row label="About CNTRD" sub="v2.4 · build 1284" right={<Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />} />
-          <Row label={<span style={{ color: 'var(--cn-danger)' }}>Sign out</span>} right={<Icon name="logout" size={16} stroke="var(--cn-danger)" />} last />
+          <Row label={<span style={{ color: 'var(--cn-danger)' }}>Sign out</span>} right={<Icon name="logout" size={16} stroke="var(--cn-danger)" />} onClick={() => onNav?.('logout')} last />
         </Section>
       </div>
     </div>

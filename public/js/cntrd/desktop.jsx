@@ -1,7 +1,7 @@
 // desktop.jsx — desktop web app for CNTRD
 // Three-column layout: left nav, center feed, right rail (gameday + trends)
 
-function DesktopApp({ tweaks, setTweak, onNav }) {
+function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays }) {
   const [view, setView] = React.useState('feed');
   return (
     <div style={{
@@ -13,14 +13,15 @@ function DesktopApp({ tweaks, setTweak, onNav }) {
       gridTemplateColumns: '232px 1fr 360px',
       overflow: 'hidden',
     }}>
-      <DesktopNav view={view} setView={setView} onNav={onNav} />
-      <DesktopMain view={view} tweaks={tweaks} onNav={onNav} />
+      <DesktopNav view={view} setView={setView} onNav={onNav} me={me} />
+      <DesktopMain view={view} tweaks={tweaks} onNav={onNav} posts={posts} plays={plays} />
       <DesktopRail tweaks={tweaks} onNav={onNav} />
     </div>
   );
 }
 
-function DesktopNav({ view, setView, onNav }) {
+function DesktopNav({ view, setView, onNav, me }) {
+  const meUser = me || ME;
   const items = [
     { id: 'feed',     icon: 'home',     label: 'Feed' },
     { id: 'discover', icon: 'search',   label: 'Discover' },
@@ -93,10 +94,10 @@ function DesktopNav({ view, setView, onNav }) {
       }}>+ New post</button>
 
       <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', borderTop: '0.5px solid var(--cn-border)' }}>
-        <Avatar user={ME} size={36} />
+        <Avatar user={meUser} size={36} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700 }}>{ME.displayName}</div>
-          <div style={{ fontSize: 11, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)' }}>@{ME.username}</div>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>{meUser.displayName}</div>
+          <div style={{ fontSize: 11, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)' }}>@{meUser.username}</div>
         </div>
         <button onClick={() => onNav?.('logout')} title="Sign out" style={{
           width: 30, height: 30, borderRadius: 8,
@@ -111,7 +112,9 @@ function DesktopNav({ view, setView, onNav }) {
   );
 }
 
-function DesktopMain({ view, tweaks, onNav }) {
+function DesktopMain({ view, tweaks, onNav, posts, plays }) {
+  const items = (posts && posts.length ? posts : POSTS);
+  const playList = (plays && plays.length ? plays : PLAYS);
   return (
     <main style={{ overflowY: 'auto', borderRight: '0.5px solid var(--cn-border)' }}>
       <div style={{
@@ -153,13 +156,13 @@ function DesktopMain({ view, tweaks, onNav }) {
         </div>
         <div style={{ display: 'flex', gap: 14 }}>
           <PlayBubble add onClick={() => onNav?.('playsCreator')} />
-          {PLAYS.map(p => <PlayBubble key={p.id} play={p} onClick={() => onNav?.('plays')} />)}
+          {playList.map(p => <PlayBubble key={p.id} play={p} onClick={() => onNav?.('plays')} />)}
         </div>
       </div>
 
       {/* Feed */}
       <div style={{ maxWidth: 620 }}>
-        {POSTS.map(p => <Post key={p.id} post={p} />)}
+        {items.map(p => <Post key={p.id} post={p} />)}
       </div>
     </main>
   );

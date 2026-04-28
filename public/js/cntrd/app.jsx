@@ -1,5 +1,6 @@
 // app.jsx — CNTRD app entry. Wires the design components into a real SPA:
-// theme persistence, screen routing, and a responsive mobile/desktop swap.
+// theme persistence, screen routing, responsive mobile/desktop swap, and
+// a real backend (auth, feed, profile, plays via /api/*).
 
 const TWEAK_DEFAULTS = {
   dark: true,
@@ -14,7 +15,6 @@ const TWEAK_DEFAULTS = {
 
 const STORAGE = {
   tweaks: 'cntrd:tweaks',
-  authed: 'cntrd:authed',
   screen: 'cntrd:screen',
 };
 
@@ -51,21 +51,43 @@ function useMediaQuery(query) {
   return match;
 }
 
+// Server user → design ME shape.
+function normalizeMe(u) {
+  if (!u) return null;
+  let joined = '';
+  if (u.created_at) {
+    const d = new Date(u.created_at.replace(' ', 'T') + 'Z');
+    if (!isNaN(d)) joined = 'Joined ' + d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  }
+  return {
+    id: u.id,
+    username: u.username,
+    displayName: u.display_name || u.username,
+    email: u.email,
+    bio: u.bio || '',
+    pronouns: u.pronouns || '',
+    city: u.city || '',
+    joined,
+    teams: Array.isArray(u.team_tags) ? u.team_tags : [],
+    followers: u.follower_count ?? 0,
+    following: u.following_count ?? 0,
+    posts: u.post_count ?? 0,
+    avatar: u.avatar,
+    avatarHue: u.avatar_hue ?? 200,
+  };
+}
+
 function CNTRDApp() {
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
-  const [authed, setAuthed] = React.useState(() => {
-    try { return localStorage.getItem(STORAGE.authed) === '1'; } catch { return false; }
-  });
-  const [screen, setScreen] = React.useState(() => {
-    try {
-      const s = localStorage.getItem(STORAGE.screen);
-      if (s) return s;
-    } catch {}
-    return authed ? 'home' : 'login';
-  });
+  const [me, setMe] = React.useState(null);
+  const [bootstrapped, setBootstrapped] = React.useState(false);
+  const [posts, setPosts] = React.useState([]);
+  const [plays, setPlays] = React.useState([]);
+  const [screen, setScreen] = React.useState('login');
 
   const isWide = useMediaQuery('(min-width: 980px)');
   const rootRef = React.useRef(null);
+  const authed = !!me;
 
   React.useLayoutEffect(() => {
     if (rootRef.current) applyTheme(rootRef.current, tweaks);
@@ -76,25 +98,93 @@ function CNTRDApp() {
     if (meta) meta.setAttribute('content', tweaks.dark ? '#0A0A0B' : '#F4F1EA');
   }, [tweaks]);
 
+  // Reflect ME globally so design components that read window.ME pick it up.
+  React.useEffect(() => { window.ME = me || (window.__originalME ||= window.ME); }, [me]);
+
+  // Bootstrap: try existing token → /me; pick a sensible initial screen.
+  React.useEffect(() => {
+    let cancelled = false;
+    async function boot() {
+      window.__originalME = window.ME;
+      let user = null;
+      if (API.hasToken()) {
+        try { user = normalizeMe(await API.me()); }
+        catch { API.setToken(null); }
+      }
+      if (cancelled) return;
+      setMe(user);
+      try {
+        const stored = localStorage.getItem(STORAGE.screen);
+        setScreen(user ? (stored || 'home') : 'login');
+      } catch { setScreen(user ? 'home' : 'login'); }
+      setBootstrapped(true);
+    }
+    boot();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Load feed + plays whenever auth state changes.
+  React.useEffect(() => {
+    if (!bootstrapped) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [serverPosts, serverPlays] = await Promise.all([
+          authed ? API.feed() : API.explore(),
+          API.plays(),
+        ]);
+        if (cancelled) return;
+        setPosts((serverPosts || []).map(normalizePost));
+        setPlays((serverPlays || []).map(normalizePlay));
+      } catch (e) {
+        // Network/server hiccup — fall back to mock data already in window.POSTS/PLAYS.
+        if (!cancelled) { setPosts([]); setPlays([]); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [authed, bootstrapped]);
+
   const handleNav = React.useCallback((next) => {
     if (next === 'logout') {
-      try { localStorage.removeItem(STORAGE.authed); } catch {}
-      setAuthed(false);
+      API.setToken(null);
+      setMe(null);
       setScreen('login');
       try { localStorage.setItem(STORAGE.screen, 'login'); } catch {}
       return;
     }
-    if (next === 'home' || next === 'profile' || next === 'compose' || next === 'chat'
-        || next === 'settings' || next === 'plays' || next === 'playsCreator' || next === 'search') {
-      if (!authed) {
-        try { localStorage.setItem(STORAGE.authed, '1'); } catch {}
-        setAuthed(true);
-      }
-    }
     const target = next === 'search' ? 'home' : next;
     setScreen(target);
     try { localStorage.setItem(STORAGE.screen, target); } catch {}
-  }, [authed]);
+  }, []);
+
+  const handleLogin = React.useCallback(async ({ login, password }) => {
+    const { token, user } = await API.login({ login, password });
+    API.setToken(token);
+    setMe(normalizeMe(user));
+  }, []);
+
+  const handleSignup = React.useCallback(async ({ email, username, password, teams, avatar_hue }) => {
+    const { token, user } = await API.register({
+      email, username, password,
+      display_name: username,
+      teams, avatar_hue,
+    });
+    API.setToken(token);
+    setMe(normalizeMe(user));
+  }, []);
+
+  const handlePost = React.useCallback(async ({ content, type, tags }) => {
+    const created = await API.createPost({ content, type, tags });
+    const norm = normalizePost(created);
+    setPosts(prev => [norm, ...prev]);
+    setMe(prev => prev ? { ...prev, posts: (prev.posts ?? 0) + 1 } : prev);
+  }, []);
+
+  const handleCreatePlay = React.useCallback(async ({ team_code, label, hue }) => {
+    const created = await API.createPlay({ team_code, label, hue });
+    const norm = normalizePlay(created);
+    setPlays(prev => [norm, ...prev]);
+  }, []);
 
   const screenMap = {
     home:         FeedScreen,
@@ -111,6 +201,16 @@ function CNTRDApp() {
   const isAuthScreen = screen === 'login' || screen === 'signup';
   const useDesktop = authed && isWide && !isAuthScreen;
 
+  // Common props for every screen — extras are ignored where unused.
+  const screenProps = {
+    tweaks, setTweak, onNav: handleNav,
+    me, posts, plays,
+    onLogin:  handleLogin,
+    onSignup: handleSignup,
+    onPost:   handlePost,
+    onCreate: handleCreatePlay,
+  };
+
   const themedShell = (children) => (
     <div ref={rootRef} className="cn-themed" style={{
       width: '100vw', height: '100vh', overflow: 'hidden', position: 'relative',
@@ -119,13 +219,23 @@ function CNTRDApp() {
     </div>
   );
 
-  if (useDesktop) {
+  if (!bootstrapped) {
     return themedShell(
-      <DesktopApp tweaks={tweaks} setTweak={setTweak} onNav={handleNav} />
+      <div style={{
+        width: '100%', height: '100%',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'var(--cn-bg)', color: 'var(--cn-text-mute)',
+        fontFamily: 'var(--cn-font-mono)', fontSize: 12, letterSpacing: 1,
+      }}>WARMING UP</div>
     );
   }
 
-  // Mobile-style screen: phone-width column centered on wider viewports.
+  if (useDesktop) {
+    return themedShell(
+      <DesktopApp {...screenProps} />
+    );
+  }
+
   const showFrame = isWide;
   return themedShell(
     <div style={{
@@ -145,7 +255,7 @@ function CNTRDApp() {
         borderRadius: showFrame ? 28 : 0,
         boxShadow: showFrame ? '0 40px 100px rgba(0,0,0,0.45), 0 0 0 0.5px var(--cn-border-s)' : 'none',
       }}>
-        <ScreenComp tweaks={tweaks} setTweak={setTweak} onNav={handleNav} />
+        <ScreenComp {...screenProps} />
       </div>
     </div>
   );

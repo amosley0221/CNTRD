@@ -7,7 +7,9 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../database/db');
 const { requireAuth } = require('../middleware/auth');
 
-const UPLOAD_DIR = path.join(__dirname, '../public/uploads');
+const UPLOAD_DIR = process.env.UPLOADS_PATH
+  ? path.resolve(process.env.UPLOADS_PATH)
+  : path.join(__dirname, '../public/uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const storage = multer.diskStorage({
@@ -35,7 +37,6 @@ const upload = multer({
 router.post('/avatar', requireAuth, upload.single('avatar'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-  // Delete old avatar if exists
   const current = db.prepare('SELECT avatar FROM users WHERE id = ?').get(req.user.id);
   if (current?.avatar) {
     const oldPath = path.join(UPLOAD_DIR, path.basename(current.avatar));
@@ -64,7 +65,6 @@ router.post('/banner', requireAuth, upload.single('banner'), (req, res) => {
   res.json({ banner: bannerUrl });
 });
 
-// Error handler for multer
 router.use((err, req, res, next) => {
   if (err instanceof multer.MulterError || err.message === 'Only image files are allowed') {
     return res.status(400).json({ error: err.message });
@@ -72,4 +72,5 @@ router.use((err, req, res, next) => {
   next(err);
 });
 
+router.uploadDir = UPLOAD_DIR;
 module.exports = router;

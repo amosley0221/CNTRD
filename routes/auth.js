@@ -4,11 +4,30 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../database/db');
-const { JWT_SECRET } = require('../middleware/auth');
+const { JWT_SECRET, requireAuth } = require('../middleware/auth');
+const { VALID_TEAM_CODES } = require('../data/teams');
+
+const USER_COLUMNS =
+  'id, username, email, display_name, bio, avatar, banner, team_tags, ' +
+  'avatar_hue, pronouns, city, follower_count, following_count, post_count, created_at';
+
+function hydrate(user) {
+  if (!user) return user;
+  user.team_tags = JSON.parse(user.team_tags || '[]');
+  return user;
+}
+
+function normalizeTeams(input) {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map(t => String(t).trim().toUpperCase())
+    .filter(t => VALID_TEAM_CODES.has(t))
+    .slice(0, 8);
+}
 
 // Register
 router.post('/register', (req, res) => {
-  const { username, email, password, display_name } = req.body;
+  const { username, email, password, display_name, teams, avatar_hue, pronouns, city } = req.body;
 
   if (!username || !email || !password) {
     return res.status(400).json({ error: 'Username, email, and password are required' });
@@ -31,15 +50,16 @@ router.post('/register', (req, res) => {
   const hash = bcrypt.hashSync(password, 10);
   const id = uuidv4();
   const name = display_name || username;
+  const teamTagsJson = JSON.stringify(normalizeTeams(teams));
+  const hue = Number.isFinite(+avatar_hue) ? Math.max(0, Math.min(360, +avatar_hue)) : 200;
 
   db.prepare(`
-    INSERT INTO users (id, username, email, password, display_name)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(id, username, email, hash, name);
+    INSERT INTO users (id, username, email, password, display_name, team_tags, avatar_hue, pronouns, city)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, username, email, hash, name, teamTagsJson, hue, pronouns || '', city || '');
 
   const token = jwt.sign({ id, username }, JWT_SECRET, { expiresIn: '30d' });
-  const user = db.prepare('SELECT id, username, email, display_name, bio, avatar, team_tags, follower_count, following_count, post_count, created_at FROM users WHERE id = ?').get(id);
-  user.team_tags = JSON.parse(user.team_tags || '[]');
+  const user = hydrate(db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`).get(id));
 
   res.status(201).json({ token, user });
 });
@@ -58,28 +78,15 @@ router.post('/login', (req, res) => {
   }
 
   const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '30d' });
-  const safeUser = {
-    id: user.id,
-    username: user.username,
-    email: user.email,
-    display_name: user.display_name,
-    bio: user.bio,
-    avatar: user.avatar,
-    team_tags: JSON.parse(user.team_tags || '[]'),
-    follower_count: user.follower_count,
-    following_count: user.following_count,
-    post_count: user.post_count,
-    created_at: user.created_at
-  };
+  const safe = hydrate(db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`).get(user.id));
 
-  res.json({ token, user: safeUser });
+  res.json({ token, user: safe });
 });
 
 // Get current user
-router.get('/me', require('../middleware/auth').requireAuth, (req, res) => {
-  const user = db.prepare('SELECT id, username, email, display_name, bio, avatar, banner, team_tags, follower_count, following_count, post_count, created_at FROM users WHERE id = ?').get(req.user.id);
+router.get('/me', requireAuth, (req, res) => {
+  const user = hydrate(db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`).get(req.user.id));
   if (!user) return res.status(404).json({ error: 'User not found' });
-  user.team_tags = JSON.parse(user.team_tags || '[]');
   res.json(user);
 });
 
