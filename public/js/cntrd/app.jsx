@@ -232,6 +232,20 @@ function CNTRDApp() {
     setMe(prev => prev ? { ...prev, posts: (prev.posts ?? 0) + 1 } : prev);
   }, []);
 
+  const handlePostUpdated = React.useCallback((updated) => {
+    if (!updated?.id) return;
+    setPosts(prev => prev.map(p => p.id === updated.id ? normalizePost(updated) : p));
+  }, []);
+  const handlePostDeleted = React.useCallback((id) => {
+    if (!id) return;
+    setPosts(prev => prev.filter(p => p.id !== id));
+    setMe(prev => prev ? { ...prev, posts: Math.max(0, (prev.posts ?? 1) - 1) } : prev);
+  }, []);
+  const handleUserBlocked = React.useCallback((userId) => {
+    if (!userId) return;
+    setPosts(prev => prev.filter(p => p.user?.id !== userId));
+  }, []);
+
   const handleCreatePlay = React.useCallback(async ({ team_code, label, hue }) => {
     const created = await API.createPlay({ team_code, label, hue });
     const norm = normalizePlay(created);
@@ -313,6 +327,7 @@ function CNTRDApp() {
     admin:        AdminScreen,
     teams:        TeamsEditorScreen,
     leagues:      LeaguesEditorScreen,
+    blocks:       BlockedAccountsScreen,
     terms:        TermsScreen,
     privacy:      PrivacyScreen,
     about:        AboutScreen,
@@ -345,11 +360,20 @@ function CNTRDApp() {
     onOpenGame:  handleOpenGame,
   };
 
+  const postActionsValue = React.useMemo(() => ({
+    currentUserId: me?.id || null,
+    onPostUpdated: handlePostUpdated,
+    onPostDeleted: handlePostDeleted,
+    onUserBlocked: handleUserBlocked,
+  }), [me?.id, handlePostUpdated, handlePostDeleted, handleUserBlocked]);
+
   const themedShell = (children) => (
     <div ref={rootRef} className="cn-themed" style={{
       width: '100%', height: '100%', overflow: 'hidden', position: 'relative',
     }}>
-      {children}
+      <PostActionsContext.Provider value={postActionsValue}>
+        {children}
+      </PostActionsContext.Provider>
     </div>
   );
 

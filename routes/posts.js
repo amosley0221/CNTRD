@@ -7,13 +7,30 @@ const { isValidTeamCode } = require('../data/teams');
 
 const VALID_TYPES = new Set(['take', 'photo', 'score', 'poll', 'clip', 'box', 'rumor']);
 
+// 30-second window after creation in which the author can still edit.
+const EDIT_WINDOW_MS = 30 * 1000;
+
 const SELECT_POST = `
   SELECT p.id, p.user_id, p.content, p.image, p.like_count, p.repost_count,
-         p.reply_count, p.reply_to, p.created_at, p.type, p.tags, p.extra,
+         p.reply_count, p.reply_to, p.created_at, p.edited_at,
+         p.type, p.tags, p.extra,
          u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
   FROM posts p
   JOIN users u ON u.id = p.user_id
 `;
+
+// Build the SQL fragment that hides authors blocked-by or blocking the
+// viewer. Returns { fragment, params } that you splice into a WHERE clause.
+function blockFilter(viewerId) {
+  if (!viewerId) return { fragment: '', params: [] };
+  return {
+    fragment: `
+      AND p.user_id NOT IN (SELECT blocked_id FROM blocks WHERE blocker_id = ?)
+      AND p.user_id NOT IN (SELECT blocker_id FROM blocks WHERE blocked_id = ?)
+    `,
+    params: [viewerId, viewerId],
+  };
+}
 
 function hydrate(p) {
   if (!p) return p;
@@ -37,6 +54,7 @@ function hydrate(p) {
     replies: p.reply_count,
     reply_to: p.reply_to,
     created_at: p.created_at,
+    edited_at: p.edited_at,
     liked: !!p.liked,
     reposted: !!p.reposted,
     user: {
@@ -111,17 +129,19 @@ router.post('/', requireAuth, (req, res) => {
   res.status(201).json(hydrate(row));
 });
 
-// Following + own (banned authors hidden)
+// Following + own (banned + blocked authors hidden)
 router.get('/feed', requireAuth, (req, res) => {
   const cursor = req.query.cursor;
-  const params = [req.user.id, req.user.id];
+  const block = blockFilter(req.user.id);
+  const params = [req.user.id, req.user.id, ...block.params];
   let query = `${SELECT_POST}
     WHERE p.reply_to IS NULL
       AND u.banned = 0
       AND (
         p.user_id = ?
         OR p.user_id IN (SELECT following_id FROM follows WHERE follower_id = ?)
-      )`;
+      )
+      ${block.fragment}`;
   if (cursor) { query += ' AND p.created_at < ?'; params.push(cursor); }
   query += ' ORDER BY p.created_at DESC LIMIT 30';
 
@@ -130,11 +150,12 @@ router.get('/feed', requireAuth, (req, res) => {
   res.json(rows.map(hydrate));
 });
 
-// Public global feed (banned authors hidden)
+// Public global feed (banned + blocked authors hidden)
 router.get('/explore', optionalAuth, (req, res) => {
   const cursor = req.query.cursor;
-  const params = [];
-  let query = `${SELECT_POST} WHERE p.reply_to IS NULL AND u.banned = 0`;
+  const block = blockFilter(req.user?.id);
+  const params = [...block.params];
+  let query = `${SELECT_POST} WHERE p.reply_to IS NULL AND u.banned = 0 ${block.fragment}`;
   if (cursor) { query += ' AND p.created_at < ?'; params.push(cursor); }
   query += ' ORDER BY p.created_at DESC LIMIT 30';
 
@@ -150,14 +171,16 @@ router.get('/by-tag/:code', optionalAuth, (req, res) => {
   if (!isValidTeamCode(code)) return res.status(400).json({ error: 'Invalid tag' });
 
   const cursor = req.query.cursor;
+  const block = blockFilter(req.user?.id);
   // SQLite has no JSON_CONTAINS; tags are stored as a JSON-array string,
   // so a LIKE on the quoted code is the cheapest predicate. The pattern
   // matches "NFL:PHI" or "PHI" because we surround with `"` quotes.
-  const params = [`%"${code}"%`];
+  const params = [`%"${code}"%`, ...block.params];
   let query = `${SELECT_POST}
     WHERE p.reply_to IS NULL
       AND u.banned = 0
-      AND p.tags LIKE ?`;
+      AND p.tags LIKE ?
+      ${block.fragment}`;
   if (cursor) { query += ' AND p.created_at < ?'; params.push(cursor); }
   query += ' ORDER BY p.created_at DESC LIMIT 50';
 
@@ -179,6 +202,28 @@ router.get('/:id', optionalAuth, (req, res) => {
   replies.forEach(r => attachInteraction(r, req.user?.id));
 
   res.json({ post: hydrate(row), replies: replies.map(hydrate) });
+});
+
+// Edit own post (text only, 30-second window).
+router.patch('/:id', requireAuth, (req, res) => {
+  const post = db.prepare('SELECT id, user_id, created_at FROM posts WHERE id = ?').get(req.params.id);
+  if (!post) return res.status(404).json({ error: 'Post not found' });
+  if (post.user_id !== req.user.id) return res.status(403).json({ error: 'Not your post' });
+
+  const created = Date.parse(post.created_at.replace(' ', 'T') + 'Z');
+  if (Number.isFinite(created) && Date.now() - created > EDIT_WINDOW_MS) {
+    return res.status(403).json({ error: 'Edit window has passed (30s)' });
+  }
+
+  const trimmed = String(req.body?.content || '').trim();
+  if (!trimmed) return res.status(400).json({ error: 'Content cannot be empty' });
+  if (trimmed.length > 280) return res.status(400).json({ error: 'Post must be 280 characters or fewer' });
+
+  db.prepare(`UPDATE posts SET content = ?, edited_at = datetime('now') WHERE id = ?`)
+    .run(trimmed, post.id);
+  const row = db.prepare(`${SELECT_POST} WHERE p.id = ?`).get(post.id);
+  attachInteraction(row, req.user.id);
+  res.json(hydrate(row));
 });
 
 // Like / Unlike

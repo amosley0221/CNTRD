@@ -146,6 +146,16 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_notif_user_recent ON notifications(user_id, created_at DESC);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_dedupe
     ON notifications(user_id, dedupe_key) WHERE dedupe_key IS NOT NULL;
+
+  CREATE TABLE IF NOT EXISTS blocks (
+    blocker_id TEXT NOT NULL,
+    blocked_id TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (blocker_id, blocked_id),
+    FOREIGN KEY (blocker_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (blocked_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_blocks_blocked ON blocks(blocked_id);
 `);
 
 // Idempotent column adds for upgrading older databases.
@@ -168,6 +178,7 @@ ensureColumn('users', 'is_private',       "INTEGER DEFAULT 0");
 ensureColumn('posts', 'type',  "TEXT DEFAULT 'take'");
 ensureColumn('posts', 'tags',  "TEXT DEFAULT '[]'");      // JSON array of team codes
 ensureColumn('posts', 'extra', "TEXT DEFAULT '{}'");       // JSON blob for type-specific data
+ensureColumn('posts', 'edited_at', "TEXT DEFAULT NULL");   // timestamp of last edit, null if never edited
 
 // Seed Terms / Privacy / About if they don't exist yet. Admins can edit
 // them from the admin console at /api/pages/:slug.

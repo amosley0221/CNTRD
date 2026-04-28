@@ -102,10 +102,12 @@ router.get('/users/search', (req, res) => {
     SELECT ${SELECT_USER}
     FROM users
     WHERE banned = 0 AND id != ?
+      AND id NOT IN (SELECT blocked_id FROM blocks WHERE blocker_id = ?)
+      AND id NOT IN (SELECT blocker_id FROM blocks WHERE blocked_id = ?)
       AND (username LIKE ? OR display_name LIKE ?)
     ORDER BY username
     LIMIT 25
-  `).all(req.user.id, like, like);
+  `).all(req.user.id, req.user.id, req.user.id, like, like);
   res.json(rows.map(hydrateUser));
 });
 
@@ -125,7 +127,16 @@ router.post('/', (req, res) => {
   const validRows = db.prepare(`
     SELECT id FROM users WHERE banned = 0 AND id IN (${userIds.map(() => '?').join(',')})
   `).all(...userIds);
-  const validIds = validRows.map(r => r.id).filter(id => id !== req.user.id);
+  // Drop anyone the caller has blocked or who has blocked the caller.
+  const blockRows = db.prepare(`
+    SELECT blocked_id AS id FROM blocks WHERE blocker_id = ?
+    UNION
+    SELECT blocker_id AS id FROM blocks WHERE blocked_id = ?
+  `).all(req.user.id, req.user.id);
+  const blocked = new Set(blockRows.map(r => r.id));
+  const validIds = validRows
+    .map(r => r.id)
+    .filter(id => id !== req.user.id && !blocked.has(id));
   if (!validIds.length) return res.status(400).json({ error: 'No valid recipients' });
 
   if (!isGroup && validIds.length === 1) {

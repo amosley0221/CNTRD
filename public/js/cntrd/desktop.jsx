@@ -12,11 +12,16 @@ function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays, games, screen, 
       fontFamily: 'var(--cn-font-body)',
       display: 'grid',
       gridTemplateColumns: '232px 1fr 360px',
+      // Force a single row that stretches to the container's height,
+      // never to the content's. Without this, posts overflow the viewport
+      // and the feed's overflow:auto has nothing to clip.
+      gridTemplateRows: 'minmax(0, 1fr)',
       overflow: 'hidden',
     }}>
       <DesktopNav onNav={onNav} me={me} screen={screen} unreadMessages={unreadMessages} unreadNotifs={unreadNotifs} />
       <div style={{
-        position: 'relative',          // anchors absolutely-positioned children
+        position: 'relative',
+        height: '100%', minHeight: 0,         // allow the inner <main> to shrink + scroll
         overflow: 'hidden',
         borderRight: '0.5px solid var(--cn-border)',
       }}>
@@ -75,6 +80,7 @@ function DesktopMainContent({ screen, ...props }) {
     admin:        AdminScreen,
     teams:        TeamsEditorScreen,
     leagues:      LeaguesEditorScreen,
+    blocks:       BlockedAccountsScreen,
     terms:        TermsScreen,
     privacy:      PrivacyScreen,
     about:        AboutScreen,
@@ -196,7 +202,7 @@ function DesktopFeed({ tweaks, onNav, posts, plays, query }) {
       })
     : allItems;
   return (
-    <main style={{ overflowY: 'auto', borderRight: '0.5px solid var(--cn-border)' }}>
+    <main style={{ height: '100%', overflowY: 'auto' }}>
       <div style={{
         position: 'sticky', top: 0, zIndex: 5,
         padding: '14px 28px',

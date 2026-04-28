@@ -364,6 +364,12 @@ function SettingsScreen({ tweaks, setTweak, onNav, me, onMeUpdated, unreadNotifs
             label="Private profile"
             sub={meUser.is_private ? 'New followers must be approved by you' : 'Anyone can follow you and see your posts'}
             right={<ToggleSwitch on={!!meUser.is_private} onChange={togglePrivate} />}
+          />
+          <Row
+            label="Blocked accounts"
+            sub="Manage who you've blocked"
+            right={<Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />}
+            onClick={() => onNav?.('blocks')}
             last
           />
         </Section>

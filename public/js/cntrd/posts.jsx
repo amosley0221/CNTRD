@@ -1,12 +1,39 @@
 // posts.jsx — feed item components for CNTRD
 // Renders the different post types: take, photo, score, poll, clip, box, rumor.
 
-function PostHeader({ user, time, tags }) {
+// Wired by app.jsx to thread current-user info + action handlers down to
+// every PostShell without prop-drilling. Defaults are no-ops.
+const PostActionsContext = React.createContext({
+  currentUserId: null,
+  onPostUpdated: null,    // (updated) => void
+  onPostDeleted: null,    // (id) => void
+  onUserBlocked: null,    // (userId) => void
+});
+
+const EDIT_WINDOW_SEC = 30;
+function secondsTilEditDeadline(post) {
+  if (!post?.created_at) return 0;
+  const t = Date.parse(String(post.created_at).replace(' ', 'T') + 'Z');
+  if (!Number.isFinite(t)) return 0;
+  return Math.max(0, Math.ceil((t + EDIT_WINDOW_SEC * 1000 - Date.now()) / 1000));
+}
+
+function PostHeader({ user, time, tags, edited, postId, isMine, canEdit, editLabel, onEdit, onDelete, onBlock }) {
   const u = (typeof user === 'string')
     ? (USERS[user] || USERS.mike_b)
     : (user || USERS.mike_b);
+  const [menuOpen, setMenuOpen] = React.useState(false);
+
+  // Dismiss the dropdown on any outside click.
+  React.useEffect(() => {
+    if (!menuOpen) return;
+    const handler = () => setMenuOpen(false);
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [menuOpen]);
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, position: 'relative' }}>
       <Avatar user={u} size={36} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', lineHeight: 1.2 }}>
@@ -21,10 +48,65 @@ function PostHeader({ user, time, tags }) {
           )}
         </div>
         <div style={{ fontSize: 12, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)' }}>
-          @{u.username} · {time}
+          @{u.username} · {time}{edited ? ' · edited' : ''}
         </div>
       </div>
-      <button style={iconBtnStyle()}><Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" /></button>
+      <div style={{ position: 'relative' }}>
+        <button
+          onClick={(e) => { e.stopPropagation(); setMenuOpen(o => !o); }}
+          style={iconBtnStyle()}
+          aria-label="Post actions"
+        >
+          <Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />
+        </button>
+        {menuOpen && (
+          <PostActionMenu
+            isMine={isMine}
+            canEdit={canEdit}
+            editLabel={editLabel}
+            onEdit={() => { setMenuOpen(false); onEdit?.(); }}
+            onDelete={() => { setMenuOpen(false); onDelete?.(); }}
+            onBlock={() => { setMenuOpen(false); onBlock?.(); }}
+            otherUsername={u.username}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PostActionMenu({ isMine, canEdit, editLabel, onEdit, onDelete, onBlock, otherUsername }) {
+  const items = [];
+  if (isMine && canEdit) items.push({ label: editLabel || 'Edit', onClick: onEdit });
+  if (isMine)            items.push({ label: 'Delete post', danger: true, onClick: onDelete });
+  if (!isMine)           items.push({ label: `Block @${otherUsername}`, danger: true, onClick: onBlock });
+  if (!items.length)     items.push({ label: 'Nothing here yet', disabled: true });
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        position: 'absolute', top: '100%', right: 0, marginTop: 4,
+        minWidth: 200,
+        background: 'var(--cn-bg-elev)',
+        border: '0.5px solid var(--cn-border)',
+        borderRadius: 10,
+        boxShadow: '0 12px 28px rgba(0,0,0,0.35)',
+        overflow: 'hidden',
+        zIndex: 20,
+      }}
+    >
+      {items.map((it, i) => (
+        <button key={i} onClick={it.onClick} disabled={it.disabled} style={{
+          display: 'block', width: '100%',
+          padding: '10px 14px',
+          background: 'transparent', border: 'none',
+          color: it.disabled ? 'var(--cn-text-mute)' : (it.danger ? 'var(--cn-danger)' : 'var(--cn-text)'),
+          fontSize: 13, fontWeight: 600, textAlign: 'left',
+          cursor: it.disabled ? 'default' : 'pointer',
+          fontFamily: 'var(--cn-font-body)',
+          borderBottom: i < items.length - 1 ? '0.5px solid var(--cn-border)' : 'none',
+        }}>{it.label}</button>
+      ))}
     </div>
   );
 }
@@ -89,6 +171,64 @@ function PostFooter({ likes, replies, reposts, postId, initiallyLiked }) {
 }
 
 function PostShell({ children, post }) {
+  const { currentUserId, onPostUpdated, onPostDeleted, onUserBlocked } = React.useContext(PostActionsContext);
+  const isMine = !!currentUserId && post.user?.id === currentUserId;
+
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState(post.content || post.text || '');
+  const [saving, setSaving] = React.useState(false);
+  const [err, setErr] = React.useState(null);
+  const [secondsLeft, setSecondsLeft] = React.useState(() => secondsTilEditDeadline(post));
+
+  // Tick every second so the menu auto-disables Edit when the window expires.
+  React.useEffect(() => {
+    setSecondsLeft(secondsTilEditDeadline(post));
+    if (!isMine) return;
+    const id = setInterval(() => {
+      const left = secondsTilEditDeadline(post);
+      setSecondsLeft(left);
+      if (left <= 0) clearInterval(id);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [post.created_at, isMine]);
+
+  const canEdit = isMine && secondsLeft > 0;
+
+  const beginEdit = () => {
+    setDraft(post.content || post.text || '');
+    setErr(null);
+    setEditing(true);
+  };
+  const save = async () => {
+    if (saving) return;
+    setSaving(true); setErr(null);
+    try {
+      const updated = await window.API.editPost(post.id, draft);
+      onPostUpdated?.(updated);
+      setEditing(false);
+    } catch (e) {
+      setErr(e.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+  const remove = async () => {
+    if (typeof confirm === 'function' && !confirm('Delete this post permanently?')) return;
+    try {
+      await window.API.deletePost(post.id);
+      onPostDeleted?.(post.id);
+    } catch (e) { alert(e.message || 'Delete failed'); }
+  };
+  const block = async () => {
+    const handle = post.user?.username;
+    if (!handle) return;
+    if (typeof confirm === 'function' && !confirm(`Block @${handle}? You won't see their posts and they won't see yours.`)) return;
+    try {
+      await window.API.blockUser(handle);
+      onUserBlocked?.(post.user.id);
+    } catch (e) { alert(e.message || 'Block failed'); }
+  };
+
   return (
     <article style={{
       padding: 'var(--cn-post-pad-v) var(--cn-post-pad-h)',
@@ -98,10 +238,70 @@ function PostShell({ children, post }) {
       fontFamily: 'var(--cn-font-body)',
       fontSize: 'var(--cn-font-body-size)',
     }}>
-      <PostHeader user={post.user} time={post.time} tags={post.tags} />
-      {children}
+      <PostHeader
+        user={post.user} time={post.time} tags={post.tags}
+        edited={!!post.edited_at}
+        postId={post.id}
+        isMine={isMine}
+        canEdit={canEdit}
+        editLabel={canEdit ? `Edit (${secondsLeft}s left)` : null}
+        onEdit={beginEdit}
+        onDelete={remove}
+        onBlock={block}
+      />
+      {editing ? (
+        <PostEditEditor
+          draft={draft} onDraftChange={setDraft}
+          secondsLeft={secondsLeft}
+          saving={saving} err={err}
+          onSave={save} onCancel={() => setEditing(false)}
+        />
+      ) : children}
       <PostFooter likes={post.likes} replies={post.replies} reposts={post.reposts} postId={post.id} initiallyLiked={post.liked} />
     </article>
+  );
+}
+
+function PostEditEditor({ draft, onDraftChange, secondsLeft, saving, err, onSave, onCancel }) {
+  const max = 280;
+  return (
+    <div style={{ marginLeft: 46 }}>
+      <textarea
+        value={draft}
+        onChange={(e) => onDraftChange(e.target.value.slice(0, max))}
+        autoFocus
+        style={{
+          width: '100%', minHeight: 80, padding: '10px 12px',
+          background: 'var(--cn-bg-elev)',
+          border: '0.5px solid var(--cn-border-s)',
+          borderRadius: 10,
+          color: 'var(--cn-text)',
+          fontFamily: 'var(--cn-font-body)', fontSize: 15, lineHeight: 1.4,
+          resize: 'vertical', outline: 'none',
+        }}
+      />
+      {err && <div style={{ marginTop: 6, fontSize: 12, color: 'var(--cn-danger)', fontFamily: 'var(--cn-font-mono)' }}>{err}</div>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+        <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>
+          {secondsLeft}s left · {max - draft.length} chars
+        </span>
+        <span style={{ flex: 1 }} />
+        <button onClick={onCancel} style={{
+          padding: '6px 12px', borderRadius: 999,
+          background: 'transparent', color: 'var(--cn-text-dim)',
+          border: '0.5px solid var(--cn-border-s)', cursor: 'pointer',
+          fontWeight: 600, fontSize: 12, fontFamily: 'var(--cn-font-body)',
+        }}>Cancel</button>
+        <button onClick={onSave} disabled={saving || !draft.trim() || secondsLeft <= 0} style={{
+          padding: '6px 14px', borderRadius: 999,
+          background: saving || !draft.trim() || secondsLeft <= 0 ? 'var(--cn-bg-elev2)' : 'var(--cn-accent)',
+          color:      saving || !draft.trim() || secondsLeft <= 0 ? 'var(--cn-text-mute)' : 'var(--cn-on-accent)',
+          border: 'none',
+          cursor: saving || !draft.trim() || secondsLeft <= 0 ? 'not-allowed' : 'pointer',
+          fontWeight: 700, fontSize: 12, fontFamily: 'var(--cn-font-body)',
+        }}>{saving ? 'Saving…' : 'Save'}</button>
+      </div>
+    </div>
   );
 }
 
@@ -475,4 +675,5 @@ Object.assign(window, {
   Post, PostShell, PostHeader, PostFooter,
   TakePost, ScorePost, PhotoPost, PollPost, ClipPost, BoxPost, RumorPost,
   PhotoPlaceholder,
+  PostActionsContext,
 });

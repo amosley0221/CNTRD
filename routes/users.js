@@ -207,6 +207,60 @@ router.post('/:username/follow-request/reject', requireAuth, (req, res) => {
   res.json({ rejected: true });
 });
 
+// Block / unblock another user. Blocking severs any existing follow in
+// either direction and clears any pending follow request between them.
+router.post('/:username/block', requireAuth, (req, res) => {
+  const target = db.prepare('SELECT id FROM users WHERE username = ?').get(req.params.username);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  if (target.id === req.user.id) return res.status(400).json({ error: 'Cannot block yourself' });
+
+  const tx = db.transaction(() => {
+    db.prepare('INSERT OR IGNORE INTO blocks (blocker_id, blocked_id) VALUES (?, ?)').run(req.user.id, target.id);
+    // Tear down both directions of follow + pending requests.
+    const a = db.prepare('DELETE FROM follows WHERE follower_id = ? AND following_id = ?').run(req.user.id, target.id);
+    const b = db.prepare('DELETE FROM follows WHERE follower_id = ? AND following_id = ?').run(target.id, req.user.id);
+    if (a.changes) {
+      db.prepare('UPDATE users SET follower_count  = MAX(0, follower_count  - 1) WHERE id = ?').run(target.id);
+      db.prepare('UPDATE users SET following_count = MAX(0, following_count - 1) WHERE id = ?').run(req.user.id);
+    }
+    if (b.changes) {
+      db.prepare('UPDATE users SET follower_count  = MAX(0, follower_count  - 1) WHERE id = ?').run(req.user.id);
+      db.prepare('UPDATE users SET following_count = MAX(0, following_count - 1) WHERE id = ?').run(target.id);
+    }
+    db.prepare('DELETE FROM follow_requests WHERE (requester_id = ? AND target_id = ?) OR (requester_id = ? AND target_id = ?)')
+      .run(req.user.id, target.id, target.id, req.user.id);
+  });
+  tx();
+  res.json({ blocked: true });
+});
+
+router.post('/:username/unblock', requireAuth, (req, res) => {
+  const target = db.prepare('SELECT id FROM users WHERE username = ?').get(req.params.username);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  db.prepare('DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?').run(req.user.id, target.id);
+  res.json({ blocked: false });
+});
+
+// List my blocked users.
+router.get('/me/blocks', requireAuth, (req, res) => {
+  const rows = db.prepare(`
+    SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags, b.created_at
+    FROM blocks b JOIN users u ON u.id = b.blocked_id
+    WHERE b.blocker_id = ?
+    ORDER BY b.created_at DESC
+    LIMIT 200
+  `).all(req.user.id);
+  res.json(rows.map(u => ({
+    id: u.id,
+    username: u.username,
+    displayName: u.display_name || u.username,
+    avatar: u.avatar,
+    avatarHue: u.avatar_hue ?? 200,
+    teams: JSON.parse(u.team_tags || '[]'),
+    blocked_at: u.created_at,
+  })));
+});
+
 // Followers / Following / Posts ---------
 
 router.get('/:username/followers', (req, res) => {

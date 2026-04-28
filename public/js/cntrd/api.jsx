@@ -50,6 +50,8 @@ const API = {
   explore()                { return request('GET',  '/api/posts/explore'); },
   postsByTag(code)         { return request('GET',  `/api/posts/by-tag/${encodeURIComponent(code)}`); },
   createPost(payload)      { return request('POST', '/api/posts', payload); },
+  editPost(id, content)    { return request('PATCH',`/api/posts/${id}`, { content }); },
+  deletePost(id)           { return request('DELETE',`/api/posts/${id}`); },
   likePost(id)             { return request('POST', `/api/posts/${id}/like`); },
   repostPost(id)           { return request('POST', `/api/posts/${id}/repost`); },
   userPosts(username)      { return request('GET',  `/api/users/${username}/posts`); },
@@ -70,11 +72,14 @@ const API = {
   markNotifRead(id)                     { return request('POST', `/api/notifications/${id}/read`); },
   markAllNotifsRead()                   { return request('POST', '/api/notifications/read-all'); },
 
-  // Follow / privacy
+  // Follow / privacy / blocks
   followUser(username)                  { return request('POST', `/api/users/${username}/follow`); },
   followRequests()                      { return request('GET',  '/api/users/me/follow-requests'); },
   acceptFollowRequest(username)         { return request('POST', `/api/users/${username}/follow-request/accept`); },
   rejectFollowRequest(username)         { return request('POST', `/api/users/${username}/follow-request/reject`); },
+  blockUser(username)                   { return request('POST', `/api/users/${username}/block`); },
+  unblockUser(username)                 { return request('POST', `/api/users/${username}/unblock`); },
+  blocks()                              { return request('GET',  '/api/users/me/blocks'); },
 
   // Messages
   conversations()                       { return request('GET',  '/api/messages'); },
