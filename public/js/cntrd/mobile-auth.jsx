@@ -401,10 +401,44 @@ function SettingsScreen({ tweaks, setTweak, onNav, me, onMeUpdated, unreadNotifs
         </Section>
 
         <Section title="Account">
-          <Row label="Username" right={<span style={{ fontSize: 13, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)' }}>@{meUser.username}</span>} />
-          <Row label="Email" right={<span style={{ fontSize: 13, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)' }}>{meUser.email || '—'}</span>} />
-          <Row label="Change password" right={<Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />} />
-          <Row label="Profile picture" right={<Avatar user={meUser} size={28} />} last />
+          <Row
+            label="Username"
+            right={
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 13, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)' }}>@{meUser.username}</span>
+                <Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />
+              </div>
+            }
+            onClick={() => onNav?.('account')}
+          />
+          <Row
+            label="Email"
+            right={
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 13, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meUser.email || '—'}</span>
+                <Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />
+              </div>
+            }
+            onClick={() => onNav?.('account')}
+          />
+          <Row
+            label="Change password"
+            right={<Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />}
+            onClick={() => onNav?.('account')}
+          />
+          <Row
+            label="Profile picture"
+            right={
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {meUser.avatar
+                  ? <img src={meUser.avatar} alt="" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', border: '0.5px solid var(--cn-border-s)' }} />
+                  : <Avatar user={meUser} size={28} />}
+                <Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />
+              </div>
+            }
+            onClick={() => onNav?.('account')}
+            last
+          />
         </Section>
 
         <Section title="Following">
@@ -611,4 +645,4 @@ function ChatBubble({ m }) {
   );
 }
 
-Object.assign(window, { LoginScreen, SignupScreen, SettingsScreen, GamedayScreen });
+Object.assign(window, { LoginScreen, SignupScreen, SettingsScreen, GamedayScreen, passwordChecks, passwordOK, PasswordChecklist });

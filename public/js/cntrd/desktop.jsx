@@ -81,6 +81,7 @@ function DesktopMainContent({ screen, ...props }) {
     teams:        TeamsEditorScreen,
     leagues:      LeaguesEditorScreen,
     blocks:       BlockedAccountsScreen,
+    account:      AccountScreen,
     terms:        TermsScreen,
     privacy:      PrivacyScreen,
     about:        AboutScreen,

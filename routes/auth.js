@@ -141,4 +141,55 @@ router.get('/me', requireAuth, (req, res) => {
   res.json(user);
 });
 
+// Update credentials — username / email / password. Any subset can be sent
+// in one call. Password changes additionally require current_password.
+router.patch('/account', requireAuth, (req, res) => {
+  const { username, email, current_password, new_password } = req.body || {};
+
+  const me = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (!me) return res.status(404).json({ error: 'User not found' });
+
+  const updates = [];
+  const values = [];
+
+  if (username !== undefined && username !== me.username) {
+    if (typeof username !== 'string') return res.status(400).json({ error: 'Username must be a string' });
+    if (username.length < 3 || username.length > 20) return res.status(400).json({ error: 'Username must be 3–20 characters' });
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) return res.status(400).json({ error: 'Username may only contain letters, numbers, and underscores' });
+    const taken = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, me.id);
+    if (taken) return res.status(409).json({ error: 'Username already taken' });
+    updates.push('username = ?'); values.push(username);
+  }
+
+  if (email !== undefined && email !== me.email) {
+    if (typeof email !== 'string' || !/.+@.+\..+/.test(email)) {
+      return res.status(400).json({ error: 'Invalid email' });
+    }
+    if (email.length > 120) return res.status(400).json({ error: 'Email too long' });
+    const taken = db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(email, me.id);
+    if (taken) return res.status(409).json({ error: 'Email already in use' });
+    updates.push('email = ?'); values.push(email);
+    // Recompute admin status based on the new email.
+    updates.push('is_admin = ?'); values.push(isAdminEmail(email) ? 1 : 0);
+  }
+
+  if (new_password !== undefined && new_password !== '') {
+    if (!current_password) return res.status(400).json({ error: 'Current password is required to change password' });
+    if (!bcrypt.compareSync(current_password, me.password)) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    const pwErrs = passwordErrors(new_password);
+    if (pwErrs.length) return res.status(400).json({ error: 'New password needs ' + pwErrs.join(', ') });
+    updates.push('password = ?'); values.push(bcrypt.hashSync(new_password, 10));
+  }
+
+  if (!updates.length) return res.status(400).json({ error: 'Nothing to update' });
+
+  values.push(me.id);
+  db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+
+  const updated = hydrate(db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`).get(me.id));
+  res.json(updated);
+});
+
 module.exports = router;

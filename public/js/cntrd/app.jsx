@@ -328,6 +328,7 @@ function CNTRDApp() {
     teams:        TeamsEditorScreen,
     leagues:      LeaguesEditorScreen,
     blocks:       BlockedAccountsScreen,
+    account:      AccountScreen,
     terms:        TermsScreen,
     privacy:      PrivacyScreen,
     about:        AboutScreen,

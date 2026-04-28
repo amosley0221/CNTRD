@@ -39,6 +39,7 @@ const API = {
   me()                     { return request('GET',  '/api/auth/me'); },
   login(payload)           { return request('POST', '/api/auth/login', payload); },
   register(payload)        { return request('POST', '/api/auth/register', payload); },
+  updateAccount(payload)   { return request('PATCH','/api/auth/account', payload); },
 
   teams()                  { return request('GET',  '/api/static/teams'); },
   allTeams()               { return request('GET',  '/api/teams/all'); },
