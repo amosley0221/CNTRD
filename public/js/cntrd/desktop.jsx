@@ -79,6 +79,7 @@ function DesktopMainContent({ screen, ...props }) {
     privacy:      PrivacyScreen,
     about:        AboutScreen,
     gameDetail:   GameDetailScreen,
+    tagFeed:      TagFeedScreen,
     messages:     MessagesRoot,
   };
   const Comp = map[screen] || DesktopFeed;

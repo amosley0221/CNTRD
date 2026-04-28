@@ -48,6 +48,7 @@ const API = {
 
   feed()                   { return request('GET',  '/api/posts/feed'); },
   explore()                { return request('GET',  '/api/posts/explore'); },
+  postsByTag(code)         { return request('GET',  `/api/posts/by-tag/${encodeURIComponent(code)}`); },
   createPost(payload)      { return request('POST', '/api/posts', payload); },
   likePost(id)             { return request('POST', `/api/posts/${id}/like`); },
   repostPost(id)           { return request('POST', `/api/posts/${id}/repost`); },

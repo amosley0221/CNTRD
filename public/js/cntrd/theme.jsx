@@ -127,7 +127,7 @@ function resolveTeam(idOrCode) {
 // ─────────────────────────────────────────────────────────────
 // TeamPill — colored pill with team code (option 0 from designs)
 // ─────────────────────────────────────────────────────────────
-function TeamPill({ code, size = 'sm', interactive = false, onClick }) {
+function TeamPill({ code, size = 'sm', onClick, noLink }) {
   const team = resolveTeam(code);
   if (!team) return null;
   const sizes = {
@@ -137,11 +137,20 @@ function TeamPill({ code, size = 'sm', interactive = false, onClick }) {
     lg: { h: 26, fs: 13, px: 10 },
   };
   const s = sizes[size] || sizes.sm;
-  // contrast-pick text color from primary
   const textCol = pickContrast(team.primary);
+  // By default any pill is a link to that team's tag feed. Anywhere that
+  // shouldn't navigate (e.g. inside the team-picker) passes `noLink`.
+  const handleClick = onClick || (noLink ? undefined : (e) => {
+    e.stopPropagation();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('cntrd:open-tag', { detail: code }));
+    }
+  });
+  const isClickable = !!handleClick;
   return (
     <span
-      onClick={onClick}
+      role={isClickable ? 'button' : undefined}
+      onClick={handleClick}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -154,9 +163,10 @@ function TeamPill({ code, size = 'sm', interactive = false, onClick }) {
         fontWeight: 800,
         letterSpacing: 0.4,
         fontFamily: 'var(--cn-font-body)',
-        cursor: interactive ? 'pointer' : 'default',
+        cursor: isClickable ? 'pointer' : 'default',
         boxShadow: `inset 0 0 0 1.5px ${team.accent}55`,
         whiteSpace: 'nowrap',
+        userSelect: 'none',
       }}
     >
       {team.code}

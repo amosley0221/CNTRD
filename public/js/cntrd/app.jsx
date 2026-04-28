@@ -88,6 +88,7 @@ function CNTRDApp() {
   const [plays, setPlays] = React.useState([]);
   const [games, setGames] = React.useState({ live: [], upcoming: [], recent: [] });
   const [selectedGame, setSelectedGame] = React.useState(null);  // { id, league }
+  const [selectedTag, setSelectedTag]   = React.useState(null);  // 'NFL:PHI' or 'PHI'
   const [messageContext, setMessageContext] = React.useState({ mode: 'list' });
   const [unreadMessages, setUnreadMessages] = React.useState(0);
   const [screen, setScreen] = React.useState('login');
@@ -239,6 +240,20 @@ function CNTRDApp() {
     if (updated) setMe(prev => ({ ...(prev || {}), ...normalizeMe(updated) }));
   }, []);
 
+  // Listen for global "open this team's tag feed" events fired from any
+  // <TeamPill>. Any pill click anywhere in the app routes through here.
+  React.useEffect(() => {
+    const handler = (e) => {
+      const code = e.detail;
+      if (!code) return;
+      setSelectedTag(code);
+      setScreen('tagFeed');
+      try { localStorage.setItem(STORAGE.screen, 'tagFeed'); } catch {}
+    };
+    window.addEventListener('cntrd:open-tag', handler);
+    return () => window.removeEventListener('cntrd:open-tag', handler);
+  }, []);
+
   // Click a game card → load the detail screen.
   const handleOpenGame = React.useCallback((game) => {
     if (!game?.id || !game?.league) return;
@@ -277,6 +292,7 @@ function CNTRDApp() {
     privacy:      PrivacyScreen,
     about:        AboutScreen,
     gameDetail:   GameDetailScreen,
+    tagFeed:      TagFeedScreen,
     messages:     MessagesRoot,
   };
   const ScreenComp = screenMap[screen] || FeedScreen;
@@ -290,7 +306,7 @@ function CNTRDApp() {
   const screenProps = {
     tweaks, setTweak, onNav: handleNav,
     me, posts, plays, games,
-    selectedGame,
+    selectedGame, selectedTag,
     messageContext, setMessageContext,
     unreadMessages,
     onUnread: setUnreadMessages,

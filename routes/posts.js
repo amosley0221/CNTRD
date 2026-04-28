@@ -139,6 +139,29 @@ router.get('/explore', optionalAuth, (req, res) => {
   res.json(rows.map(hydrate));
 });
 
+// Posts tagged with a specific team (composite "NFL:PHI" or bare "PHI").
+// Banned authors hidden. Public — anyone can view a team's tag feed.
+router.get('/by-tag/:code', optionalAuth, (req, res) => {
+  const code = String(req.params.code || '').trim().toUpperCase();
+  if (!isValidTeamCode(code)) return res.status(400).json({ error: 'Invalid tag' });
+
+  const cursor = req.query.cursor;
+  // SQLite has no JSON_CONTAINS; tags are stored as a JSON-array string,
+  // so a LIKE on the quoted code is the cheapest predicate. The pattern
+  // matches "NFL:PHI" or "PHI" because we surround with `"` quotes.
+  const params = [`%"${code}"%`];
+  let query = `${SELECT_POST}
+    WHERE p.reply_to IS NULL
+      AND u.banned = 0
+      AND p.tags LIKE ?`;
+  if (cursor) { query += ' AND p.created_at < ?'; params.push(cursor); }
+  query += ' ORDER BY p.created_at DESC LIMIT 50';
+
+  const rows = db.prepare(query).all(...params);
+  rows.forEach(r => attachInteraction(r, req.user?.id));
+  res.json(rows.map(hydrate));
+});
+
 // Single post + replies
 router.get('/:id', optionalAuth, (req, res) => {
   const row = db.prepare(`${SELECT_POST} WHERE p.id = ?`).get(req.params.id);
