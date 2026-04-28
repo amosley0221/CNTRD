@@ -5,8 +5,8 @@
 function ProfileScreen({ tweaks, onNav, me, posts }) {
   const u = me || ME;
   const teams = (u.teams && u.teams.length) ? u.teams : ['LAL'];
-  const coverFrom = TEAMS[teams[0]] || TEAMS.LAL;
-  const coverTo   = TEAMS[teams[teams.length - 1]] || coverFrom;
+  const coverFrom = resolveTeam(teams[0]) || resolveTeam('LAL') || { primary: '#552583', accent: '#FDB927' };
+  const coverTo   = resolveTeam(teams[teams.length - 1]) || coverFrom;
   const myPosts = (posts && posts.length)
     ? posts
     : POSTS.filter(p =>
@@ -93,7 +93,7 @@ function ProfileScreen({ tweaks, onNav, me, posts }) {
           {tab === 'plays' && (
             <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
               {Array.from({ length: 9 }).map((_, i) => {
-                const t = TEAMS[teams[i % teams.length]] || coverFrom;
+                const t = resolveTeam(teams[i % teams.length]) || coverFrom;
                 return (
                   <div key={i} style={{
                     aspectRatio: 9/16, borderRadius: 6, overflow: 'hidden',
@@ -147,7 +147,8 @@ function FanCard({ teams }) {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {teams.map(code => {
-          const t = TEAMS[code];
+          const t = resolveTeam(code);
+          if (!t) return null;
           return (
             <div key={code} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ width: 22, height: 22, borderRadius: 4, background: t.primary, color: pickContrast(t.primary), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800 }}>{t.code}</div>
@@ -206,16 +207,21 @@ function ComposerScreen({ tweaks, onNav, onPost, me }) {
           <Avatar user={meUser} size={36} />
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
-              {meTeams.map(t => (
-                <button key={t} onClick={() => setTag(t)} style={{
-                  background: tag === t ? TEAMS[t].primary : 'transparent',
-                  border: `0.5px solid ${tag === t ? TEAMS[t].primary : 'var(--cn-border-s)'}`,
-                  color: tag === t ? pickContrast(TEAMS[t].primary) : 'var(--cn-text-dim)',
-                  borderRadius: 999, padding: '3px 9px',
-                  fontSize: 11, fontWeight: 700,
-                  cursor: 'pointer',
-                }}>{TEAMS[t].code}</button>
-              ))}
+              {meTeams.map(t => {
+                const team = resolveTeam(t);
+                if (!team) return null;
+                const selected = tag === t;
+                return (
+                  <button key={t} onClick={() => setTag(t)} style={{
+                    background: selected ? team.primary : 'transparent',
+                    border: `0.5px solid ${selected ? team.primary : 'var(--cn-border-s)'}`,
+                    color: selected ? pickContrast(team.primary) : 'var(--cn-text-dim)',
+                    borderRadius: 999, padding: '3px 9px',
+                    fontSize: 11, fontWeight: 700,
+                    cursor: 'pointer',
+                  }}>{team.code}</button>
+                );
+              })}
               <button style={{ background: 'transparent', border: '0.5px dashed var(--cn-border-s)', color: 'var(--cn-text-mute)', borderRadius: 999, padding: '3px 9px', fontSize: 11, cursor: 'pointer' }}>+ tag</button>
             </div>
             <textarea
@@ -275,14 +281,15 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me }) {
   const [overlay, setOverlay] = React.useState(meTeams[0]);
   const [stickerKind, setStickerKind] = React.useState('score');
   const [busy, setBusy] = React.useState(false);
+  const overlayTeam = resolveTeam(overlay);
   const capture = async () => {
     if (busy) return;
     setBusy(true);
     try {
       if (onCreate) {
         await onCreate({
-          team_code: overlay,
-          label: 'My ' + (TEAMS[overlay]?.name || 'play'),
+          team_code: overlayTeam?.code || overlay,
+          label: 'My ' + (overlayTeam?.name || 'play'),
           hue: meUser.avatarHue ?? 200,
         });
       }
@@ -347,8 +354,8 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me }) {
           </div>
         </div>
       )}
-      {stickerKind === 'tag' && (
-        <div style={{ position: 'absolute', top: '40%', left: 30, transform: 'rotate(-8deg)', padding: '6px 12px', background: TEAMS[overlay].primary, color: pickContrast(TEAMS[overlay].primary), fontFamily: 'var(--cn-font-display)', fontWeight: 800, fontSize: 28, letterSpacing: 0.5, zIndex: 3, boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>GO {TEAMS[overlay].code}</div>
+      {stickerKind === 'tag' && overlayTeam && (
+        <div style={{ position: 'absolute', top: '40%', left: 30, transform: 'rotate(-8deg)', padding: '6px 12px', background: overlayTeam.primary, color: pickContrast(overlayTeam.primary), fontFamily: 'var(--cn-font-display)', fontWeight: 800, fontSize: 28, letterSpacing: 0.5, zIndex: 3, boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>GO {overlayTeam.code}</div>
       )}
 
       {/* sticker tray */}

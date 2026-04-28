@@ -38,6 +38,7 @@ function DesktopMainContent({ screen, ...props }) {
     plays:        PlaysViewerScreen,
     playsCreator: PlaysCreatorScreen,
     admin:        AdminScreen,
+    teams:        TeamsEditorScreen,
   };
   const Comp = map[screen] || DesktopFeed;
   return <Comp {...props} />;

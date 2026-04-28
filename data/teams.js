@@ -30,10 +30,14 @@ const TEAMS = {
 
 const VALID_TEAM_CODES = new Set(Object.keys(TEAMS));
 
-// Real ESPN data has hundreds of teams; we don't keep a static whitelist.
-// Validate the *shape* of a code instead — uppercase letters/digits, 1–8 chars.
+// Stable team identifier shape: either a bare code (LAL, BOS — legacy data
+// from before we supported multi-league disambiguation) or a composite
+// `LEAGUE:CODE` (NFL:PHI, NBA:PHI). Uppercase A–Z and 0–9 only, capped at
+// 8 chars per segment.
 function isValidTeamCode(code) {
-  return typeof code === 'string' && /^[A-Z0-9]{1,8}$/.test(code.trim().toUpperCase());
+  if (typeof code !== 'string') return false;
+  const s = code.trim().toUpperCase();
+  return /^[A-Z0-9]{1,8}(:[A-Z0-9]{1,8})?$/.test(s);
 }
 
 module.exports = { TEAMS, VALID_TEAM_CODES, isValidTeamCode };

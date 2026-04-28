@@ -188,8 +188,10 @@ async function fetchLeagueTeams(league) {
     const list = wrap.teams || [];
     for (const item of list) {
       const t = item.team || {};
+      const code = (t.abbreviation || (t.shortDisplayName || t.displayName || '???').slice(0, 4)).toUpperCase();
       out.push({
-        code: (t.abbreviation || (t.shortDisplayName || t.displayName || '???').slice(0, 4)).toUpperCase(),
+        code,
+        key: `${league.code}:${code}`,           // disambiguates across leagues (NFL:PHI vs NBA:PHI)
         name: t.shortDisplayName || t.name || t.displayName || '',
         fullName: t.displayName || t.name || '',
         location: t.location || '',

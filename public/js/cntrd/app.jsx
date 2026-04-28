@@ -123,10 +123,16 @@ function CNTRDApp() {
       if (byLeague && Object.keys(byLeague).length) {
         window.TEAMS_BY_LEAGUE = byLeague;
         const flat = { ...(window.TEAMS || {}) };
+        const byKey = { ...(window.TEAMS_BY_KEY || {}) };
         for (const list of Object.values(byLeague)) {
-          for (const t of (list || [])) flat[t.code] = flat[t.code] || t;
+          for (const t of (list || [])) {
+            flat[t.code] = flat[t.code] || t;          // legacy bare-code lookup
+            const key = t.key || `${t.league}:${t.code}`;
+            byKey[key] = t;                             // composite-key lookup
+          }
         }
         window.TEAMS = flat;
+        window.TEAMS_BY_KEY = byKey;
       }
 
       const user = serverMe ? normalizeMe(serverMe) : null;

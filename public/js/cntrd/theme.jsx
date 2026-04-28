@@ -110,11 +110,25 @@ function pickContrast(hex) {
   return lum > 0.55 ? '#000' : '#fff';
 }
 
+// Resolve a stored team identifier (composite "NFL:PHI" or bare "PHI")
+// to a team record from the dynamic registry, falling back to the static map.
+function resolveTeam(idOrCode) {
+  if (!idOrCode) return null;
+  const s = String(idOrCode).trim().toUpperCase();
+  if (window.TEAMS_BY_KEY && window.TEAMS_BY_KEY[s]) return window.TEAMS_BY_KEY[s];
+  if (TEAMS[s]) return TEAMS[s];
+  if (s.includes(':')) {
+    const bare = s.split(':').pop();
+    return TEAMS[bare] || null;
+  }
+  return null;
+}
+
 // ─────────────────────────────────────────────────────────────
 // TeamPill — colored pill with team code (option 0 from designs)
 // ─────────────────────────────────────────────────────────────
 function TeamPill({ code, size = 'sm', interactive = false, onClick }) {
-  const team = TEAMS[code];
+  const team = resolveTeam(code);
   if (!team) return null;
   const sizes = {
     xs: { h: 14, fs: 9,  px: 5 },
@@ -228,6 +242,6 @@ function Icon({ name, size = 20, stroke = 'currentColor', fill = 'none', sw = 1.
 }
 
 Object.assign(window, {
-  THEMES, TYPE_PAIRS, DENSITY, applyTheme, pickContrast,
+  THEMES, TYPE_PAIRS, DENSITY, applyTheme, pickContrast, resolveTeam,
   TeamPill, TeamTagsRow, Avatar, Icon,
 });

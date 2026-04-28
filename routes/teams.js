@@ -10,7 +10,8 @@ function staticFallback() {
   const out = {};
   for (const t of Object.values(TEAMS)) {
     (out[t.league] = out[t.league] || []).push({
-      code: t.code, name: t.name, fullName: t.name,
+      code: t.code, key: `${t.league}:${t.code}`,
+      name: t.name, fullName: t.name,
       league: t.league, primary: t.primary, accent: t.accent,
     });
   }

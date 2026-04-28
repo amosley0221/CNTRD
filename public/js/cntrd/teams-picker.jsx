@@ -63,10 +63,12 @@ function TeamPickButton({ team, selected, onClick }) {
   );
 }
 
+function teamKey(t) { return t.key || `${t.league}:${t.code}`; }
+
 function LeagueSection({ leagueCode, teams, picks, onToggle, defaultOpen }) {
   const [open, setOpen] = React.useState(!!defaultOpen);
   const [q, setQ] = React.useState('');
-  const selectedCount = teams.filter(t => picks.includes(t.code)).length;
+  const selectedCount = teams.filter(t => picks.includes(teamKey(t))).length;
   const filtered = q
     ? teams.filter(t => {
         const q2 = q.toLowerCase();
@@ -128,14 +130,17 @@ function LeagueSection({ leagueCode, teams, picks, onToggle, defaultOpen }) {
               <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)', padding: '4px 0' }}>
                 No matches.
               </div>
-            ) : filtered.map(t => (
-              <TeamPickButton
-                key={t.code + '-' + (t.fullName || t.name)}
-                team={t}
-                selected={picks.includes(t.code)}
-                onClick={() => onToggle(t.code)}
-              />
-            ))}
+            ) : filtered.map(t => {
+              const key = teamKey(t);
+              return (
+                <TeamPickButton
+                  key={key + '-' + (t.fullName || t.name)}
+                  team={t}
+                  selected={picks.includes(key)}
+                  onClick={() => onToggle(key)}
+                />
+              );
+            })}
           </div>
         </div>
       )}
