@@ -96,7 +96,12 @@ function PlayBubble({ play, add, onClick }) {
   );
 }
 
-function LiveGamesStrip({ onJoin }) {
+function LiveGamesStrip({ onJoin, games }) {
+  const live = (games?.live || []);
+  const upcoming = (games?.upcoming || []);
+  const showing = live.length ? live : upcoming;
+  if (!showing.length) return null;
+  const empty = !live.length;
   return (
     <div style={{
       padding: '10px 16px 12px',
@@ -106,39 +111,62 @@ function LiveGamesStrip({ onJoin }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
         <span style={{
           width: 6, height: 6, borderRadius: '50%',
-          background: 'var(--cn-live)',
-          animation: 'cn-pulse 1.5s ease-in-out infinite',
+          background: empty ? 'var(--cn-text-mute)' : 'var(--cn-live)',
+          animation: empty ? 'none' : 'cn-pulse 1.5s ease-in-out infinite',
         }} />
         <span style={{
           fontFamily: 'var(--cn-font-mono)', fontSize: 10,
-          color: 'var(--cn-live)', fontWeight: 700, letterSpacing: 0.7,
-        }}>LIVE NOW · TAP TO JOIN GAMEDAY CHAT</span>
+          color: empty ? 'var(--cn-text-mute)' : 'var(--cn-live)',
+          fontWeight: 700, letterSpacing: 0.7,
+        }}>
+          {empty ? 'NOTHING LIVE · UPCOMING TODAY' : 'LIVE NOW · TAP TO JOIN GAMEDAY CHAT'}
+        </span>
       </div>
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none' }}>
-        {LIVE_GAMES.map(g => <LiveGameCard key={g.id} game={g} onClick={onJoin} />)}
+        {showing.map(g => <LiveGameCard key={g.id} game={g} onClick={empty ? undefined : onJoin} />)}
+      </div>
+    </div>
+  );
+}
+
+function RecentGamesStrip({ games }) {
+  const recent = games?.recent || [];
+  if (!recent.length) return null;
+  return (
+    <div style={{
+      padding: '10px 16px 12px',
+      borderBottom: '0.5px solid var(--cn-border)',
+      background: 'var(--cn-bg)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+        <span style={{
+          fontFamily: 'var(--cn-font-mono)', fontSize: 10,
+          color: 'var(--cn-text-mute)', fontWeight: 700, letterSpacing: 0.7,
+        }}>RECENT FINALS</span>
+      </div>
+      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none' }}>
+        {recent.map(g => <LiveGameCard key={g.id} game={g} />)}
       </div>
     </div>
   );
 }
 
 function LiveGameCard({ game, onClick }) {
-  const home = TEAMS[game.home], away = TEAMS[game.away];
+  const home = game.homeTeam || TEAMS[game.home] || { code: game.home, name: game.home, primary: '#666', accent: '#999' };
+  const away = game.awayTeam || TEAMS[game.away] || { code: game.away, name: game.away, primary: '#666', accent: '#999' };
   return (
     <div onClick={onClick} style={{
       flexShrink: 0,
-      minWidth: 168,
+      minWidth: 184,
       padding: '10px 12px',
       background: 'var(--cn-bg-elev)',
       border: '0.5px solid var(--cn-border)',
       borderRadius: 10,
-      cursor: 'pointer',
+      cursor: onClick ? 'pointer' : 'default',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, color: 'var(--cn-text-mute)', letterSpacing: 0.5 }}>
-          {game.league} · {game.period} {game.clock}
-        </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontFamily: 'var(--cn-font-mono)', fontSize: 9, color: 'var(--cn-text-mute)' }}>
-          <Icon name="eye" size={10} sw={1.8} /> {(game.viewers/1000).toFixed(1)}k
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 6 }}>
+        <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, color: 'var(--cn-text-mute)', letterSpacing: 0.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {game.league} · {game.period}{game.clock ? ' ' + game.clock : ''}
         </span>
       </div>
       <CompactScoreRow team={away} score={game.awayScore} />
@@ -287,7 +315,7 @@ function BottomNav({ active = 'home', onChange }) {
 }
 
 // ─── FEED SCREEN ──────────────────────────────────────────────
-function FeedScreen({ tweaks, onNav, posts, plays }) {
+function FeedScreen({ tweaks, onNav, posts, plays, games }) {
   const editorial = tweaks.homeStyle === 'editorial';
   const items = (posts && posts.length ? posts : POSTS);
   return (
@@ -306,7 +334,8 @@ function FeedScreen({ tweaks, onNav, posts, plays }) {
           onPlay={() => onNav?.('plays')}
           onAdd={() => onNav?.('playsCreator')}
         />
-        {tweaks.showLiveStrip !== false && <LiveGamesStrip onJoin={() => onNav?.('chat')} />}
+        {tweaks.showLiveStrip !== false && <LiveGamesStrip games={games} onJoin={() => onNav?.('chat')} />}
+        <RecentGamesStrip games={games} />
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           {items.map(p => <Post key={p.id} post={p} />)}
         </div>
@@ -318,5 +347,5 @@ function FeedScreen({ tweaks, onNav, posts, plays }) {
 
 Object.assign(window, {
   FeedScreen, FeedHeader, EditorialHeader, PlaysRail, PlayBubble,
-  LiveGamesStrip, LiveGameCard, CompactScoreRow, BottomNav,
+  LiveGamesStrip, RecentGamesStrip, LiveGameCard, CompactScoreRow, BottomNav,
 });

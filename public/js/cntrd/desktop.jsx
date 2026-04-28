@@ -1,7 +1,7 @@
 // desktop.jsx — desktop web app for CNTRD
 // Three-column layout: left nav, center feed, right rail (gameday + trends)
 
-function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays }) {
+function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays, games }) {
   const [view, setView] = React.useState('feed');
   return (
     <div style={{
@@ -15,7 +15,7 @@ function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays }) {
     }}>
       <DesktopNav view={view} setView={setView} onNav={onNav} me={me} />
       <DesktopMain view={view} tweaks={tweaks} onNav={onNav} posts={posts} plays={plays} />
-      <DesktopRail tweaks={tweaks} onNav={onNav} />
+      <DesktopRail tweaks={tweaks} onNav={onNav} games={games} />
     </div>
   );
 }
@@ -168,8 +168,14 @@ function DesktopMain({ view, tweaks, onNav, posts, plays }) {
   );
 }
 
-function DesktopRail({ tweaks, onNav }) {
-  const game = LIVE_GAMES[0];
+function DesktopRail({ tweaks, onNav, games }) {
+  const live = games?.live || [];
+  const upcoming = games?.upcoming || [];
+  const recent = games?.recent || [];
+  const featured = live[0] || upcoming[0] || null;
+  const featuredIsLive = featured && live.length > 0;
+  const otherLive = live.slice(1);
+  const teamFor = (g, side) => g[side + 'Team'] || TEAMS[g[side]] || { code: g[side], name: g[side], primary: '#666', accent: '#999' };
   return (
     <aside style={{ overflowY: 'auto', padding: '20px 22px 40px', display: 'flex', flexDirection: 'column', gap: 18 }}>
       {/* Search */}
@@ -183,67 +189,91 @@ function DesktopRail({ tweaks, onNav }) {
         <span style={{ fontSize: 13, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-body)' }}>Search teams, players, fans</span>
       </div>
 
-      {/* Live gameday card */}
-      <div style={{
-        borderRadius: 14, overflow: 'hidden',
-        border: '0.5px solid var(--cn-border)',
-        background: 'var(--cn-bg-elev)',
-      }}>
+      {/* Featured (live > upcoming) */}
+      {featured ? (
         <div style={{
-          padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          background: 'var(--cn-bg-elev2)',
-          borderBottom: '0.5px solid var(--cn-border)',
+          borderRadius: 14, overflow: 'hidden',
+          border: '0.5px solid var(--cn-border)',
+          background: 'var(--cn-bg-elev)',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--cn-live)', animation: 'cn-pulse 1.5s ease-in-out infinite' }} />
-            <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-live)', fontWeight: 800, letterSpacing: 0.7 }}>GAMEDAY · {game.viewers.toLocaleString()} HERE</span>
+          <div style={{
+            padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: 'var(--cn-bg-elev2)',
+            borderBottom: '0.5px solid var(--cn-border)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: featuredIsLive ? 'var(--cn-live)' : 'var(--cn-text-mute)', animation: featuredIsLive ? 'cn-pulse 1.5s ease-in-out infinite' : 'none' }} />
+              <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: featuredIsLive ? 'var(--cn-live)' : 'var(--cn-text-mute)', fontWeight: 800, letterSpacing: 0.7 }}>
+                {featuredIsLive ? 'GAMEDAY · LIVE' : 'NEXT UP'}
+              </span>
+            </div>
+            <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)' }}>{featured.period}{featured.clock ? ' ' + featured.clock : ''}</span>
           </div>
-          <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)' }}>{game.period} {game.clock}</span>
+          <div style={{ padding: '12px 14px' }}>
+            <ScoreRow team={teamFor(featured, 'away')} score={featured.awayScore} winner={Number(featured.awayScore) > Number(featured.homeScore)} />
+            <div style={{ height: 6 }} />
+            <ScoreRow team={teamFor(featured, 'home')} score={featured.homeScore} winner={Number(featured.homeScore) > Number(featured.awayScore)} />
+          </div>
+          {featuredIsLive && (
+            <div style={{ borderTop: '0.5px solid var(--cn-border)', padding: '10px 14px', background: 'var(--cn-bg-elev2)' }}>
+              <button onClick={() => onNav?.('chat')} style={{
+                width: '100%', padding: '7px', borderRadius: 8,
+                background: 'var(--cn-text)', color: 'var(--cn-bg)',
+                border: 'none', cursor: 'pointer',
+                fontWeight: 700, fontSize: 12, fontFamily: 'var(--cn-font-body)',
+              }}>Join the chat →</button>
+            </div>
+          )}
         </div>
-        <div style={{ padding: '12px 14px' }}>
-          <ScoreRow team={TEAMS[game.away]} score={game.awayScore} winner={game.awayScore > game.homeScore} />
-          <div style={{ height: 6 }} />
-          <ScoreRow team={TEAMS[game.home]} score={game.homeScore} winner={game.homeScore > game.awayScore} />
+      ) : (
+        <div style={{ padding: '14px 16px', borderRadius: 14, border: '0.5px solid var(--cn-border)', background: 'var(--cn-bg-elev)', fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>
+          No live or upcoming games right now.
         </div>
-        {/* mini chat preview */}
-        <div style={{ borderTop: '0.5px solid var(--cn-border)', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6, background: 'var(--cn-bg-elev2)' }}>
-          {CHAT_MESSAGES.slice(0, 3).map(m => {
-            const u = USERS[m.user]; const team = m.side ? TEAMS[m.side] : null;
-            return (
-              <div key={m.id} style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontSize: 12 }}>
-                <span style={{ fontWeight: 700, color: team ? team.primary : 'var(--cn-text)' }}>@{u.username}</span>
-                <span style={{ flex: 1, color: 'var(--cn-text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.text}</span>
-              </div>
-            );
-          })}
-          <button onClick={() => onNav?.('chat')} style={{
-            marginTop: 4, padding: '7px', borderRadius: 8,
-            background: 'var(--cn-text)', color: 'var(--cn-bg)',
-            border: 'none', cursor: 'pointer',
-            fontWeight: 700, fontSize: 12, fontFamily: 'var(--cn-font-body)',
-          }}>Join the chat →</button>
-        </div>
-      </div>
+      )}
 
       {/* Other live games */}
-      <div>
-        <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Also Live</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {LIVE_GAMES.slice(1).map(g => (
-            <div key={g.id} style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '8px 12px', borderRadius: 10,
-              background: 'var(--cn-bg-elev)',
-              border: '0.5px solid var(--cn-border)',
-            }}>
-              <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, padding: '2px 5px', background: 'var(--cn-bg-elev2)', borderRadius: 3, color: 'var(--cn-text-mute)' }}>{g.league}</span>
-              <CompactScoreRow team={TEAMS[g.away]} score={g.awayScore} />
-              <span style={{ color: 'var(--cn-text-mute)', fontSize: 10 }}>·</span>
-              <CompactScoreRow team={TEAMS[g.home]} score={g.homeScore} />
-            </div>
-          ))}
+      {otherLive.length > 0 && (
+        <div>
+          <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Also live</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {otherLive.map(g => (
+              <div key={g.id} style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 12px', borderRadius: 10,
+                background: 'var(--cn-bg-elev)',
+                border: '0.5px solid var(--cn-border)',
+              }}>
+                <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, padding: '2px 5px', background: 'var(--cn-bg-elev2)', borderRadius: 3, color: 'var(--cn-text-mute)' }}>{g.league}</span>
+                <CompactScoreRow team={teamFor(g, 'away')} score={g.awayScore} />
+                <span style={{ color: 'var(--cn-text-mute)', fontSize: 10 }}>·</span>
+                <CompactScoreRow team={teamFor(g, 'home')} score={g.homeScore} />
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Recent finals */}
+      {recent.length > 0 && (
+        <div>
+          <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Recent finals</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {recent.slice(0, 8).map(g => (
+              <div key={g.id} style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 12px', borderRadius: 10,
+                background: 'var(--cn-bg-elev)',
+                border: '0.5px solid var(--cn-border)',
+              }}>
+                <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, padding: '2px 5px', background: 'var(--cn-bg-elev2)', borderRadius: 3, color: 'var(--cn-text-mute)' }}>{g.league}</span>
+                <CompactScoreRow team={teamFor(g, 'away')} score={g.awayScore} />
+                <span style={{ color: 'var(--cn-text-mute)', fontSize: 10 }}>·</span>
+                <CompactScoreRow team={teamFor(g, 'home')} score={g.homeScore} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Trending tags */}
       <div>

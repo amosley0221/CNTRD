@@ -83,6 +83,7 @@ function CNTRDApp() {
   const [bootstrapped, setBootstrapped] = React.useState(false);
   const [posts, setPosts] = React.useState([]);
   const [plays, setPlays] = React.useState([]);
+  const [games, setGames] = React.useState({ live: [], upcoming: [], recent: [] });
   const [screen, setScreen] = React.useState('login');
 
   const isWide = useMediaQuery('(min-width: 980px)');
@@ -144,6 +145,23 @@ function CNTRDApp() {
     return () => { cancelled = true; };
   }, [authed, bootstrapped]);
 
+  // Poll live + recent games every 60s.
+  React.useEffect(() => {
+    if (!bootstrapped) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const data = await API.games();
+        if (!cancelled && data) setGames({
+          live: data.live || [], upcoming: data.upcoming || [], recent: data.recent || [],
+        });
+      } catch { /* leave previous data alone */ }
+    };
+    tick();
+    const id = setInterval(tick, 60 * 1000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [bootstrapped]);
+
   const handleNav = React.useCallback((next) => {
     if (next === 'logout') {
       API.setToken(null);
@@ -204,7 +222,7 @@ function CNTRDApp() {
   // Common props for every screen — extras are ignored where unused.
   const screenProps = {
     tweaks, setTweak, onNav: handleNav,
-    me, posts, plays,
+    me, posts, plays, games,
     onLogin:  handleLogin,
     onSignup: handleSignup,
     onPost:   handlePost,

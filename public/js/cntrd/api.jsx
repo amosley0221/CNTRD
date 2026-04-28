@@ -41,7 +41,7 @@ const API = {
   register(payload)        { return request('POST', '/api/auth/register', payload); },
 
   teams()                  { return request('GET',  '/api/static/teams'); },
-  liveGames()              { return request('GET',  '/api/static/games'); },
+  games()                  { return request('GET',  '/api/games'); },
 
   feed()                   { return request('GET',  '/api/posts/feed'); },
   explore()                { return request('GET',  '/api/posts/explore'); },

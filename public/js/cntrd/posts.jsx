@@ -119,55 +119,66 @@ function TakePost({ post }) {
 
 // ─── SCORE / LIVE GAME UPDATE ─────────────────────────────────
 function ScorePost({ post }) {
-  const game = LIVE_GAMES.find(g => g.id === post.game);
-  const home = TEAMS[game.home], away = TEAMS[game.away];
+  // post.extra may carry a game snapshot (homeTeam/awayTeam/scores/period/league/state).
+  const snap = post.extra || {};
+  const home = snap.homeTeam || (snap.home && TEAMS[snap.home]) || null;
+  const away = snap.awayTeam || (snap.away && TEAMS[snap.away]) || null;
+  const isLive = snap.state === 'live';
   return (
     <PostShell post={post}>
       <div style={{ marginLeft: 46 }}>
-        <div style={{
-          background: 'var(--cn-bg-elev)',
-          border: '0.5px solid var(--cn-border)',
-          borderRadius: 14,
-          overflow: 'hidden',
-        }}>
+        {home && away && (
           <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '8px 14px',
-            borderBottom: '0.5px solid var(--cn-border)',
-            background: 'var(--cn-bg-elev2)',
+            background: 'var(--cn-bg-elev)',
+            border: '0.5px solid var(--cn-border)',
+            borderRadius: 14,
+            overflow: 'hidden',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{
-                width: 7, height: 7, borderRadius: '50%',
-                background: 'var(--cn-live)',
-                boxShadow: '0 0 0 3px rgba(255,59,48,0.18)',
-                animation: 'cn-pulse 1.5s ease-in-out infinite',
-              }} />
-              <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, fontWeight: 700, color: 'var(--cn-live)', letterSpacing: 0.5 }}>
-                LIVE · {game.period} · {game.clock}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '8px 14px',
+              borderBottom: '0.5px solid var(--cn-border)',
+              background: 'var(--cn-bg-elev2)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {isLive && (
+                  <span style={{
+                    width: 7, height: 7, borderRadius: '50%',
+                    background: 'var(--cn-live)',
+                    boxShadow: '0 0 0 3px rgba(255,59,48,0.18)',
+                    animation: 'cn-pulse 1.5s ease-in-out infinite',
+                  }} />
+                )}
+                <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, fontWeight: 700, color: isLive ? 'var(--cn-live)' : 'var(--cn-text-mute)', letterSpacing: 0.5 }}>
+                  {isLive ? 'LIVE · ' : ''}{snap.period || ''}{snap.clock ? ' · ' + snap.clock : ''}
+                </span>
+              </div>
+              <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>
+                {snap.league}
               </span>
             </div>
-            <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>
-              {game.league}
-            </span>
+            <div style={{ padding: '14px 16px' }}>
+              <ScoreRow team={away} score={snap.awayScore} winner={Number(snap.awayScore) > Number(snap.homeScore)} />
+              <div style={{ height: 8 }} />
+              <ScoreRow team={home} score={snap.homeScore} winner={Number(snap.homeScore) > Number(snap.awayScore)} />
+            </div>
           </div>
-          <div style={{ padding: '14px 16px' }}>
-            <ScoreRow team={away} score={game.awayScore} winner={game.awayScore > game.homeScore} />
-            <div style={{ height: 8 }} />
-            <ScoreRow team={home} score={game.homeScore} winner={game.homeScore > game.awayScore} />
+        )}
+        {post.headline && (
+          <div style={{
+            marginTop: 10,
+            fontSize: 16, lineHeight: 1.4,
+            fontFamily: 'var(--cn-font-display)',
+            fontWeight: 'var(--cn-display-weight)',
+            textTransform: 'var(--cn-display-case)',
+            letterSpacing: 'var(--cn-display-spacing)',
+          }}>{post.headline}</div>
+        )}
+        {post.blurb && (
+          <div style={{ marginTop: 4, fontSize: 14, color: 'var(--cn-text-dim)', lineHeight: 1.4 }}>
+            {post.blurb}
           </div>
-        </div>
-        <div style={{
-          marginTop: 10,
-          fontSize: 16, lineHeight: 1.4,
-          fontFamily: 'var(--cn-font-display)',
-          fontWeight: 'var(--cn-display-weight)',
-          textTransform: 'var(--cn-display-case)',
-          letterSpacing: 'var(--cn-display-spacing)',
-        }}>{post.headline}</div>
-        <div style={{ marginTop: 4, fontSize: 14, color: 'var(--cn-text-dim)', lineHeight: 1.4 }}>
-          {post.blurb}
-        </div>
+        )}
       </div>
     </PostShell>
   );

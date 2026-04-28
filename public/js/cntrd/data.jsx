@@ -67,13 +67,10 @@ function avatarInitials(displayName) {
   return (parts[0][0] + (parts[1]?.[0] || '')).toUpperCase();
 }
 
-// LIVE games happening now (with running clocks etc)
-const LIVE_GAMES = [
-  { id: 'g1', league: 'NBA', home: 'LAL', away: 'BOS', homeScore: 88, awayScore: 91, period: 'Q4', clock: '4:21', viewers: 12482 },
-  { id: 'g2', league: 'NFL', home: 'KC',  away: 'PHI', homeScore: 17, awayScore: 14, period: 'Q3', clock: '8:02', viewers: 24910 },
-  { id: 'g3', league: 'EPL', home: 'ARS', away: 'MCI', homeScore: 2,  awayScore: 1,  period: '2H', clock: "67'",  viewers: 18204 },
-  { id: 'g4', league: 'F1',  home: 'FER', away: 'MCL', homeScore: '–',awayScore: '–',period: 'L42', clock: 'of 58', viewers: 9120 },
-];
+// LIVE_GAMES is intentionally empty — real game data is fetched from
+// /api/games (ESPN-backed). Kept as an empty fallback so any straggler
+// reference doesn't blow up the UI.
+const LIVE_GAMES = [];
 
 // FEED posts — diverse types. type: 'take' | 'photo' | 'score' | 'poll' | 'clip' | 'box' | 'rumor'
 const POSTS = [
