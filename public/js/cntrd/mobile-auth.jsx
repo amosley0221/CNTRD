@@ -495,42 +495,128 @@ function SettingsScreen({ tweaks, setTweak, onNav, me, onMeUpdated, unreadNotifs
 }
 
 // ─── GAMEDAY CHAT ─────────────────────────────────────────────
-function GamedayScreen({ tweaks, onNav, games }) {
-  const [side, setSide] = React.useState('all');
-  const game = (games?.live || [])[0] || (games?.upcoming || [])[0] || null;
-
-  if (!game) {
-    return (
-      <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '0.5px solid var(--cn-border)' }}>
-          <button onClick={() => onNav?.('home')} style={iconBtnStyle()}>
-            <Icon name="chevron-l" size={22} stroke="var(--cn-text)" />
-          </button>
-          <span style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 14 }}>GAMEDAY</span>
-          <span style={{ width: 32 }} />
-        </div>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
-          <div>
-            <div style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 22 }}>No live games right now</div>
+// List view shown when the user opens Gameday without picking a specific
+// game. Tap a row → opens that game's chat.
+function GamedayList({ tweaks, onNav, games, onPick }) {
+  const live     = games?.live     || [];
+  const upcoming = games?.upcoming || [];
+  const empty = !live.length && !upcoming.length;
+  return (
+    <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '0.5px solid var(--cn-border)', background: 'var(--cn-bg-elev2)' }}>
+        <button onClick={() => onNav?.('home')} style={iconBtnStyle()}>
+          <Icon name="chevron-l" size={22} stroke="var(--cn-text)" />
+        </button>
+        <span style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 14 }}>GAMEDAY</span>
+        <span style={{ width: 32 }} />
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {empty ? (
+          <div style={{ padding: 32, textAlign: 'center' }}>
+            <div style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 22 }}>No games right now</div>
             <div style={{ marginTop: 8, fontSize: 13, color: 'var(--cn-text-dim)', lineHeight: 1.45 }}>
-              When a game tips off, the chat opens here.
+              When a game tips off or one's scheduled today, you'll see it here.
             </div>
           </div>
+        ) : (
+          <>
+            {live.length > 0 && <GamedayGroup label="LIVE NOW" live items={live} onPick={onPick} />}
+            {upcoming.length > 0 && <GamedayGroup label="UP NEXT" items={upcoming} onPick={onPick} />}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GamedayGroup({ label, live, items, onPick }) {
+  return (
+    <div>
+      <div style={{
+        padding: '12px 16px 6px',
+        fontFamily: 'var(--cn-font-mono)', fontSize: 10, letterSpacing: 1,
+        color: live ? 'var(--cn-live)' : 'var(--cn-text-mute)',
+        fontWeight: 800,
+        display: 'flex', alignItems: 'center', gap: 6,
+      }}>
+        {live && <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--cn-live)', animation: 'cn-pulse 1.5s ease-in-out infinite' }} />}
+        {label}
+      </div>
+      <div>
+        {items.map(g => <GamedayRow key={g.id} game={g} live={!!live} onClick={() => onPick?.(g)} />)}
+      </div>
+    </div>
+  );
+}
+
+function GamedayRow({ game, live, onClick }) {
+  const home = game.homeTeam || TEAMS[game.home] || { code: game.home, name: game.home, primary: '#666', accent: '#999' };
+  const away = game.awayTeam || TEAMS[game.away] || { code: game.away, name: game.away, primary: '#666', accent: '#999' };
+  return (
+    <div onClick={onClick} style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: '12px 16px',
+      borderBottom: '0.5px solid var(--cn-border)',
+      cursor: 'pointer',
+    }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)' }}>
+          <TeamMini team={away} />
+          <span style={{ color: 'var(--cn-text-mute)', fontSize: 11, fontFamily: 'var(--cn-font-mono)' }}>@</span>
+          <TeamMini team={home} />
+        </div>
+        <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', marginTop: 4 }}>
+          {game.league} · {game.period || (live ? 'LIVE' : 'Scheduled')}
         </div>
       </div>
-    );
-  }
+      {live ? (
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ fontSize: 22 }}>{game.awayScore}</span>
+          <span style={{ color: 'var(--cn-text-mute)', fontSize: 14 }}>·</span>
+          <span style={{ fontSize: 22 }}>{game.homeScore}</span>
+        </div>
+      ) : (
+        <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>
+          {game.period || ''}
+        </span>
+      )}
+      <Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />
+    </div>
+  );
+}
 
+function TeamMini({ team }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <span style={{
+        width: 22, height: 22, borderRadius: 5,
+        background: team.primary, color: pickContrast(team.primary),
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 9, fontWeight: 800, letterSpacing: 0.4,
+      }}>{team.code}</span>
+      <span style={{ fontSize: 14 }}>{team.name}</span>
+    </span>
+  );
+}
+
+function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick }) {
+  const [side, setSide] = React.useState('all');
+  // List mode: no specific game picked → show live + upcoming as rows.
+  if (!gamedayPick) {
+    return <GamedayList tweaks={tweaks} onNav={onNav} games={games} onPick={setGamedayPick} />;
+  }
+  const game = gamedayPick;
   const home = game.homeTeam || TEAMS[game.home] || { code: game.home, name: game.home, primary: '#666', accent: '#999' };
   const away = game.awayTeam || TEAMS[game.away] || { code: game.away, name: game.away, primary: '#666', accent: '#999' };
   const isLive = game.state === 'live';
   const filtered = side === 'all' ? CHAT_MESSAGES : CHAT_MESSAGES.filter(m => m.side === side || !m.side);
+  const goBack = () => setGamedayPick?.(null);
   return (
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
       {/* Sticky scoreboard */}
       <div style={{ borderBottom: '0.5px solid var(--cn-border)', background: 'var(--cn-bg-elev2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px' }}>
-          <button onClick={() => onNav?.('home')} style={iconBtnStyle()}>
+          <button onClick={goBack} style={iconBtnStyle()} title="Back to list">
             <Icon name="chevron-l" size={22} stroke="var(--cn-text)" />
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

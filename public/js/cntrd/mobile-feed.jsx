@@ -124,7 +124,7 @@ function _favoriteFirst(games, favSet) {
   return [...fav, ...rest];
 }
 
-function LiveGamesStrip({ onJoin, games, me, onOpenGame }) {
+function LiveGamesStrip({ onJoin, games, me, onOpenGame, onOpenGameday }) {
   const favSet = _favSet(me);
   const followed = _followedSet(me);
   const live = _favoriteFirst(_filterFollowed(games?.live, favSet, followed), favSet);
@@ -132,6 +132,11 @@ function LiveGamesStrip({ onJoin, games, me, onOpenGame }) {
   const showing = live.length ? live : upcoming.slice(0, 3);
   if (!showing.length) return null;
   const empty = !live.length;
+  // Live header in this strip says "TAP TO JOIN GAMEDAY CHAT" so live taps
+  // jump into the chat for that specific game; upcoming taps open stats.
+  const cardClick = (g) => empty
+    ? onOpenGame?.(g)
+    : (onOpenGameday ? onOpenGameday(g) : onJoin?.());
   return (
     <div style={{
       padding: '10px 16px 12px',
@@ -158,7 +163,7 @@ function LiveGamesStrip({ onJoin, games, me, onOpenGame }) {
             key={g.id}
             game={g}
             favorite={_isFav(g, favSet)}
-            onClick={() => (empty ? onOpenGame?.(g) : (onOpenGame ? onOpenGame(g) : onJoin?.()))}
+            onClick={() => cardClick(g)}
           />
         ))}
       </div>
@@ -364,7 +369,7 @@ function BottomNav({ active = 'home', onChange }) {
 }
 
 // ─── FEED SCREEN ──────────────────────────────────────────────
-function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame }) {
+function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame, onOpenGameday }) {
   const editorial = tweaks.homeStyle === 'editorial';
   const items = (posts && posts.length ? posts : POSTS);
   return (
@@ -388,6 +393,7 @@ function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame }) {
             games={games}
             me={me}
             onOpenGame={onOpenGame}
+            onOpenGameday={onOpenGameday}
             onJoin={() => onNav?.('chat')}
           />
         )}

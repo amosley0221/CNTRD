@@ -1,9 +1,9 @@
 // desktop.jsx — desktop web app for CNTRD
 // Three-column layout: left nav, center feed, right rail (gameday + trends)
 
-function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays, games, screen, onOpenGame, unreadMessages, unreadNotifs, ...rest }) {
+function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays, games, screen, onOpenGame, onOpenGameday, unreadMessages, unreadNotifs, ...rest }) {
   const [query, setQuery] = React.useState('');
-  const screenProps = { tweaks, setTweak, onNav, me, posts, plays, games, onOpenGame, unreadMessages, unreadNotifs, ...rest };
+  const screenProps = { tweaks, setTweak, onNav, me, posts, plays, games, onOpenGame, onOpenGameday, unreadMessages, unreadNotifs, ...rest };
   return (
     <div style={{
       width: '100%', height: '100%',
@@ -27,7 +27,7 @@ function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays, games, screen, 
       }}>
         <DesktopMainContent screen={screen} query={query} {...screenProps} />
       </div>
-      <DesktopRail tweaks={tweaks} onNav={onNav} games={games} me={me} onOpenGame={onOpenGame} query={query} setQuery={setQuery} />
+      <DesktopRail tweaks={tweaks} onNav={onNav} games={games} me={me} onOpenGame={onOpenGame} onOpenGameday={onOpenGameday} query={query} setQuery={setQuery} />
     </div>
   );
 }
@@ -260,7 +260,7 @@ function DesktopFeed({ tweaks, onNav, posts, plays, query }) {
   );
 }
 
-function DesktopRail({ tweaks, onNav, games, me, onOpenGame, query, setQuery }) {
+function DesktopRail({ tweaks, onNav, games, me, onOpenGame, onOpenGameday, query, setQuery }) {
   const favSet = React.useMemo(() => favoriteSetFromMe(me), [me]);
   const followed = React.useMemo(() => new Set(me?.leagues || []), [me]);
 
@@ -311,7 +311,7 @@ function DesktopRail({ tweaks, onNav, games, me, onOpenGame, query, setQuery }) 
           favSet={favSet}
           teamFor={teamFor}
           onOpenGame={onOpenGame}
-          onJoin={() => onNav?.('chat')}
+          onJoin={(g) => (onOpenGameday ? onOpenGameday(g) : onNav?.('chat'))}
         />
       )}
 
@@ -445,7 +445,7 @@ function RailGameCard({ game, favorite, teamFor, live, finals, onOpenGame, onJoi
         <CompactScoreRow team={home} score={game.homeScore} />
       </div>
       {live && onJoin && (
-        <button onClick={e => { e.stopPropagation(); onJoin(); }} style={{
+        <button onClick={e => { e.stopPropagation(); onJoin(game); }} style={{
           width: '100%', padding: '7px',
           background: 'var(--cn-text)', color: 'var(--cn-bg)',
           border: 'none', cursor: 'pointer',

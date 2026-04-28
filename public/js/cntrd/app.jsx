@@ -89,6 +89,7 @@ function CNTRDApp() {
   const [games, setGames] = React.useState({ live: [], upcoming: [], recent: [] });
   const [selectedGame, setSelectedGame] = React.useState(null);  // { id, league }
   const [selectedTag, setSelectedTag]   = React.useState(null);  // 'NFL:PHI' or 'PHI'
+  const [gamedayPick, setGamedayPick]   = React.useState(null);  // { id, league, ... } when entering chat for a specific game
   const [messageContext, setMessageContext] = React.useState({ mode: 'list' });
   const [unreadMessages, setUnreadMessages] = React.useState(0);
   const [unreadNotifs, setUnreadNotifs]     = React.useState(0);
@@ -202,6 +203,9 @@ function CNTRDApp() {
       return;
     }
     const target = next === 'search' ? 'home' : next;
+    // Sidebar / direct nav to Gameday (without picking a game) lands on the
+    // list view. handleOpenGameday is the only path that sets gamedayPick.
+    if (target === 'chat') setGamedayPick(null);
     setScreen(target);
     try { localStorage.setItem(STORAGE.screen, target); } catch {}
   }, []);
@@ -280,6 +284,15 @@ function CNTRDApp() {
     try { localStorage.setItem(STORAGE.screen, 'gameDetail'); } catch {}
   }, []);
 
+  // Pick a specific game's gameday chat (from a rail card's "Join the chat",
+  // a live-game notification, or the gameday list view).
+  const handleOpenGameday = React.useCallback((game) => {
+    if (!game?.id || !game?.league) return;
+    setGamedayPick(game);
+    setScreen('chat');
+    try { localStorage.setItem(STORAGE.screen, 'chat'); } catch {}
+  }, []);
+
   // Poll the unread counts for the sidebar Messages + Notifications badges.
   React.useEffect(() => {
     if (!authed) { setUnreadMessages(0); setUnreadNotifs(0); return; }
@@ -349,6 +362,8 @@ function CNTRDApp() {
     tweaks, setTweak, onNav: handleNav,
     me, posts, plays, games,
     selectedGame, selectedTag,
+    gamedayPick, setGamedayPick,
+    onOpenGameday: handleOpenGameday,
     messageContext, setMessageContext,
     unreadMessages, unreadNotifs,
     onUnread: setUnreadMessages,
