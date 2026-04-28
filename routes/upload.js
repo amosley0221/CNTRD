@@ -20,17 +20,32 @@ const storage = multer.diskStorage({
   }
 });
 
-const fileFilter = (req, file, cb) => {
-  const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+const VIDEO_EXTS = ['.mp4', '.mov', '.webm'];
+
+const imageOnly = (req, file, cb) => {
   const ext = path.extname(file.originalname).toLowerCase();
-  if (allowed.includes(ext)) cb(null, true);
+  if (IMAGE_EXTS.includes(ext)) cb(null, true);
   else cb(new Error('Only image files are allowed'), false);
+};
+
+const imageOrVideo = (req, file, cb) => {
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (IMAGE_EXTS.includes(ext) || VIDEO_EXTS.includes(ext)) cb(null, true);
+  else cb(new Error('Only image or video files are allowed'), false);
 };
 
 const upload = multer({
   storage,
-  fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 } // 5 MB
+  fileFilter: imageOnly,
+  limits: { fileSize: 5 * 1024 * 1024 }   // 5 MB — avatars/banners are small
+});
+
+// Larger limit for post media (images can be richer, videos need headroom).
+const mediaUpload = multer({
+  storage,
+  fileFilter: imageOrVideo,
+  limits: { fileSize: 25 * 1024 * 1024 }  // 25 MB
 });
 
 // Upload avatar
@@ -65,8 +80,26 @@ router.post('/banner', requireAuth, upload.single('banner'), (req, res) => {
   res.json({ banner: bannerUrl });
 });
 
+// Upload a post attachment (photo or short clip). Returns the public URL
+// and a `kind` field the client can switch on. Caller is responsible for
+// passing the URL to /api/posts.
+router.post('/media', requireAuth, mediaUpload.single('media'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const ext = path.extname(req.file.originalname).toLowerCase();
+  const kind = VIDEO_EXTS.includes(ext) ? 'video' : 'image';
+  res.json({
+    url:  `/uploads/${req.file.filename}`,
+    kind,
+    size: req.file.size,
+  });
+});
+
 router.use((err, req, res, next) => {
-  if (err instanceof multer.MulterError || err.message === 'Only image files are allowed') {
+  const known = [
+    'Only image files are allowed',
+    'Only image or video files are allowed',
+  ];
+  if (err instanceof multer.MulterError || known.includes(err.message)) {
     return res.status(400).json({ error: err.message });
   }
   next(err);

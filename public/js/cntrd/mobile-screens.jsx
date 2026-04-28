@@ -154,6 +154,68 @@ function FanCard({ teams }) {
   );
 }
 
+// Photo/clip preview slot for the composer. Renders a tap-to-pick state,
+// a uploading state, or the chosen media with a clear (×) button.
+function ComposerMediaSlot({ type, media, uploading, onPick, onClear }) {
+  const ratio = type === 'clip' ? 16 / 9 : 4 / 5;
+  const label = type === 'clip' ? 'Tap to choose a clip' : 'Tap to choose a photo';
+
+  if (!media) {
+    return (
+      <button type="button" onClick={onPick} style={{
+        width: '100%', aspectRatio: ratio, marginTop: 4,
+        borderRadius: 14,
+        border: '1.5px dashed var(--cn-border-s)',
+        background: 'var(--cn-bg-elev)',
+        color: 'var(--cn-text-dim)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        gap: 8, cursor: 'pointer',
+        fontFamily: 'var(--cn-font-body)',
+      }}>
+        <Icon name={type === 'clip' ? 'video' : 'image'} size={28} sw={1.4} />
+        <span style={{ fontSize: 13 }}>{label}</span>
+        <span style={{ fontSize: 11, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)' }}>
+          {type === 'clip' ? 'mp4 · mov · webm · 25 MB max' : 'jpg · png · gif · webp · 25 MB max'}
+        </span>
+      </button>
+    );
+  }
+
+  const src = media.url || media.localPreview;
+  return (
+    <div style={{ position: 'relative', marginTop: 4 }}>
+      {media.kind === 'video' ? (
+        <video src={src} controls playsInline style={{
+          width: '100%', aspectRatio: ratio, borderRadius: 14,
+          background: '#000', objectFit: 'cover', display: 'block',
+        }} />
+      ) : (
+        <img src={src} alt="" style={{
+          width: '100%', aspectRatio: ratio, borderRadius: 14,
+          objectFit: 'cover', display: 'block',
+        }} />
+      )}
+      {uploading && (
+        <div style={{
+          position: 'absolute', inset: 0, borderRadius: 14,
+          background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: '#fff', fontFamily: 'var(--cn-font-mono)', fontSize: 12, letterSpacing: 0.5,
+        }}>UPLOADING…</div>
+      )}
+      <button type="button" onClick={onClear} title="Remove" style={{
+        position: 'absolute', top: 8, right: 8,
+        width: 28, height: 28, borderRadius: '50%',
+        background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)',
+        border: 'none', cursor: 'pointer',
+        color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Icon name="x" size={14} stroke="#fff" />
+      </button>
+    </div>
+  );
+}
+
 // ─── COMPOSER ─────────────────────────────────────────────────
 function ComposerScreen({ tweaks, onNav, onPost, me }) {
   const meUser = me || ME;
@@ -163,15 +225,39 @@ function ComposerScreen({ tweaks, onNav, onPost, me }) {
   const [tag, setTag] = React.useState(meTeams[0]);
   const [busy, setBusy] = React.useState(false);
   const [err, setErr]   = React.useState(null);
+  const [media, setMedia] = React.useState(null);     // { url, kind, localPreview, name }
+  const [uploading, setUploading] = React.useState(false);
+  const fileInputRef = React.useRef(null);
   const max = 280;
+
+  // Need *something* to post: text for take/rumor; either text or media for
+  // photo/clip; text for poll (options skipped — backend just gets the prompt).
+  const hasMedia = !!media?.url;
+  const canSubmit = !!text.trim() || ((type === 'photo' || type === 'clip') && hasMedia);
+
+  const pickFile = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';                 // allow re-selecting the same file
+    if (!file) return;
+    const localPreview = URL.createObjectURL(file);
+    setMedia({ url: null, kind: type === 'clip' ? 'video' : 'image', localPreview, name: file.name });
+    setUploading(true);
+    setErr(null);
+    API.uploadMedia(file)
+      .then(({ url, kind }) => setMedia(m => ({ ...m, url, kind })))
+      .catch(e => { setMedia(null); setErr(e.message || 'Upload failed'); })
+      .finally(() => setUploading(false));
+  };
+
   const submit = async () => {
-    if (!text.trim() || busy) return;
+    if (!canSubmit || busy || uploading) return;
     setBusy(true); setErr(null);
     try {
-      if (onPost) {
-        await onPost({ content: text.trim(), type, tags: [tag] });
-      }
-      setText('');
+      const body = { content: text.trim(), type, tags: [tag] };
+      if (type === 'photo' && media?.url) body.image = media.url;
+      if (type === 'clip'  && media?.url) body.extra = { video_url: media.url };
+      if (onPost) await onPost(body);
+      setText(''); setMedia(null);
       onNav?.('home');
     } catch (e) {
       setErr(e.message || 'Failed to post');
@@ -179,6 +265,11 @@ function ComposerScreen({ tweaks, onNav, onPost, me }) {
       setBusy(false);
     }
   };
+
+  // Reset attached media when switching to a type that doesn't take media.
+  React.useEffect(() => {
+    if (type !== 'photo' && type !== 'clip' && media) setMedia(null);
+  }, [type]);   // eslint-disable-line
   const types = [
     { id: 'take',  icon: 'flame',  label: 'Take' },
     { id: 'photo', icon: 'image',  label: 'Photo' },
@@ -191,7 +282,7 @@ function ComposerScreen({ tweaks, onNav, onPost, me }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: '0.5px solid var(--cn-border)' }}>
         <button onClick={() => onNav?.('home')} style={{ background: 'transparent', border: 'none', color: 'var(--cn-text-dim)', fontSize: 14, fontFamily: 'var(--cn-font-body)', cursor: 'pointer' }}>Cancel</button>
         <span style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 14 }}>NEW POST</span>
-        <button onClick={submit} disabled={!text.trim() || busy} style={{ padding: '7px 14px', borderRadius: 999, background: text.trim() && !busy ? 'var(--cn-accent)' : 'var(--cn-bg-elev2)', color: text.trim() && !busy ? 'var(--cn-on-accent)' : 'var(--cn-text-mute)', border: 'none', fontWeight: 700, fontSize: 13, cursor: text.trim() && !busy ? 'pointer' : 'not-allowed' }}>{busy ? 'Posting…' : 'Post'}</button>
+        <button onClick={submit} disabled={!canSubmit || busy || uploading} style={{ padding: '7px 14px', borderRadius: 999, background: canSubmit && !busy && !uploading ? 'var(--cn-accent)' : 'var(--cn-bg-elev2)', color: canSubmit && !busy && !uploading ? 'var(--cn-on-accent)' : 'var(--cn-text-mute)', border: 'none', fontWeight: 700, fontSize: 13, cursor: canSubmit && !busy && !uploading ? 'pointer' : 'not-allowed' }}>{busy ? 'Posting…' : uploading ? 'Uploading…' : 'Post'}</button>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
         {err && <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: 'color-mix(in srgb, var(--cn-danger) 18%, transparent)', color: 'var(--cn-danger)', fontSize: 12, fontFamily: 'var(--cn-font-mono)' }}>{err}</div>}
@@ -227,10 +318,23 @@ function ComposerScreen({ tweaks, onNav, onPost, me }) {
                 fontFamily: 'var(--cn-font-body)', fontSize: 18, lineHeight: 1.4,
               }}
             />
-            {type === 'photo' && <PhotoPlaceholder hue={250} ratio={4/5} label="tap to add photo" />}
-            {type === 'clip' && (
-              <div style={{ aspectRatio: 16/9, borderRadius: 12, background: 'linear-gradient(135deg,#1a3a1f,#0d1f12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.55)', fontFamily: 'var(--cn-font-mono)', fontSize: 11 }}>[ tap to add clip ]</div>
+            {(type === 'photo' || type === 'clip') && (
+              <ComposerMediaSlot
+                type={type}
+                media={media}
+                uploading={uploading}
+                onPick={() => fileInputRef.current?.click()}
+                onClear={() => setMedia(null)}
+              />
             )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={type === 'clip' ? 'video/*' : 'image/*'}
+              onChange={pickFile}
+              style={{ display: 'none' }}
+            />
+
             {type === 'poll' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
                 {['Option 1', 'Option 2'].map((o, i) => (

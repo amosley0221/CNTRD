@@ -344,7 +344,7 @@ function CNTRDApp() {
 
   const themedShell = (children) => (
     <div ref={rootRef} className="cn-themed" style={{
-      width: '100vw', height: '100vh', overflow: 'hidden', position: 'relative',
+      width: '100%', height: '100%', overflow: 'hidden', position: 'relative',
     }}>
       {children}
     </div>

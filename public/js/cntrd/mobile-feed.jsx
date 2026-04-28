@@ -318,7 +318,7 @@ function BottomNav({ active = 'home', onChange }) {
   return (
     <div style={{
       position: 'absolute', left: 0, right: 0, bottom: 0,
-      paddingBottom: 28,
+      paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 16px))',
       background: 'color-mix(in srgb, var(--cn-bg) 80%, transparent)',
       backdropFilter: 'blur(24px) saturate(180%)',
       WebkitBackdropFilter: 'blur(24px) saturate(180%)',

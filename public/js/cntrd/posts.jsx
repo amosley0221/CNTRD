@@ -214,8 +214,27 @@ function PhotoPost({ post }) {
   return (
     <PostShell post={post}>
       <div style={{ marginLeft: 46 }}>
-        <div style={{ fontSize: 15, lineHeight: 1.4, marginBottom: 8 }}>{post.text}</div>
-        <PhotoPlaceholder caption={post.caption} hue={250} />
+        {post.text && <div style={{ fontSize: 15, lineHeight: 1.4, marginBottom: 8 }}>{post.text}</div>}
+        {post.image ? (
+          <div style={{
+            borderRadius: 14, overflow: 'hidden',
+            border: '0.5px solid var(--cn-border)',
+            background: 'var(--cn-bg-elev)',
+          }}>
+            <img src={post.image} alt={post.caption || ''} loading="lazy" style={{
+              width: '100%', maxHeight: 560, objectFit: 'cover', display: 'block',
+            }} />
+            {post.caption && (
+              <div style={{
+                padding: '8px 12px', fontFamily: 'var(--cn-font-mono)',
+                fontSize: 11, color: 'var(--cn-text-dim)',
+                borderTop: '0.5px solid var(--cn-border)',
+              }}>{post.caption}</div>
+            )}
+          </div>
+        ) : (
+          <PhotoPlaceholder caption={post.caption} hue={250} />
+        )}
       </div>
     </PostShell>
   );
@@ -310,38 +329,55 @@ function PollPost({ post }) {
 
 // ─── CLIP (video) ─────────────────────────────────────────────
 function ClipPost({ post }) {
+  const videoUrl = post.video_url || post.extra?.video_url;
   return (
     <PostShell post={post}>
       <div style={{ marginLeft: 46 }}>
-        <div style={{ fontSize: 15, lineHeight: 1.4, marginBottom: 8 }}>{post.text}</div>
-        <div style={{
-          position: 'relative', borderRadius: 14, overflow: 'hidden',
-          aspectRatio: 16/9,
-          background: 'linear-gradient(135deg, #1a3a1f 0%, #0d1f12 60%, #1a3a1f 100%)',
-          border: '0.5px solid var(--cn-border)',
-        }}>
-          {/* mock pitch lines */}
-          <div style={{ position: 'absolute', inset: 0, opacity: 0.16, background: 'repeating-linear-gradient(90deg, transparent 0 18px, rgba(255,255,255,0.4) 18px 19px)' }} />
+        {post.text && <div style={{ fontSize: 15, lineHeight: 1.4, marginBottom: 8 }}>{post.text}</div>}
+        {videoUrl ? (
+          <video
+            src={videoUrl}
+            controls
+            playsInline
+            preload="metadata"
+            style={{
+              width: '100%', borderRadius: 14, background: '#000',
+              maxHeight: 560, display: 'block',
+              border: '0.5px solid var(--cn-border)',
+            }}
+          />
+        ) : (
           <div style={{
-            position: 'absolute', inset: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            position: 'relative', borderRadius: 14, overflow: 'hidden',
+            aspectRatio: 16/9,
+            background: 'linear-gradient(135deg, #1a3a1f 0%, #0d1f12 60%, #1a3a1f 100%)',
+            border: '0.5px solid var(--cn-border)',
           }}>
+            {/* mock pitch lines */}
+            <div style={{ position: 'absolute', inset: 0, opacity: 0.16, background: 'repeating-linear-gradient(90deg, transparent 0 18px, rgba(255,255,255,0.4) 18px 19px)' }} />
             <div style={{
-              width: 56, height: 56, borderRadius: '50%',
-              background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)',
-              border: '1.5px solid rgba(255,255,255,0.9)',
+              position: 'absolute', inset: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+              <div style={{
+                width: 56, height: 56, borderRadius: '50%',
+                background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)',
+                border: '1.5px solid rgba(255,255,255,0.9)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+              </div>
             </div>
+            {post.duration && (
+              <div style={{
+                position: 'absolute', right: 10, bottom: 10,
+                padding: '3px 7px', borderRadius: 4,
+                background: 'rgba(0,0,0,0.7)',
+                fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: '#fff',
+              }}>{post.duration}</div>
+            )}
           </div>
-          <div style={{
-            position: 'absolute', right: 10, bottom: 10,
-            padding: '3px 7px', borderRadius: 4,
-            background: 'rgba(0,0,0,0.7)',
-            fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: '#fff',
-          }}>{post.duration}</div>
-        </div>
+        )}
       </div>
     </PostShell>
   );

@@ -100,6 +100,12 @@ const API = {
     fd.append('avatar', file);
     return request('POST', '/api/upload/avatar', fd);
   },
+  // Photo or short clip attachment for a post. Returns { url, kind }.
+  uploadMedia(file) {
+    const fd = new FormData();
+    fd.append('media', file);
+    return request('POST', '/api/upload/media', fd);
+  },
 };
 
 // Format created_at (ISO/SQLite datetime) → short relative "2m" "1h" "3d".
