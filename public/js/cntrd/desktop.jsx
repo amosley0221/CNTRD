@@ -1,8 +1,9 @@
 // desktop.jsx — desktop web app for CNTRD
 // Three-column layout: left nav, center feed, right rail (gameday + trends)
 
-function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays, games }) {
+function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays, games, screen, ...rest }) {
   const [query, setQuery] = React.useState('');
+  const screenProps = { tweaks, setTweak, onNav, me, posts, plays, games, ...rest };
   return (
     <div style={{
       width: '100%', height: '100%',
@@ -13,14 +14,36 @@ function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays, games }) {
       gridTemplateColumns: '232px 1fr 360px',
       overflow: 'hidden',
     }}>
-      <DesktopNav onNav={onNav} me={me} />
-      <DesktopMain tweaks={tweaks} onNav={onNav} posts={posts} plays={plays} query={query} />
+      <DesktopNav onNav={onNav} me={me} screen={screen} />
+      <div style={{
+        position: 'relative',          // anchors absolutely-positioned children
+        overflow: 'hidden',
+        borderRight: '0.5px solid var(--cn-border)',
+      }}>
+        <DesktopMainContent screen={screen} query={query} {...screenProps} />
+      </div>
       <DesktopRail tweaks={tweaks} onNav={onNav} games={games} query={query} setQuery={setQuery} />
     </div>
   );
 }
 
-function DesktopNav({ onNav, me }) {
+// Picks what fills the main column based on the current route.
+function DesktopMainContent({ screen, ...props }) {
+  if (screen === 'home' || !screen) return <DesktopFeed {...props} />;
+  const map = {
+    profile:      ProfileScreen,
+    compose:      ComposerScreen,
+    chat:         GamedayScreen,
+    settings:     SettingsScreen,
+    plays:        PlaysViewerScreen,
+    playsCreator: PlaysCreatorScreen,
+    admin:        AdminScreen,
+  };
+  const Comp = map[screen] || DesktopFeed;
+  return <Comp {...props} />;
+}
+
+function DesktopNav({ onNav, me, screen }) {
   const meUser = me || ME;
   // Each item routes via onNav to a real screen. `screen` is the screen-key
   // app.jsx uses; multiple labels can share a screen (e.g. Discover/Feed).
@@ -33,10 +56,7 @@ function DesktopNav({ onNav, me }) {
     { screen: 'settings',     icon: 'settings', label: 'Settings' },
     ...(meUser?.is_admin ? [{ screen: 'admin', icon: 'whistle', label: 'Admin', accent: true }] : []),
   ];
-  // Active highlight is based on the screen the app is currently on.
-  // Falls back via the global STORAGE.screen because app.jsx already persists it.
-  let currentScreen = 'home';
-  try { currentScreen = localStorage.getItem('cntrd:screen') || 'home'; } catch {}
+  const currentScreen = screen || 'home';
 
   return (
     <nav style={{
@@ -109,7 +129,7 @@ function DesktopNav({ onNav, me }) {
   );
 }
 
-function DesktopMain({ tweaks, onNav, posts, plays, query }) {
+function DesktopFeed({ tweaks, onNav, posts, plays, query }) {
   const allItems = (posts && posts.length ? posts : POSTS);
   const playList = (plays && plays.length ? plays : PLAYS);
   const q = (query || '').trim().toLowerCase();
