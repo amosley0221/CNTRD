@@ -7,8 +7,8 @@ const { isValidTeamCode } = require('../data/teams');
 
 const VALID_TYPES = new Set(['take', 'photo', 'score', 'poll', 'clip', 'box', 'rumor']);
 
-// 30-second window after creation in which the author can still edit.
-const EDIT_WINDOW_MS = 30 * 1000;
+// 1-minute window after creation in which the author can still edit.
+const EDIT_WINDOW_MS = 60 * 1000;
 
 const SELECT_POST = `
   SELECT p.id, p.user_id, p.content, p.image, p.like_count, p.repost_count,
@@ -212,7 +212,7 @@ router.patch('/:id', requireAuth, (req, res) => {
 
   const created = Date.parse(post.created_at.replace(' ', 'T') + 'Z');
   if (Number.isFinite(created) && Date.now() - created > EDIT_WINDOW_MS) {
-    return res.status(403).json({ error: 'Edit window has passed (30s)' });
+    return res.status(403).json({ error: 'Edit window has passed (1 minute)' });
   }
 
   const trimmed = String(req.body?.content || '').trim();

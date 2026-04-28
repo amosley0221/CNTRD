@@ -61,6 +61,7 @@ const API = {
 
   plays()                  { return request('GET',  '/api/plays'); },
   createPlay(payload)      { return request('POST', '/api/plays', payload); },
+  deletePlay(id)           { return request('DELETE', `/api/plays/${id}`); },
 
   // Static pages (terms / privacy / about)
   pages()                  { return request('GET',  '/api/pages'); },

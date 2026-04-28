@@ -369,7 +369,7 @@ function BottomNav({ active = 'home', onChange }) {
 }
 
 // ─── FEED SCREEN ──────────────────────────────────────────────
-function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame, onOpenGameday }) {
+function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame, onOpenGameday, onOpenPlay }) {
   const editorial = tweaks.homeStyle === 'editorial';
   const items = (posts && posts.length ? posts : POSTS);
   return (
@@ -385,7 +385,7 @@ function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame, onOpen
         <PlaysRail
           playsLabel={tweaks.playsLabel || 'PLAYS'}
           plays={plays}
-          onPlay={() => onNav?.('plays')}
+          onPlay={(p) => (onOpenPlay ? onOpenPlay(p) : onNav?.('plays'))}
           onAdd={() => onNav?.('playsCreator')}
         />
         {tweaks.showLiveStrip !== false && (

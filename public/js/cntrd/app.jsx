@@ -89,6 +89,7 @@ function CNTRDApp() {
   const [games, setGames] = React.useState({ live: [], upcoming: [], recent: [] });
   const [selectedGame, setSelectedGame] = React.useState(null);  // { id, league }
   const [selectedTag, setSelectedTag]   = React.useState(null);  // 'NFL:PHI' or 'PHI'
+  const [selectedPlay, setSelectedPlay] = React.useState(null);  // play object when viewing a specific Play
   const [gamedayPick, setGamedayPick]   = React.useState(null);  // { id, league, ... } when entering chat for a specific game
   const [messageContext, setMessageContext] = React.useState({ mode: 'list' });
   const [unreadMessages, setUnreadMessages] = React.useState(0);
@@ -293,6 +294,22 @@ function CNTRDApp() {
     try { localStorage.setItem(STORAGE.screen, 'chat'); } catch {}
   }, []);
 
+  // Open a specific Play in the full-screen viewer (from PlayBubble or the
+  // profile plays grid). Falls back to the most recent play when none picked.
+  const handleOpenPlay = React.useCallback((play) => {
+    if (play && play.id) setSelectedPlay(play);
+    else setSelectedPlay(null);
+    setScreen('plays');
+    try { localStorage.setItem(STORAGE.screen, 'plays'); } catch {}
+  }, []);
+
+  const handleDeletePlay = React.useCallback(async (id) => {
+    if (!id) return;
+    await API.deletePlay(id);
+    setPlays(prev => prev.filter(p => p.id !== id));
+    setSelectedPlay(prev => prev?.id === id ? null : prev);
+  }, []);
+
   // Poll the unread counts for the sidebar Messages + Notifications badges.
   React.useEffect(() => {
     if (!authed) { setUnreadMessages(0); setUnreadNotifs(0); return; }
@@ -361,9 +378,11 @@ function CNTRDApp() {
   const screenProps = {
     tweaks, setTweak, onNav: handleNav,
     me, posts, plays, games,
-    selectedGame, selectedTag,
+    selectedGame, selectedTag, selectedPlay,
     gamedayPick, setGamedayPick,
     onOpenGameday: handleOpenGameday,
+    onOpenPlay: handleOpenPlay,
+    onDeletePlay: handleDeletePlay,
     messageContext, setMessageContext,
     unreadMessages, unreadNotifs,
     onUnread: setUnreadMessages,

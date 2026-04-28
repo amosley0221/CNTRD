@@ -10,7 +10,7 @@ const PostActionsContext = React.createContext({
   onUserBlocked: null,    // (userId) => void
 });
 
-const EDIT_WINDOW_SEC = 30;
+const EDIT_WINDOW_SEC = 60;
 function secondsTilEditDeadline(post) {
   if (!post?.created_at) return 0;
   const t = Date.parse(String(post.created_at).replace(' ', 'T') + 'Z');
@@ -18,7 +18,7 @@ function secondsTilEditDeadline(post) {
   return Math.max(0, Math.ceil((t + EDIT_WINDOW_SEC * 1000 - Date.now()) / 1000));
 }
 
-function PostHeader({ user, time, tags, edited, postId, isMine, canEdit, editLabel, onEdit, onDelete, onBlock }) {
+function PostHeader({ user, time, tags, edited, postId, isMine, canEdit, onEdit, onDelete, onBlock }) {
   const u = (typeof user === 'string')
     ? (USERS[user] || USERS.mike_b)
     : (user || USERS.mike_b);
@@ -63,7 +63,6 @@ function PostHeader({ user, time, tags, edited, postId, isMine, canEdit, editLab
           <PostActionMenu
             isMine={isMine}
             canEdit={canEdit}
-            editLabel={editLabel}
             onEdit={() => { setMenuOpen(false); onEdit?.(); }}
             onDelete={() => { setMenuOpen(false); onDelete?.(); }}
             onBlock={() => { setMenuOpen(false); onBlock?.(); }}
@@ -75,9 +74,9 @@ function PostHeader({ user, time, tags, edited, postId, isMine, canEdit, editLab
   );
 }
 
-function PostActionMenu({ isMine, canEdit, editLabel, onEdit, onDelete, onBlock, otherUsername }) {
+function PostActionMenu({ isMine, canEdit, onEdit, onDelete, onBlock, otherUsername }) {
   const items = [];
-  if (isMine && canEdit) items.push({ label: editLabel || 'Edit', onClick: onEdit });
+  if (isMine && canEdit) items.push({ label: 'Edit', onClick: onEdit });
   if (isMine)            items.push({ label: 'Delete post', danger: true, onClick: onDelete });
   if (!isMine)           items.push({ label: `Block @${otherUsername}`, danger: true, onClick: onBlock });
   if (!items.length)     items.push({ label: 'Nothing here yet', disabled: true });
@@ -244,7 +243,6 @@ function PostShell({ children, post }) {
         postId={post.id}
         isMine={isMine}
         canEdit={canEdit}
-        editLabel={canEdit ? `Edit (${secondsLeft}s left)` : null}
         onEdit={beginEdit}
         onDelete={remove}
         onBlock={block}
@@ -283,7 +281,7 @@ function PostEditEditor({ draft, onDraftChange, secondsLeft, saving, err, onSave
       {err && <div style={{ marginTop: 6, fontSize: 12, color: 'var(--cn-danger)', fontFamily: 'var(--cn-font-mono)' }}>{err}</div>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
         <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>
-          {secondsLeft}s left · {max - draft.length} chars
+          {max - draft.length} chars
         </span>
         <span style={{ flex: 1 }} />
         <button onClick={onCancel} style={{

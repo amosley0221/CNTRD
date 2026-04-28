@@ -1,8 +1,43 @@
 // mobile-screens.jsx — remaining mobile screens for CNTRD
 // profile, composer, plays creator, plays viewer, signup, login, settings, gameday chat
 
+// Tile for the profile "Plays" tab. Tap to view; small × in the corner
+// to delete with confirm.
+function ProfilePlayTile({ play, onOpen, onDelete }) {
+  const team = resolveTeam(play.team) || { primary: '#444', accent: '#888', name: '' };
+  const remove = async (e) => {
+    e.stopPropagation();
+    if (typeof confirm === 'function' && !confirm('Delete this Play permanently?')) return;
+    try { await onDelete?.(play.id); } catch (e) { alert(e.message || 'Failed'); }
+  };
+  return (
+    <div onClick={() => onOpen?.(play)} style={{
+      position: 'relative',
+      aspectRatio: 9/16, borderRadius: 6, overflow: 'hidden',
+      background: `linear-gradient(135deg, ${team.primary}, ${team.accent})`,
+      display: 'flex', alignItems: 'flex-end', padding: 6,
+      cursor: onOpen ? 'pointer' : 'default',
+    }}>
+      <div style={{
+        fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: '#fff',
+        textShadow: '0 1px 2px rgba(0,0,0,0.6)',
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      }}>{play.label || ''}</div>
+      <button onClick={remove} title="Delete play" style={{
+        position: 'absolute', top: 4, right: 4,
+        width: 22, height: 22, borderRadius: '50%',
+        background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)',
+        border: 'none', cursor: 'pointer',
+        color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Icon name="x" size={12} stroke="#fff" sw={2.4} />
+      </button>
+    </div>
+  );
+}
+
 // ─── PROFILE ──────────────────────────────────────────────────
-function ProfileScreen({ tweaks, onNav, me, posts }) {
+function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePlay }) {
   const u = me || ME;
   const teams = (u.teams && u.teams.length) ? u.teams : ['LAL'];
   const coverFrom = resolveTeam(teams[0]) || resolveTeam('LAL') || { primary: '#552583', accent: '#FDB927' };
@@ -82,22 +117,21 @@ function ProfileScreen({ tweaks, onNav, me, posts }) {
           {tab === 'posts' && myPosts.slice(0, 6).map((p, i) => (
             <Post key={p.id || i} post={typeof p.user === 'string' ? { ...p, user: u } : p} />
           ))}
-          {tab === 'plays' && (
-            <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
-              {Array.from({ length: 9 }).map((_, i) => {
-                const t = resolveTeam(teams[i % teams.length]) || coverFrom;
-                return (
-                  <div key={i} style={{
-                    aspectRatio: 9/16, borderRadius: 6, overflow: 'hidden',
-                    background: `linear-gradient(135deg, ${t.primary}, ${t.accent})`,
-                    display: 'flex', alignItems: 'flex-end', padding: 6,
-                    fontFamily: 'var(--cn-font-mono)', fontSize: 9,
-                    color: '#fff',
-                  }}>{i + 1}d</div>
-                );
-              })}
-            </div>
-          )}
+          {tab === 'plays' && (() => {
+            const myPlays = (plays || []).filter(p => p.user?.id === u.id);
+            if (!myPlays.length) {
+              return (
+                <div style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>
+                  No plays yet. Tap + on the home screen to record one.
+                </div>
+              );
+            }
+            return (
+              <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
+                {myPlays.map(p => <ProfilePlayTile key={p.id} play={p} onOpen={onOpenPlay} onDelete={onDeletePlay} />)}
+              </div>
+            );
+          })()}
           {tab === 'media' && (
             <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
               {Array.from({ length: 6 }).map((_, i) => <PhotoPlaceholder key={i} hue={200 + i * 30} ratio={1} label="" />)}
@@ -511,13 +545,33 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me }) {
 }
 
 // ─── PLAYS VIEWER ─────────────────────────────────────────────
-function PlaysViewerScreen({ tweaks, onNav, plays }) {
+function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePlay }) {
   const list = (plays && plays.length ? plays : PLAYS);
-  const idx = Math.min(1, list.length - 1);
-  const play = list[Math.max(0, idx)];
-  if (!play) return null;
+  const idx = (() => {
+    if (selectedPlay) {
+      const i = list.findIndex(p => p.id === selectedPlay.id);
+      if (i >= 0) return i;
+    }
+    return 0;
+  })();
+  const play = list[idx] || selectedPlay || null;
+  if (!play) {
+    return (
+      <div style={{ width: '100%', height: '100%', background: '#000', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>
+        No plays to show.
+      </div>
+    );
+  }
   const u = (typeof play.user === 'string') ? USERS[play.user] : play.user;
   const team = TEAMS[play.team] || TEAMS.LAL;
+  const isMine = !!me && u && u.id === me.id;
+  const remove = async () => {
+    if (typeof confirm === 'function' && !confirm('Delete this Play permanently?')) return;
+    try {
+      await onDeletePlay?.(play.id);
+      onNav?.('home');
+    } catch (e) { alert(e.message || 'Failed to delete'); }
+  };
   return (
     <div style={{ width: '100%', height: '100%', background: '#000', position: 'relative', overflow: 'hidden' }}>
       {/* progress bars */}
@@ -542,6 +596,19 @@ function PlaysViewerScreen({ tweaks, onNav, plays }) {
           </div>
           <div style={{ fontSize: 10, opacity: 0.7, fontFamily: 'var(--cn-font-mono)' }}>{play.time}</div>
         </div>
+        {isMine && (
+          <button onClick={remove} title="Delete play" style={{
+            background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)',
+            border: '0.5px solid rgba(255,255,255,0.18)', borderRadius: '50%',
+            width: 32, height: 32, color: 'var(--cn-danger)',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            marginRight: 4,
+          }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+            </svg>
+          </button>
+        )}
         <button onClick={() => onNav?.('home')} style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer' }}>
           <Icon name="x" size={22} stroke="#fff" />
         </button>

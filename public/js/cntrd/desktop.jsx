@@ -189,7 +189,7 @@ function DesktopNav({ onNav, me, screen, unreadMessages, unreadNotifs }) {
   );
 }
 
-function DesktopFeed({ tweaks, onNav, posts, plays, query }) {
+function DesktopFeed({ tweaks, onNav, posts, plays, query, onOpenPlay }) {
   const allItems = (posts && posts.length ? posts : POSTS);
   const playList = (plays && plays.length ? plays : PLAYS);
   const q = (query || '').trim().toLowerCase();
@@ -243,7 +243,7 @@ function DesktopFeed({ tweaks, onNav, posts, plays, query }) {
         </div>
         <div style={{ display: 'flex', gap: 14 }}>
           <PlayBubble add onClick={() => onNav?.('playsCreator')} />
-          {playList.map(p => <PlayBubble key={p.id} play={p} onClick={() => onNav?.('plays')} />)}
+          {playList.map(p => <PlayBubble key={p.id} play={p} onClick={() => (onOpenPlay ? onOpenPlay(p) : onNav?.('plays'))} />)}
         </div>
       </div>
 
