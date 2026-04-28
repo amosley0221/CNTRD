@@ -73,10 +73,14 @@ function attachInteraction(p, userId) {
 router.post('/', requireAuth, (req, res) => {
   const { content, reply_to, type, tags, extra, image } = req.body;
 
-  if (!content || !content.trim()) {
-    return res.status(400).json({ error: 'Content is required' });
+  const trimmed = (content || '').trim();
+  // For media types you can post without a caption; everything else still
+  // requires text.
+  const hasMedia = !!image || !!(extra && typeof extra === 'object' && extra.video_url);
+  if (!trimmed && !hasMedia) {
+    return res.status(400).json({ error: 'Add some text or attach a photo / clip' });
   }
-  if (content.length > 280) {
+  if (trimmed.length > 280) {
     return res.status(400).json({ error: 'Post must be 280 characters or fewer' });
   }
   const postType = VALID_TYPES.has(type) ? type : 'take';
@@ -95,7 +99,7 @@ router.post('/', requireAuth, (req, res) => {
   db.prepare(`
     INSERT INTO posts (id, user_id, content, image, reply_to, type, tags, extra)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, req.user.id, content.trim(), image || null, reply_to || null, postType, tagsJson, extraJson);
+  `).run(id, req.user.id, trimmed, image || null, reply_to || null, postType, tagsJson, extraJson);
 
   db.prepare('UPDATE users SET post_count = post_count + 1 WHERE id = ?').run(req.user.id);
   if (reply_to) {

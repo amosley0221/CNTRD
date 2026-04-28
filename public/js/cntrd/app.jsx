@@ -222,8 +222,11 @@ function CNTRDApp() {
     setMe(normalizeMe(user));
   }, []);
 
-  const handlePost = React.useCallback(async ({ content, type, tags }) => {
-    const created = await API.createPost({ content, type, tags });
+  const handlePost = React.useCallback(async (payload) => {
+    // Forward whatever the composer assembled — content/type/tags plus
+    // optional image and extra (video_url, poll options, etc.) — so media
+    // URLs and type-specific data make it to the server intact.
+    const created = await API.createPost(payload);
     const norm = normalizePost(created);
     setPosts(prev => [norm, ...prev]);
     setMe(prev => prev ? { ...prev, posts: (prev.posts ?? 0) + 1 } : prev);

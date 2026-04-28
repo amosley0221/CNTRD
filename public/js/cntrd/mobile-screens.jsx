@@ -294,15 +294,31 @@ function ComposerScreen({ tweaks, onNav, onPost, me }) {
                 const team = resolveTeam(t);
                 if (!team) return null;
                 const selected = tag === t;
+                // Show the team *name* so users with multiple teams sharing
+                // the same code (Eagles + 76ers + Phillies + Flyers all use
+                // "PHI") can tell their picks apart. Code becomes a small
+                // prefix so the league context is still visible.
                 return (
                   <button key={t} onClick={() => setTag(t)} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
                     background: selected ? team.primary : 'transparent',
                     border: `0.5px solid ${selected ? team.primary : 'var(--cn-border-s)'}`,
                     color: selected ? pickContrast(team.primary) : 'var(--cn-text-dim)',
-                    borderRadius: 999, padding: '3px 9px',
-                    fontSize: 11, fontWeight: 700,
-                    cursor: 'pointer',
-                  }}>{team.code}</button>
+                    borderRadius: 999, padding: '4px 10px',
+                    fontSize: 12, fontWeight: 700,
+                    cursor: 'pointer', maxWidth: '100%',
+                  }} title={team.fullName || team.name}>
+                    <span style={{
+                      fontSize: 10,
+                      opacity: 0.75,
+                      fontFamily: 'var(--cn-font-mono)',
+                      letterSpacing: 0.5,
+                    }}>{team.code}</span>
+                    <span style={{
+                      whiteSpace: 'nowrap', overflow: 'hidden',
+                      textOverflow: 'ellipsis', maxWidth: 140,
+                    }}>{team.name}</span>
+                  </button>
                 );
               })}
               <button style={{ background: 'transparent', border: '0.5px dashed var(--cn-border-s)', color: 'var(--cn-text-mute)', borderRadius: 999, padding: '3px 9px', fontSize: 11, cursor: 'pointer' }}>+ tag</button>
@@ -310,7 +326,7 @@ function ComposerScreen({ tweaks, onNav, onPost, me }) {
             <textarea
               value={text}
               onChange={e => setText(e.target.value.slice(0, max))}
-              placeholder="What's the take?"
+              placeholder={(type === 'photo' || type === 'clip') ? "What's the take? (optional)" : "What's the take?"}
               style={{
                 width: '100%', minHeight: 120, padding: 0,
                 background: 'transparent', border: 'none', resize: 'none',
