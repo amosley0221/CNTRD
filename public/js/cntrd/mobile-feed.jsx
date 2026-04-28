@@ -96,39 +96,39 @@ function PlayBubble({ play, add, onClick }) {
   );
 }
 
-function _bareCode(s) { return String(s || '').toUpperCase().split(':').pop(); }
-function _favCodeSet(me) {
-  const set = new Set();
-  for (const t of (me?.teams || [])) set.add(_bareCode(t));
-  return set;
+function _favSet(me) { return new Set(me?.teams || []); }
+function _followedSet(me) { return new Set(me?.leagues || []); }
+
+// League-aware match — Eagles (NFL:PHI) does not light up Flyers (NHL:PHI).
+function _isFav(g, favSet) {
+  if (!favSet || !favSet.size) return false;
+  if (favSet.has(`${g.league}:${g.home}`)) return true;
+  if (favSet.has(`${g.league}:${g.away}`)) return true;
+  // Bare-code fallback for legacy data only.
+  for (const f of favSet) {
+    if (!String(f).includes(':') && (f === g.home || f === g.away)) return true;
+  }
+  return false;
 }
-function _followedSet(me) {
-  return new Set(me?.leagues || []);
-}
-function _filterFollowed(games, favCodes, followed) {
+function _filterFollowed(games, favSet, followed) {
   if (!games) return [];
-  return games.filter(g =>
-    followed.has(g.league) || favCodes.has(g.home) || favCodes.has(g.away)
-  );
+  return games.filter(g => followed.has(g.league) || _isFav(g, favSet));
 }
-function _favoriteFirst(games, favCodes) {
-  if (!favCodes || !favCodes.size) return games;
+function _favoriteFirst(games, favSet) {
+  if (!favSet || !favSet.size) return games;
   const fav = [], rest = [];
   for (const g of games) {
-    if (favCodes.has(g.home) || favCodes.has(g.away)) fav.push(g);
+    if (_isFav(g, favSet)) fav.push(g);
     else rest.push(g);
   }
   return [...fav, ...rest];
 }
-function _isFav(g, favCodes) {
-  return !!favCodes && (favCodes.has(g.home) || favCodes.has(g.away));
-}
 
 function LiveGamesStrip({ onJoin, games, me, onOpenGame }) {
-  const favCodes = _favCodeSet(me);
+  const favSet = _favSet(me);
   const followed = _followedSet(me);
-  const live = _favoriteFirst(_filterFollowed(games?.live, favCodes, followed), favCodes);
-  const upcoming = _favoriteFirst(_filterFollowed(games?.upcoming, favCodes, followed), favCodes);
+  const live = _favoriteFirst(_filterFollowed(games?.live, favSet, followed), favSet);
+  const upcoming = _favoriteFirst(_filterFollowed(games?.upcoming, favSet, followed), favSet);
   const showing = live.length ? live : upcoming.slice(0, 3);
   if (!showing.length) return null;
   const empty = !live.length;
@@ -157,7 +157,7 @@ function LiveGamesStrip({ onJoin, games, me, onOpenGame }) {
           <LiveGameCard
             key={g.id}
             game={g}
-            favorite={_isFav(g, favCodes)}
+            favorite={_isFav(g, favSet)}
             onClick={() => (empty ? onOpenGame?.(g) : (onOpenGame ? onOpenGame(g) : onJoin?.()))}
           />
         ))}
@@ -167,9 +167,9 @@ function LiveGamesStrip({ onJoin, games, me, onOpenGame }) {
 }
 
 function RecentGamesStrip({ games, me, onOpenGame }) {
-  const favCodes = _favCodeSet(me);
+  const favSet = _favSet(me);
   const followed = _followedSet(me);
-  const recent = _favoriteFirst(_filterFollowed(games?.recent, favCodes, followed), favCodes);
+  const recent = _favoriteFirst(_filterFollowed(games?.recent, favSet, followed), favSet);
   if (!recent.length) return null;
   return (
     <div style={{
@@ -188,7 +188,7 @@ function RecentGamesStrip({ games, me, onOpenGame }) {
           <LiveGameCard
             key={g.id}
             game={g}
-            favorite={_isFav(g, favCodes)}
+            favorite={_isFav(g, favSet)}
             onClick={() => onOpenGame?.(g)}
           />
         ))}

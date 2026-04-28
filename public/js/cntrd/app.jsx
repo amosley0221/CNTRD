@@ -88,6 +88,8 @@ function CNTRDApp() {
   const [plays, setPlays] = React.useState([]);
   const [games, setGames] = React.useState({ live: [], upcoming: [], recent: [] });
   const [selectedGame, setSelectedGame] = React.useState(null);  // { id, league }
+  const [messageContext, setMessageContext] = React.useState({ mode: 'list' });
+  const [unreadMessages, setUnreadMessages] = React.useState(0);
   const [screen, setScreen] = React.useState('login');
 
   const isWide = useMediaQuery('(min-width: 980px)');
@@ -245,6 +247,19 @@ function CNTRDApp() {
     try { localStorage.setItem(STORAGE.screen, 'gameDetail'); } catch {}
   }, []);
 
+  // Poll the unread count for the sidebar Messages badge.
+  React.useEffect(() => {
+    if (!authed) { setUnreadMessages(0); return; }
+    let cancelled = false;
+    const tick = async () => {
+      try { const r = await API.unreadCount(); if (!cancelled) setUnreadMessages(r?.unread || 0); }
+      catch { /* ignore */ }
+    };
+    tick();
+    const id = setInterval(tick, 15 * 1000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [authed]);
+
   const screenMap = {
     home:         FeedScreen,
     profile:      ProfileScreen,
@@ -262,6 +277,7 @@ function CNTRDApp() {
     privacy:      PrivacyScreen,
     about:        AboutScreen,
     gameDetail:   GameDetailScreen,
+    messages:     MessagesRoot,
   };
   const ScreenComp = screenMap[screen] || FeedScreen;
   const isAuthScreen = screen === 'login' || screen === 'signup';
@@ -275,6 +291,9 @@ function CNTRDApp() {
     tweaks, setTweak, onNav: handleNav,
     me, posts, plays, games,
     selectedGame,
+    messageContext, setMessageContext,
+    unreadMessages,
+    onUnread: setUnreadMessages,
     onLogin:     handleLogin,
     onSignup:    handleSignup,
     onPost:      handlePost,

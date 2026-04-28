@@ -1,9 +1,9 @@
 // desktop.jsx — desktop web app for CNTRD
 // Three-column layout: left nav, center feed, right rail (gameday + trends)
 
-function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays, games, screen, onOpenGame, ...rest }) {
+function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays, games, screen, onOpenGame, unreadMessages, ...rest }) {
   const [query, setQuery] = React.useState('');
-  const screenProps = { tweaks, setTweak, onNav, me, posts, plays, games, onOpenGame, ...rest };
+  const screenProps = { tweaks, setTweak, onNav, me, posts, plays, games, onOpenGame, unreadMessages, ...rest };
   return (
     <div style={{
       width: '100%', height: '100%',
@@ -14,7 +14,7 @@ function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays, games, screen, 
       gridTemplateColumns: '232px 1fr 360px',
       overflow: 'hidden',
     }}>
-      <DesktopNav onNav={onNav} me={me} screen={screen} />
+      <DesktopNav onNav={onNav} me={me} screen={screen} unreadMessages={unreadMessages} />
       <div style={{
         position: 'relative',          // anchors absolutely-positioned children
         overflow: 'hidden',
@@ -27,26 +27,39 @@ function DesktopApp({ tweaks, setTweak, onNav, me, posts, plays, games, screen, 
   );
 }
 
-// Strip the league prefix off composite team identifiers ("NFL:PHI" → "PHI")
-// so we can match user picks against ESPN game home/away (bare codes).
-function bareTeamCode(idOrCode) {
-  return String(idOrCode || '').toUpperCase().split(':').pop();
+// User-team identifiers may be composite ("NFL:PHI") or legacy bare ("PHI").
+// To check whether a game involves a favorite team, build a Set of the user's
+// raw picks and try both league-prefixed forms — never just the bare code,
+// which would over-match across leagues (Eagles + Flyers + Phillies = bug).
+function favoriteSetFromMe(me) {
+  return new Set(me?.teams || []);
 }
 
-// Move games involving any of the user's teams to the top, preserving the
-// original order within each group.
-function favoriteFirst(games, favoriteCodes) {
-  if (!favoriteCodes || !favoriteCodes.size) return games;
+function gameTouchesFavorite(game, favSet) {
+  if (!favSet || !favSet.size) return false;
+  const homeKey = `${game.league}:${game.home}`;
+  const awayKey = `${game.league}:${game.away}`;
+  if (favSet.has(homeKey) || favSet.has(awayKey)) return true;
+  // Legacy bare-code support: only matches when the user actually saved a
+  // bare code (no colon). Composite picks never silently match other leagues.
+  if (favSet.has(game.home) && !String(game.home).includes(':')) {
+    for (const f of favSet) if (!String(f).includes(':') && f === game.home) return true;
+  }
+  if (favSet.has(game.away) && !String(game.away).includes(':')) {
+    for (const f of favSet) if (!String(f).includes(':') && f === game.away) return true;
+  }
+  return false;
+}
+
+// Move favorite-touching games to the top, keep relative order otherwise.
+function favoriteFirst(games, favSet) {
+  if (!favSet || !favSet.size) return games;
   const fav = [], rest = [];
   for (const g of games) {
-    if (favoriteCodes.has(g.home) || favoriteCodes.has(g.away)) fav.push(g);
+    if (gameTouchesFavorite(g, favSet)) fav.push(g);
     else rest.push(g);
   }
   return [...fav, ...rest];
-}
-
-function isFavoriteGame(game, favoriteCodes) {
-  return !!favoriteCodes && (favoriteCodes.has(game.home) || favoriteCodes.has(game.away));
 }
 
 // Picks what fills the main column based on the current route.
@@ -66,18 +79,18 @@ function DesktopMainContent({ screen, ...props }) {
     privacy:      PrivacyScreen,
     about:        AboutScreen,
     gameDetail:   GameDetailScreen,
+    messages:     MessagesRoot,
   };
   const Comp = map[screen] || DesktopFeed;
   return <Comp {...props} />;
 }
 
-function DesktopNav({ onNav, me, screen }) {
+function DesktopNav({ onNav, me, screen, unreadMessages }) {
   const meUser = me || ME;
-  // Each item routes via onNav to a real screen. `screen` is the screen-key
-  // app.jsx uses; multiple labels can share a screen (e.g. Discover/Feed).
   const items = [
     { screen: 'home',         icon: 'home',     label: 'Feed' },
     { screen: 'home',         icon: 'search',   label: 'Discover',     key: 'discover' },
+    { screen: 'messages',     icon: 'chat',     label: 'Messages',     count: unreadMessages || 0 },
     { screen: 'chat',         icon: 'whistle',  label: 'Gameday',      badge: 'LIVE' },
     { screen: 'playsCreator', icon: 'video',    label: 'Plays' },
     { screen: 'profile',      icon: 'profile',  label: 'You' },
@@ -123,6 +136,15 @@ function DesktopNav({ onNav, me, screen }) {
                   background: 'var(--cn-live)', color: '#fff',
                   padding: '2px 5px', borderRadius: 3,
                 }}>{it.badge}</span>
+              )}
+              {it.count > 0 && (
+                <span style={{
+                  fontFamily: 'var(--cn-font-mono)',
+                  fontSize: 10, fontWeight: 800,
+                  background: 'var(--cn-accent)', color: 'var(--cn-on-accent)',
+                  padding: '1px 7px', borderRadius: 999, minWidth: 18,
+                  textAlign: 'center',
+                }}>{it.count > 99 ? '99+' : it.count}</span>
               )}
             </button>
           );
@@ -229,22 +251,16 @@ function DesktopFeed({ tweaks, onNav, posts, plays, query }) {
 }
 
 function DesktopRail({ tweaks, onNav, games, me, onOpenGame, query, setQuery }) {
-  const favCodes = React.useMemo(() => {
-    const set = new Set();
-    for (const t of (me?.teams || [])) set.add(bareTeamCode(t));
-    return set;
-  }, [me]);
+  const favSet = React.useMemo(() => favoriteSetFromMe(me), [me]);
   const followed = React.useMemo(() => new Set(me?.leagues || []), [me]);
 
   // Show a game only if its league is followed, or one of its teams is a
-  // favorite. With nothing followed, show nothing — sensible since we just
-  // asked the user what they care about during signup.
-  const includeGame = (g) =>
-    followed.has(g.league) || favCodes.has(g.home) || favCodes.has(g.away);
+  // favorite (league-aware match — Eagles ≠ Flyers).
+  const includeGame = (g) => followed.has(g.league) || gameTouchesFavorite(g, favSet);
 
-  const live     = favoriteFirst((games?.live     || []).filter(includeGame), favCodes).slice(0, 3);
-  const upcoming = favoriteFirst((games?.upcoming || []).filter(includeGame), favCodes).slice(0, 5);
-  const recent   = favoriteFirst((games?.recent   || []).filter(includeGame), favCodes).slice(0, 8);
+  const live     = favoriteFirst((games?.live     || []).filter(includeGame), favSet).slice(0, 3);
+  const upcoming = favoriteFirst((games?.upcoming || []).filter(includeGame), favSet).slice(0, 5);
+  const recent   = favoriteFirst((games?.recent   || []).filter(includeGame), favSet).slice(0, 8);
   const teamFor = (g, side) => g[side + 'Team'] || TEAMS[g[side]] || { code: g[side], name: g[side], primary: '#666', accent: '#999' };
   return (
     <aside style={{ overflowY: 'auto', padding: '20px 22px 40px', display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -282,7 +298,7 @@ function DesktopRail({ tweaks, onNav, games, me, onOpenGame, query, setQuery }) 
           label="GAMEDAY · LIVE"
           live
           games={live}
-          favCodes={favCodes}
+          favSet={favSet}
           teamFor={teamFor}
           onOpenGame={onOpenGame}
           onJoin={() => onNav?.('chat')}
@@ -294,7 +310,7 @@ function DesktopRail({ tweaks, onNav, games, me, onOpenGame, query, setQuery }) 
         <RailGameSection
           label="NEXT UP"
           games={upcoming.slice(0, 3)}
-          favCodes={favCodes}
+          favSet={favSet}
           teamFor={teamFor}
           onOpenGame={onOpenGame}
         />
@@ -305,7 +321,7 @@ function DesktopRail({ tweaks, onNav, games, me, onOpenGame, query, setQuery }) 
         <RailGameSection
           label="RECENT FINALS"
           games={recent}
-          favCodes={favCodes}
+          favSet={favSet}
           teamFor={teamFor}
           onOpenGame={onOpenGame}
           finals
@@ -349,7 +365,7 @@ function DesktopRail({ tweaks, onNav, games, me, onOpenGame, query, setQuery }) 
   );
 }
 
-function RailGameSection({ label, live, finals, games, favCodes, teamFor, onOpenGame, onJoin }) {
+function RailGameSection({ label, live, finals, games, favSet, teamFor, onOpenGame, onJoin }) {
   return (
     <div>
       <div style={{
@@ -367,7 +383,7 @@ function RailGameSection({ label, live, finals, games, favCodes, teamFor, onOpen
           <RailGameCard
             key={g.id}
             game={g}
-            favorite={isFavoriteGame(g, favCodes)}
+            favorite={gameTouchesFavorite(g, favSet)}
             teamFor={teamFor}
             live={live}
             finals={finals}

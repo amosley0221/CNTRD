@@ -330,6 +330,10 @@ function SettingsScreen({ tweaks, setTweak, onNav, me }) {
         <span style={{ width: 32 }} />
       </div>
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 40 }}>
+        <Section title="Messaging">
+          <Row label="Direct messages" sub="Chats with people you follow + groups" right={<Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />} onClick={() => onNav?.('messages')} last />
+        </Section>
+
         <Section title="Appearance">
           <Row label="Dark mode" sub={tweaks.dark ? 'Following the night game' : 'Day game energy'} right={<ToggleSwitch on={tweaks.dark} onChange={v => setTweak('dark', v)} />} />
           <Row label="Accent color" right={

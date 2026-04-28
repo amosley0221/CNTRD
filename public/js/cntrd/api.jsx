@@ -63,6 +63,17 @@ const API = {
   page(slug)               { return request('GET',  `/api/pages/${slug}`); },
   updatePage(slug, body)   { return request('PUT',  `/api/pages/${slug}`, body); },
 
+  // Messages
+  conversations()                       { return request('GET',  '/api/messages'); },
+  unreadCount()                         { return request('GET',  '/api/messages/unread'); },
+  conversation(id)                      { return request('GET',  `/api/messages/${id}`); },
+  conversationMessages(id, before)      { return request('GET',  `/api/messages/${id}/messages${before ? '?before=' + encodeURIComponent(before) : ''}`); },
+  sendMessage(id, content)              { return request('POST', `/api/messages/${id}/messages`, { content }); },
+  createConversation(payload)           { return request('POST', '/api/messages', payload); },
+  renameConversation(id, name)          { return request('PATCH',`/api/messages/${id}`, { name }); },
+  searchUsers(q)                        { return request('GET',  '/api/messages/users/search?q=' + encodeURIComponent(q)); },
+  leaveConversation(id)                 { return request('DELETE', `/api/messages/${id}/members/me`); },
+
   // Admin (server enforces is_admin)
   adminUsers(q)            { return request('GET',  '/api/admin/users' + (q ? '?q=' + encodeURIComponent(q) : '')); },
   adminStats()             { return request('GET',  '/api/admin/stats'); },

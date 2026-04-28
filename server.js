@@ -25,6 +25,7 @@ app.use('/api/games',  require('./routes/games'));
 app.use('/api/teams',  require('./routes/teams'));
 app.use('/api/leagues',require('./routes/leagues'));
 app.use('/api/pages',  require('./routes/pages'));
+app.use('/api/messages', require('./routes/messages'));
 app.use('/api/admin',  require('./routes/admin'));
 app.use('/api/static', require('./routes/static'));
 app.use('/api/upload', uploadRouter);
