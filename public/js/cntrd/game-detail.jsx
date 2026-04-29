@@ -54,38 +54,7 @@ function GameDetailScreen({ tweaks, onNav, selectedGame }) {
             <>
               <DetailHeader data={data} />
               <DetailScoreCard data={data} />
-              {data.series && (data.series.summary || data.series.bestOf) && (
-                <div style={{
-                  marginTop: 10, padding: '10px 14px',
-                  border: '0.5px solid var(--cn-accent)',
-                  borderRadius: 10,
-                  background: 'color-mix(in srgb, var(--cn-accent) 8%, transparent)',
-                  fontFamily: 'var(--cn-font-mono)', fontSize: 11,
-                  color: 'var(--cn-accent)', letterSpacing: 0.6, textTransform: 'uppercase',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
-                }}>
-                  <span>Playoff series</span>
-                  <span style={{ color: 'var(--cn-text)', fontWeight: 800 }}>
-                    {data.series.summary || ''}
-                    {data.series.bestOf ? ` · best of ${data.series.bestOf}` : ''}
-                  </span>
-                </div>
-              )}
-              {data.aggregate && (
-                <div style={{
-                  marginTop: 10, padding: '10px 14px',
-                  border: '0.5px solid var(--cn-border)',
-                  borderRadius: 10, background: 'var(--cn-bg-elev)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  fontFamily: 'var(--cn-font-mono)', fontSize: 11,
-                  color: 'var(--cn-text-mute)', letterSpacing: 0.5, textTransform: 'uppercase',
-                }}>
-                  <span>Aggregate</span>
-                  <span style={{ color: 'var(--cn-text)', fontVariantNumeric: 'tabular-nums', fontWeight: 800 }}>
-                    {data.away.code || 'A'} {data.aggregate.away} – {data.aggregate.home} {data.home.code || 'H'}
-                  </span>
-                </div>
-              )}
+              <DetailContextBanner data={data} />
               {(data.home?.id || data.away?.id) && (
                 <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {data.away?.id && (
@@ -109,6 +78,69 @@ function GameDetailScreen({ tweaks, onNav, selectedGame }) {
       </div>
     </div>
   );
+}
+
+// Picks a single banner under the score card based on what extra context
+// the game has. Soccer ties use aggregate (UCL/UEL knockouts); US-style
+// playoff series stay on best-of-N. Skips entirely when neither applies.
+const _SOCCER_LEAGUES = new Set(['MLS', 'EPL', 'LaLiga', 'Bundesliga', 'SerieA', 'UCL']);
+function DetailContextBanner({ data }) {
+  const isSoccer = _SOCCER_LEAGUES.has(data?.league);
+  // Aggregate first for soccer — even when ESPN also returns a series
+  // payload, "best of 1" / "best of 2" doesn't fit two-leg ties.
+  if (isSoccer && data.aggregate) {
+    const a = Number(data.aggregate.away);
+    const h = Number(data.aggregate.home);
+    let label = 'Aggregate';
+    let value = `${data.away.code || 'A'} ${a} – ${h} ${data.home.code || 'H'}`;
+    if (Number.isFinite(a) && Number.isFinite(h)) {
+      if (a === h) {
+        label = 'Aggregate · level';
+      } else {
+        const leader = a > h ? data.away : data.home;
+        const top = Math.max(a, h);
+        const bot = Math.min(a, h);
+        label = `${leader.name || leader.code || 'Team'} lead aggregate`;
+        value = `${top}–${bot}`;
+      }
+    }
+    return (
+      <div style={{
+        marginTop: 10, padding: '10px 14px',
+        border: '0.5px solid var(--cn-accent)',
+        borderRadius: 10,
+        background: 'color-mix(in srgb, var(--cn-accent) 8%, transparent)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 12,
+        fontFamily: 'var(--cn-font-mono)', fontSize: 11,
+        color: 'var(--cn-accent)', letterSpacing: 0.6, textTransform: 'uppercase',
+      }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+        <span style={{ color: 'var(--cn-text)', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+      </div>
+    );
+  }
+  // Non-soccer playoffs — best-of-N series with a running tally.
+  if (data.series && (data.series.summary || data.series.bestOf)) {
+    return (
+      <div style={{
+        marginTop: 10, padding: '10px 14px',
+        border: '0.5px solid var(--cn-accent)',
+        borderRadius: 10,
+        background: 'color-mix(in srgb, var(--cn-accent) 8%, transparent)',
+        fontFamily: 'var(--cn-font-mono)', fontSize: 11,
+        color: 'var(--cn-accent)', letterSpacing: 0.6, textTransform: 'uppercase',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+      }}>
+        <span>Playoff series</span>
+        <span style={{ color: 'var(--cn-text)', fontWeight: 800 }}>
+          {data.series.summary || ''}
+          {data.series.bestOf ? ` · best of ${data.series.bestOf}` : ''}
+        </span>
+      </div>
+    );
+  }
+  return null;
 }
 
 function scheduleBtnStyle() {
