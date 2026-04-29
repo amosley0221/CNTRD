@@ -120,8 +120,12 @@ function DetailContextBanner({ data }) {
       </div>
     );
   }
-  // Non-soccer playoffs — best-of-N series with a running tally.
-  if (data.series && (data.series.summary || data.series.bestOf)) {
+  // Non-soccer playoffs — best-of-N series with a running tally. Only
+  // surface the banner when the game is actually postseason; regular
+  // season series rows (e.g. "Game 2 of MLB Mets-Phillies series") are
+  // not playoffs and shouldn't read "Playoff series".
+  const isPostseason = Number(data?.season_type) === 3;
+  if (isPostseason && data.series && (data.series.summary || data.series.bestOf)) {
     return (
       <div style={{
         marginTop: 10, padding: '10px 14px',

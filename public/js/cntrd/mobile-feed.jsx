@@ -211,8 +211,11 @@ function LiveGameCard({ game, onClick, favorite }) {
   // without. For soccer two-leg ties we name the team that's ahead on
   // aggregate (or "level" when tied) instead of just printing both
   // numbers.
+  // Gate the playoff-series tag on actual postseason — ESPN ships a
+  // `series` payload on regular-season MLB games (3-game sets) too.
+  const isPostseason = Number(game.season_type) === 3;
   let footer = null;
-  if (game.series && (game.series.summary || game.series.bestOf)) {
+  if (isPostseason && game.series && (game.series.summary || game.series.bestOf)) {
     footer = `SERIES ${game.series.summary || ''}${game.series.bestOf ? ` · BEST OF ${game.series.bestOf}` : ''}`.trim();
   } else if (game.aggregate) {
     const a = Number(game.aggregate.away);

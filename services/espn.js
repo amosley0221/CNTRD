@@ -175,6 +175,13 @@ function normalizeEvent(ev, leagueCode) {
   const homeTeam = teamFromCompetitor(home);
   const awayTeam = teamFromCompetitor(away);
 
+  // 1 preseason · 2 regular · 3 postseason. Drives whether we render
+  // a "Playoff series" tag on rail cards — ESPN ships `series` on
+  // regular-season games too (game 2 of a 3-game set, etc.) and we
+  // should only treat it as a playoff hint when season_type === 3.
+  const stRaw = ev.seasonType || ev.season?.type || comp.seasonType || null;
+  const seasonTypeId = Number(stRaw?.id ?? stRaw?.type ?? stRaw) || null;
+
   return {
     id: String(ev.id),
     league: leagueCode,
@@ -190,6 +197,7 @@ function normalizeEvent(ev, leagueCode) {
     awayRecord: pickRecord(away.records),
     series: normalizeSeries(comp),
     aggregate: normalizeAggregate(home, away),
+    season_type: seasonTypeId,
     period,
     clock,
     venue: comp.venue?.fullName || '',
@@ -503,6 +511,13 @@ async function getGameDetail(leagueCode, eventId) {
     period: status.shortDetail || status.detail || '',
     venue: comp.venue?.fullName || '',
     date: header.competitions?.[0]?.date || '',
+    // 1 preseason · 2 regular · 3 postseason · 4 offseason. Drives the
+    // "Playoff series" banner — regular-season series rows from ESPN
+    // (e.g. game 2 of a 3-game MLB set) shouldn't read "Playoff series".
+    season_type: (() => {
+      const stRaw = header.season?.type || comp.seasonType || header.seasonType || null;
+      return Number(stRaw?.id ?? stRaw?.type ?? stRaw) || null;
+    })(),
     series: normalizeSeries(comp),
     aggregate: normalizeAggregate(home, away),
     home: {

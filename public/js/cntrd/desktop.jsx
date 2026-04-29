@@ -511,8 +511,11 @@ function RailGameCard({ game, favorite, teamFor, live, finals, onOpenGame, onJoi
         <CompactScoreRow team={home} score={game.homeScore} record={game.homeRecord} league={game.league} />
         {(() => {
           // Series / aggregate footer matches the mobile rail cards.
-          // Single line so cards stay compact.
-          if (game.series && (game.series.summary || game.series.bestOf)) {
+          // Single line so cards stay compact. Series banner only fires
+          // for actual postseason games — regular-season `series` rows
+          // (e.g. MLB 3-game sets) shouldn't read "Best of N".
+          const isPost = Number(game.season_type) === 3;
+          if (isPost && game.series && (game.series.summary || game.series.bestOf)) {
             return (
               <div style={{
                 marginTop: 6,
