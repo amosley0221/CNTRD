@@ -245,6 +245,21 @@ function ymd(d) {
   return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`;
 }
 
+// ESPN's scoreboard is keyed by Eastern Time — a "Tuesday slate" rolls
+// over at midnight ET, not midnight UTC. Build a YYYYMMDD anchored to
+// America/New_York so we always ask for the right day's games.
+function ymdET(d = new Date()) {
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  });
+  const parts = fmt.formatToParts(d);
+  const y = parts.find(p => p.type === 'year').value;
+  const m = parts.find(p => p.type === 'month').value;
+  const day = parts.find(p => p.type === 'day').value;
+  return `${y}${m}${day}`;
+}
+
 function dateRange(daysBack) {
   const end = new Date();
   const start = new Date(end.getTime() - daysBack * 24 * 60 * 60 * 1000);
@@ -258,8 +273,17 @@ function settled(promises) {
 }
 
 async function getAll() {
+  // Default scoreboard (no dates) is "current" per ESPN, which is fuzzy
+  // — it can lag by a day on quiet mornings. Pinning the date to today
+  // (Eastern Time) plus tomorrow guarantees we surface tonight's NBA /
+  // NHL / MLB games even when called before tipoff.
+  const today = ymdET();
+  const tomorrow = ymdET(new Date(Date.now() + 24 * 60 * 60 * 1000));
+  const todayRange = `${today}-${tomorrow}`;
+  const cutoffMs = new Date(`${today.slice(0,4)}-${today.slice(4,6)}-${today.slice(6,8)}T23:59:59-04:00`).getTime() + 24 * 3600_000;
+
   const [todayLists, recentLists] = await Promise.all([
-    settled(LEAGUES.map(l => getLeague(l))),
+    settled(LEAGUES.map(l => getLeague(l, todayRange))),
     settled(LEAGUES.map(l => getLeague(l, dateRange(RECENT_DAYS)))),
   ]);
 
@@ -267,7 +291,12 @@ async function getAll() {
   const upcoming = [];
   for (const g of todayLists) {
     if (g.state === 'live') live.push(g);
-    else if (g.state === 'scheduled') upcoming.push(g);
+    else if (g.state === 'scheduled') {
+      // Cap upcoming to "starts within the next ~36h" so soccer leagues
+      // (which return weeks of fixtures) don't flood the list.
+      const startMs = Date.parse(g.date || '');
+      if (!Number.isFinite(startMs) || startMs <= cutoffMs) upcoming.push(g);
+    }
   }
   // Recent: finals only, dedupe by id, sorted by date desc, capped.
   const recentMap = new Map();
@@ -279,9 +308,9 @@ async function getAll() {
   upcoming.sort((a, b) => (a.date < b.date ? -1 : 1));
 
   return {
-    live: live.slice(0, 12),
-    upcoming: upcoming.slice(0, 12),
-    recent: recent.slice(0, 12),
+    live: live.slice(0, 24),
+    upcoming: upcoming.slice(0, 24),
+    recent: recent.slice(0, 24),
   };
 }
 
