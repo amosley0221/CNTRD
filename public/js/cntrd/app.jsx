@@ -436,6 +436,25 @@ function CNTRDApp() {
     return () => { cancelled = true; clearInterval(id); };
   }, [authed]);
 
+  // Poll /me every 30s so the profile's follower / following / post
+  // counts reflect activity from other users (someone follows me,
+  // unblocks me, etc.) without a manual refresh. Cheap — single row
+  // lookup. Only runs when authed.
+  React.useEffect(() => {
+    if (!authed) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const fresh = await API.me();
+        if (!cancelled && fresh) {
+          setMe(prev => prev ? { ...prev, ...normalizeMe(fresh) } : prev);
+        }
+      } catch { /* token may have expired; auth flow will surface it elsewhere */ }
+    };
+    const id = setInterval(tick, 30 * 1000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [authed]);
+
   // Notifications-screen "open game" handler — reuses the existing game
   // detail flow so a live-game notification jumps straight into stats.
   React.useEffect(() => {
@@ -490,6 +509,18 @@ function CNTRDApp() {
     return () => window.removeEventListener('cntrd:open-discover', handler);
   }, []);
 
+  // Optimistic me.following adjustment when the user follows /
+  // unfollows someone. The 30s /me poll reconciles afterward.
+  React.useEffect(() => {
+    const handler = (e) => {
+      const delta = Number(e.detail?.delta) || 0;
+      if (!delta) return;
+      setMe(prev => prev ? { ...prev, following: Math.max(0, (prev.following ?? 0) + delta) } : prev);
+    };
+    window.addEventListener('cntrd:me-follow-delta', handler);
+    return () => window.removeEventListener('cntrd:me-follow-delta', handler);
+  }, []);
+
   // Reply button on a post → open the composer with the source post pinned
   // at the top so the user can see what they're replying to.
   React.useEffect(() => {
@@ -507,6 +538,7 @@ function CNTRDApp() {
   const screenMap = {
     home:         FeedScreen,
     profile:      ProfileScreen,
+    editProfile:  EditProfileScreen,
     compose:      ComposerScreen,
     chat:         GamedayScreen,
     settings:     SettingsScreen,

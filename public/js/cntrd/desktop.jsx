@@ -72,6 +72,7 @@ function DesktopMainContent({ screen, ...props }) {
   if (screen === 'home' || !screen) return <DesktopFeed {...props} />;
   const map = {
     profile:      ProfileScreen,
+    editProfile:  EditProfileScreen,
     compose:      ComposerScreen,
     chat:         GamedayScreen,
     settings:     SettingsScreen,

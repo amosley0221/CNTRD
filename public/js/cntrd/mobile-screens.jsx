@@ -106,7 +106,7 @@ function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePl
         <div style={{ padding: '20px 16px 0' }}>
           <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 12 }}>
             <Avatar user={u} size={88} ring />
-            <button style={{
+            <button onClick={() => onNav?.('editProfile')} style={{
               padding: '8px 16px', borderRadius: 999,
               background: 'var(--cn-accent)', color: 'var(--cn-on-accent)',
               border: 'none', fontWeight: 700, fontSize: 13, fontFamily: 'var(--cn-font-body)',
@@ -1545,6 +1545,173 @@ function PlayReactions({ playId }) {
   );
 }
 
+// ─── EDIT YOUR OWN PROFILE ────────────────────────────────────
+// Reachable from the "Edit profile" button on your own profile.
+// Updates display_name (the friendly name shown alongside @handle),
+// bio, location, and pronouns. Username is changed in the Account
+// screen since it's identity, not profile copy. Display name is just
+// for display — the login form only matches on username/email.
+function EditProfileScreen({ tweaks, onNav, me, onMeUpdated }) {
+  const meUser = me || ME;
+  const [displayName, setDisplayName] = React.useState(meUser.displayName || '');
+  const [bio, setBio]                 = React.useState(meUser.bio || '');
+  const [city, setCity]               = React.useState(meUser.city || '');
+  const [pronouns, setPronouns]       = React.useState(meUser.pronouns || '');
+  const [busy, setBusy]               = React.useState(false);
+  const [err, setErr]                 = React.useState(null);
+
+  const dirty = (
+    displayName !== (meUser.displayName || '') ||
+    bio        !== (meUser.bio         || '') ||
+    city       !== (meUser.city        || '') ||
+    pronouns   !== (meUser.pronouns    || '')
+  );
+
+  const save = async () => {
+    if (!dirty || busy) return;
+    setBusy(true); setErr(null);
+    try {
+      const updated = await window.API.updateMe({
+        display_name: displayName.trim().slice(0, 50) || meUser.username,
+        bio: bio.slice(0, 160),
+        city: city.slice(0, 60),
+        pronouns: pronouns.slice(0, 30),
+      });
+      onMeUpdated?.(updated);
+      onNav?.('profile');
+    } catch (e) {
+      setErr(e.message || 'Save failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 14px', borderBottom: '0.5px solid var(--cn-border)',
+        background: 'var(--cn-bg-elev2)',
+      }}>
+        <button style={iconBtnStyle()} onClick={() => onNav?.('profile')} title="Back">
+          <Icon name="chevron-l" size={22} stroke="var(--cn-text)" />
+        </button>
+        <span style={{
+          fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)',
+          textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)',
+          fontSize: 14,
+        }}>EDIT PROFILE</span>
+        <button onClick={save} disabled={!dirty || busy} style={{
+          padding: '6px 14px', borderRadius: 999,
+          background: dirty && !busy ? 'var(--cn-accent)' : 'var(--cn-bg-elev2)',
+          color:      dirty && !busy ? 'var(--cn-on-accent)' : 'var(--cn-text-mute)',
+          border: 'none', cursor: dirty && !busy ? 'pointer' : 'not-allowed',
+          fontWeight: 700, fontSize: 12, fontFamily: 'var(--cn-font-body)',
+        }}>{busy ? 'Saving…' : 'Save'}</button>
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 80px' }}>
+        <EditProfileField
+          label="Name"
+          help="Your display name. Shown alongside @username. Doesn't have to be unique and isn't used to log in."
+          value={displayName}
+          onChange={setDisplayName}
+          maxLength={50}
+          placeholder={meUser.username}
+        />
+        <EditProfileField
+          label="Bio"
+          help="A short line about you. 160 characters max."
+          value={bio}
+          onChange={setBio}
+          maxLength={160}
+          multiline
+          placeholder="Sports fan with too many opinions."
+        />
+        <EditProfileField
+          label="Location"
+          help="City or region — visible on your profile."
+          value={city}
+          onChange={setCity}
+          maxLength={60}
+          placeholder="Philadelphia, PA"
+        />
+        <EditProfileField
+          label="Pronouns"
+          help="Optional. Examples: she/her, he/him, they/them."
+          value={pronouns}
+          onChange={setPronouns}
+          maxLength={30}
+          placeholder=""
+        />
+        <div style={{
+          marginTop: 18, padding: '10px 12px',
+          fontFamily: 'var(--cn-font-mono)', fontSize: 11,
+          color: 'var(--cn-text-mute)', lineHeight: 1.5,
+          border: '0.5px solid var(--cn-border-s)',
+          borderRadius: 8,
+        }}>
+          Your @username and email are managed in <button onClick={() => onNav?.('account')} style={{
+            background: 'transparent', border: 'none', padding: 0,
+            color: 'var(--cn-accent)', cursor: 'pointer',
+            fontFamily: 'inherit', fontSize: 'inherit', fontWeight: 700,
+          }}>Account</button> settings.
+        </div>
+        {err && (
+          <div style={{
+            marginTop: 14, padding: '10px 12px', borderRadius: 8,
+            background: 'color-mix(in srgb, var(--cn-danger) 18%, transparent)',
+            color: 'var(--cn-danger)',
+            fontFamily: 'var(--cn-font-mono)', fontSize: 12,
+          }}>{err}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EditProfileField({ label, help, value, onChange, maxLength, multiline, placeholder }) {
+  const Tag = multiline ? 'textarea' : 'input';
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+        <label style={{
+          fontFamily: 'var(--cn-font-mono)', fontSize: 10,
+          color: 'var(--cn-text-mute)', letterSpacing: 1, textTransform: 'uppercase',
+        }}>{label}</label>
+        {maxLength && (
+          <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)' }}>
+            {(value || '').length} / {maxLength}
+          </span>
+        )}
+      </div>
+      <Tag
+        value={value}
+        onChange={(e) => onChange(e.target.value.slice(0, maxLength))}
+        placeholder={placeholder}
+        rows={multiline ? 3 : undefined}
+        style={{
+          width: '100%', padding: '10px 12px',
+          background: 'var(--cn-bg-elev)',
+          border: '0.5px solid var(--cn-border-s)',
+          borderRadius: 8,
+          color: 'var(--cn-text)',
+          fontFamily: 'var(--cn-font-body)', fontSize: 14,
+          outline: 'none',
+          resize: multiline ? 'vertical' : 'none',
+        }}
+      />
+      {help && (
+        <div style={{
+          marginTop: 4,
+          fontFamily: 'var(--cn-font-mono)', fontSize: 10,
+          color: 'var(--cn-text-mute)', lineHeight: 1.5,
+        }}>{help}</div>
+      )}
+    </div>
+  );
+}
+
 // ─── USER PROFILE (someone else's profile) ────────────────────
 // Reachable by tapping any user's avatar/name in the feed or in chat
 // bubbles. Private accounts return a locked view; we render a placeholder
@@ -1583,15 +1750,25 @@ function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0
   const followToggle = async () => {
     if (!user || busyFollow) return;
     setBusyFollow(true);
+    const wasFollowing = !!user.is_following;
     try {
       const res = await window.API.followUser(user.username);
       // Backend returns { is_following, follower_count, request_pending }.
+      const nowFollowing = typeof res.is_following === 'boolean' ? res.is_following : !wasFollowing;
       setUser(prev => prev ? {
         ...prev,
-        is_following:    typeof res.is_following === 'boolean' ? res.is_following    : !prev.is_following,
+        is_following:    nowFollowing,
         request_pending: typeof res.request_pending === 'boolean' ? res.request_pending : prev.request_pending,
         follower_count:  typeof res.follower_count === 'number'  ? res.follower_count  : prev.follower_count,
       } : prev);
+      // Bump my own "following" count optimistically so it updates in
+      // real time. The periodic /me refresh in app.jsx reconciles
+      // anything that drifts (e.g. private follow requests pending).
+      if (nowFollowing !== wasFollowing) {
+        window.dispatchEvent(new CustomEvent('cntrd:me-follow-delta', {
+          detail: { delta: nowFollowing ? +1 : -1 },
+        }));
+      }
     } catch (e) {
       alert(e.message || 'Could not update follow');
     } finally {
@@ -1729,4 +1906,4 @@ function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0
   );
 }
 
-Object.assign(window, { ProfileScreen, ComposerScreen, PlaysCreatorScreen, PlaysViewerScreen, FanCard, UserProfileScreen });
+Object.assign(window, { ProfileScreen, ComposerScreen, PlaysCreatorScreen, PlaysViewerScreen, FanCard, UserProfileScreen, EditProfileScreen });
