@@ -600,15 +600,31 @@ function GamedayList({ tweaks, onNav, games, me, onPick }) {
   const relevantLive     = allLive.filter(isRelevant);
   const relevantUpcoming = allUpcoming.filter(isRelevant);
 
-  // League filter — derived from whatever leagues actually have games
-  // today AND that the user follows or has a team in.
+  // League filter — shows every league the user follows or has a team
+  // in, even when there's nothing scheduled today, so the user can
+  // confirm at a glance which leagues are wired up. The pill row +
+  // empty state read together give a clear "no NBA games today" rather
+  // than silently hiding the league.
   const [leagueFilter, setLeagueFilter] = React.useState('all');
+  const teamLeagues = React.useMemo(() => {
+    const out = new Set();
+    for (const f of favSet) {
+      const s = String(f);
+      if (s.includes(':')) out.add(s.split(':')[0]);
+    }
+    return out;
+  }, [favSet]);
   const availableLeagues = React.useMemo(() => {
+    // Union of followed leagues + leagues containing a favorite team +
+    // any league with a game today (covers cases where the user
+    // forgot to check the league but still wants to see its games).
     const seen = new Set();
+    for (const l of followedLeagues) seen.add(l);
+    for (const l of teamLeagues) seen.add(l);
     for (const g of [...relevantLive, ...relevantUpcoming]) if (g?.league) seen.add(g.league);
     return Array.from(seen).sort();
-  }, [relevantLive, relevantUpcoming]);
-  // Drop a stale filter if the league no longer has games today.
+  }, [followedLeagues, teamLeagues, relevantLive, relevantUpcoming]);
+  // Drop a stale filter if the league disappears from the selectable set.
   React.useEffect(() => {
     if (leagueFilter !== 'all' && !availableLeagues.includes(leagueFilter)) {
       setLeagueFilter('all');
@@ -667,12 +683,18 @@ function GamedayList({ tweaks, onNav, games, me, onPick }) {
         {empty ? (
           <div style={{ padding: 32, textAlign: 'center' }}>
             <div style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 22 }}>
-              {followsNothing ? 'Set up your sports' : 'No games right now'}
+              {followsNothing
+                ? 'Set up your sports'
+                : leagueFilter !== 'all'
+                  ? `No ${leagueFilter} games today`
+                  : 'No games right now'}
             </div>
             <div style={{ marginTop: 8, fontSize: 13, color: 'var(--cn-text-dim)', lineHeight: 1.45 }}>
               {followsNothing
                 ? 'Add leagues you follow and teams you favorite — Gameday only shows games that match.'
-                : "When a game tips off or one's scheduled today, you'll see it here."}
+                : leagueFilter !== 'all'
+                  ? 'Tap "All" to see games from your other followed leagues.'
+                  : "When a game tips off or one's scheduled today, you'll see it here."}
             </div>
             {followsNothing && (
               <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'center' }}>
