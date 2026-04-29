@@ -1,20 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="CNTRD">
-  <!-- Brand: dark stadium background with the accent-yellow "C" cut from
-       a heavy condensed sans-serif (mirrors the Anton-driven CNTRD
-       wordmark used across the app). Encoded as a path so the icon
-       renders identically without depending on a webfont. -->
+  <!-- Brand mark: dark stadium background with a heavy condensed-sans
+       "C" cut in the same off-white the CNTRD wordmark uses on screen.
+       Path-based so the icon renders identically across browsers and
+       in iOS standalone mode (Add to Home Screen) without depending on
+       a webfont being available in the favicon context. -->
   <rect width="256" height="256" rx="48" ry="48" fill="#0A0A0B"/>
   <!--
-       Outer arc: radius 92, swept counterclockwise around the left side
-       from top-right opening (216,102) to bottom-right opening (216,154).
-       Inner arc: radius 52, swept clockwise back from (173,154) to
-       (173,102). The two horizontal terminals (closing Z + the L) make
-       the flat openings characteristic of Anton's "C".
+       Outer arc: radius 96, swept around the left side from a top-right
+       opening that sits ~12° above horizontal to a bottom-right opening
+       ~12° below. Inner arc: radius 50, swept back through the counter
+       at ±25°. The result has Anton's heavy stem (≈46px wall) and the
+       slightly slanted terminals that give the wordmark its character —
+       not a perfectly geometric horizontal-cut C.
   -->
-  <path fill="#D4FF3A"
-        d="M 216 102
-           A 92 92 0 1 0 216 154
-           L 173 154
-           A 52 52 0 1 1 173 102
+  <path fill="#F4F1EA"
+        d="M 222 108
+           A 96 96 0 1 0 222 148
+           L 173 149
+           A 50 50 0 1 1 173 107
            Z"/>
 </svg>
