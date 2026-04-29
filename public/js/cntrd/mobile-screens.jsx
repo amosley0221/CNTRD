@@ -917,4 +917,188 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
   );
 }
 
-Object.assign(window, { ProfileScreen, ComposerScreen, PlaysCreatorScreen, PlaysViewerScreen, FanCard });
+// ─── USER PROFILE (someone else's profile) ────────────────────
+// Reachable by tapping any user's avatar/name in the feed or in chat
+// bubbles. Private accounts return a locked view; we render a placeholder
+// with a Follow / Request to follow button.
+function UserProfileScreen({ tweaks, onNav, me, viewUsername }) {
+  const [user, setUser] = React.useState(null);
+  const [posts, setPosts] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [err, setErr] = React.useState(null);
+  const [tab, setTab] = React.useState('posts');
+  const [busyFollow, setBusyFollow] = React.useState(false);
+
+  const username = viewUsername;
+  const isMe = !!(me?.username && username && me.username === username);
+
+  React.useEffect(() => {
+    if (!username) { setLoading(false); return; }
+    let cancelled = false;
+    setLoading(true); setErr(null);
+    Promise.all([
+      window.API.user(username).catch(e => { throw e; }),
+      window.API.userPosts(username).catch(() => []),
+    ]).then(([u, list]) => {
+      if (cancelled) return;
+      setUser(u);
+      setPosts((list || []).map(window.normalizePost));
+      setLoading(false);
+    }).catch(e => {
+      if (cancelled) return;
+      setErr(e.message || 'Failed to load');
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [username]);
+
+  const followToggle = async () => {
+    if (!user || busyFollow) return;
+    setBusyFollow(true);
+    try {
+      const res = await window.API.followUser(user.username);
+      // Backend returns { is_following, follower_count, request_pending }.
+      setUser(prev => prev ? {
+        ...prev,
+        is_following:    typeof res.is_following === 'boolean' ? res.is_following    : !prev.is_following,
+        request_pending: typeof res.request_pending === 'boolean' ? res.request_pending : prev.request_pending,
+        follower_count:  typeof res.follower_count === 'number'  ? res.follower_count  : prev.follower_count,
+      } : prev);
+    } catch (e) {
+      alert(e.message || 'Could not update follow');
+    } finally {
+      setBusyFollow(false);
+    }
+  };
+
+  // Build a "view" object that ProfileScreen-style components can consume.
+  const view = user ? {
+    id: user.id,
+    username: user.username,
+    displayName: user.display_name || user.username,
+    bio: user.bio || '',
+    pronouns: user.pronouns || '',
+    city: user.city || '',
+    teams: Array.isArray(user.team_tags) ? user.team_tags : [],
+    followers: user.follower_count ?? 0,
+    following: user.following_count ?? 0,
+    posts: user.post_count ?? 0,
+    avatar: user.avatar,
+    avatarHue: user.avatar_hue ?? 200,
+    is_private: !!user.is_private,
+    is_following: !!user.is_following,
+    request_pending: !!user.request_pending,
+    locked: !!user.is_private && !user.is_following && !isMe,
+    joined: user.created_at
+      ? 'Joined ' + new Date(user.created_at.replace(' ', 'T') + 'Z').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+      : '',
+  } : null;
+
+  return (
+    <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderBottom: '0.5px solid var(--cn-border)' }}>
+        <button style={iconBtnStyle()} onClick={() => onNav?.('home')}><Icon name="chevron-l" size={22} stroke="var(--cn-text)" /></button>
+        <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 12, color: 'var(--cn-text-dim)' }}>@{username || ''}</span>
+        <span style={{ width: 32 }} />
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 96 }}>
+        {loading ? (
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>Loading…</div>
+        ) : err ? (
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--cn-danger)', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>{err}</div>
+        ) : !view ? (
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>User not found.</div>
+        ) : (
+          <>
+            <div style={{ padding: '20px 16px 0' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 12 }}>
+                <Avatar user={view} size={88} ring />
+                {!isMe && (
+                  <button
+                    onClick={followToggle}
+                    disabled={busyFollow}
+                    style={{
+                      padding: '8px 16px', borderRadius: 999,
+                      background: view.is_following ? 'var(--cn-bg-elev2)' : view.request_pending ? 'var(--cn-bg-elev2)' : 'var(--cn-accent)',
+                      color:      view.is_following ? 'var(--cn-text)'    : view.request_pending ? 'var(--cn-text-dim)' : 'var(--cn-on-accent)',
+                      border: view.is_following || view.request_pending ? '0.5px solid var(--cn-border)' : 'none',
+                      fontWeight: 700, fontSize: 13, fontFamily: 'var(--cn-font-body)',
+                      cursor: busyFollow ? 'wait' : 'pointer',
+                    }}
+                  >
+                    {view.is_following ? 'Following' : view.request_pending ? 'Requested' : 'Follow'}
+                  </button>
+                )}
+              </div>
+              <div style={{
+                fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)',
+                textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)',
+                fontSize: 24, lineHeight: 1.05,
+              }}>{view.displayName}</div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
+                <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 12, color: 'var(--cn-text-dim)' }}>@{view.username}</span>
+                {view.teams.length > 0 && <span style={{ color: 'var(--cn-text-mute)' }}>·</span>}
+                {dedupeUclOverlap(view.teams).map(t => <TeamPill key={t} code={t} size="sm" />)}
+              </div>
+              {view.bio && (
+                <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.45, color: 'var(--cn-text)', textWrap: 'pretty' }}>
+                  {view.bio}
+                </div>
+              )}
+              <div style={{ marginTop: 10, display: 'flex', gap: 16, fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>
+                {view.city && <span>📍 {view.city}</span>}
+                {view.joined && <span>{view.joined}</span>}
+              </div>
+              <div style={{ marginTop: 14, display: 'flex', gap: 18 }}>
+                <Stat label="Posts" value={view.posts} />
+                <Stat label="Followers" value={view.followers} />
+                <Stat label="Following" value={view.following} />
+              </div>
+              {view.teams.length > 0 && <FanCard teams={view.teams} />}
+            </div>
+
+            {view.locked ? (
+              <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 12, lineHeight: 1.6 }}>
+                This account is private.<br />
+                <span style={{ fontSize: 11 }}>Their posts and Plays are hidden until they accept your follow request.</span>
+              </div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', borderBottom: '0.5px solid var(--cn-border)', marginTop: 8, position: 'sticky', top: 0, background: 'var(--cn-bg)', zIndex: 2 }}>
+                  {[
+                    { id: 'posts', label: 'Posts' },
+                    { id: 'media', label: 'Media' },
+                  ].map(t => (
+                    <button key={t.id} onClick={() => setTab(t.id)} style={{
+                      flex: 1, padding: '12px 0',
+                      background: 'transparent', border: 'none',
+                      color: tab === t.id ? 'var(--cn-text)' : 'var(--cn-text-mute)',
+                      fontFamily: 'var(--cn-font-body)', fontSize: 13, fontWeight: 600,
+                      borderBottom: tab === t.id ? '2px solid var(--cn-accent)' : '2px solid transparent',
+                      cursor: 'pointer',
+                    }}>{t.label}</button>
+                  ))}
+                </div>
+                <div>
+                  {tab === 'posts' && (
+                    posts.length === 0
+                      ? <div style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>No posts yet.</div>
+                      : posts.map((p, i) => <Post key={p.id || i} post={p} />)
+                  )}
+                  {tab === 'media' && (
+                    <div style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>
+                      Photo + clip posts will surface here.
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
+      <BottomNav active={null} onChange={onNav} />
+    </div>
+  );
+}
+
+Object.assign(window, { ProfileScreen, ComposerScreen, PlaysCreatorScreen, PlaysViewerScreen, FanCard, UserProfileScreen });

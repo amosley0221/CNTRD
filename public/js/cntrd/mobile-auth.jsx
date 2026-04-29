@@ -1005,17 +1005,34 @@ function ChatBubble({ m }) {
   const u = m.meSnapshot || USERS[m.user] || { username: m.user || 'me', displayName: m.user || 'Me' };
   const isMine = m.mine;
   const team = m.side ? TEAMS[m.side] : null;
+  const openProfile = (e) => {
+    if (!u?.username) return;
+    e.stopPropagation();
+    window.dispatchEvent(new CustomEvent('cntrd:open-user', { detail: { username: u.username } }));
+  };
+  const clickable = !!u?.username;
+  const linkBtnStyle = {
+    background: 'transparent', border: 'none', padding: 0, margin: 0,
+    cursor: clickable ? 'pointer' : 'default',
+    color: 'inherit', font: 'inherit',
+  };
   return (
     <div style={{
       display: 'flex', gap: 8,
       alignItems: 'flex-start',
       flexDirection: isMine ? 'row-reverse' : 'row',
     }}>
-      {!isMine && <Avatar user={u} size={26} />}
+      {!isMine && (
+        <button onClick={openProfile} disabled={!clickable} title={clickable ? `@${u.username}` : ''} style={linkBtnStyle}>
+          <Avatar user={u} size={26} />
+        </button>
+      )}
       <div style={{ maxWidth: '75%' }}>
         {!isMine && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--cn-text-dim)' }}>@{u.username}</span>
+            <button onClick={openProfile} disabled={!clickable} style={{ ...linkBtnStyle, fontSize: 11, fontWeight: 700, color: 'var(--cn-text-dim)' }}>
+              @{u.username}
+            </button>
             {team && <TeamPill code={team.code} size="xs" />}
             <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, color: 'var(--cn-text-mute)' }}>{m.time}</span>
           </div>

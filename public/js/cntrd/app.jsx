@@ -101,6 +101,7 @@ function CNTRDApp() {
   const [games, setGames] = React.useState({ live: [], upcoming: [], recent: [] });
   const [selectedGame, setSelectedGame] = React.useState(null);  // { id, league }
   const [scheduleTeam, setScheduleTeam] = React.useState(null);  // { league, teamId, name, primary, code, logo }
+  const [viewUsername, setViewUsername] = React.useState(null);  // username being inspected on userProfile screen
   const [selectedTag, setSelectedTag]   = React.useState(null);  // 'NFL:PHI' or 'PHI'
   const [selectedPlay, setSelectedPlay] = React.useState(null);  // play object when viewing a specific Play
   const [gamedayPick, setGamedayPick]   = React.useState(null);  // { id, league, ... } when entering chat for a specific game
@@ -458,6 +459,25 @@ function CNTRDApp() {
     return () => window.removeEventListener('cntrd:open-team-schedule', handler);
   }, []);
 
+  // Tap a user's avatar / handle anywhere → open their profile.
+  React.useEffect(() => {
+    const handler = (e) => {
+      const u = e.detail?.username;
+      if (!u) return;
+      // Tapping yourself routes to your own profile screen.
+      if (me?.username && u === me.username) {
+        setScreen('profile');
+        try { localStorage.setItem(STORAGE.screen, 'profile'); } catch {}
+        return;
+      }
+      setViewUsername(u);
+      setScreen('userProfile');
+      try { localStorage.setItem(STORAGE.screen, 'userProfile'); } catch {}
+    };
+    window.addEventListener('cntrd:open-user', handler);
+    return () => window.removeEventListener('cntrd:open-user', handler);
+  }, [me?.username]);
+
   // Reply button on a post → open the composer with the source post pinned
   // at the top so the user can see what they're replying to.
   React.useEffect(() => {
@@ -494,6 +514,7 @@ function CNTRDApp() {
     about:        AboutScreen,
     gameDetail:   GameDetailScreen,
     teamSchedule: TeamScheduleScreen,
+    userProfile:  UserProfileScreen,
     tagFeed:      TagFeedScreen,
     messages:     MessagesRoot,
     notifications: NotificationsScreen,
@@ -511,6 +532,7 @@ function CNTRDApp() {
     me, posts, plays, games,
     selectedGame, selectedTag, selectedPlay,
     scheduleTeam,
+    viewUsername,
     gamedayPick, setGamedayPick,
     onOpenGameday: handleOpenGameday,
     onOpenPlay: handleOpenPlay,

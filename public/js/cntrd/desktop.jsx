@@ -88,6 +88,7 @@ function DesktopMainContent({ screen, ...props }) {
     about:        AboutScreen,
     gameDetail:    GameDetailScreen,
     teamSchedule:  TeamScheduleScreen,
+    userProfile:   UserProfileScreen,
     tagFeed:       TagFeedScreen,
     messages:      MessagesRoot,
     notifications: NotificationsScreen,

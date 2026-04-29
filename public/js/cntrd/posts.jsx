@@ -32,14 +32,29 @@ function PostHeader({ user, time, tags, edited, postId, isMine, canEdit, onEdit,
     return () => document.removeEventListener('click', handler);
   }, [menuOpen]);
 
+  const openProfile = (e) => {
+    if (!u?.username) return;
+    e.stopPropagation();
+    window.dispatchEvent(new CustomEvent('cntrd:open-user', { detail: { username: u.username } }));
+  };
+  const clickable = !!u?.username;
+  const linkBtnStyle = {
+    background: 'transparent', border: 'none', padding: 0, margin: 0,
+    cursor: clickable ? 'pointer' : 'default',
+    color: 'inherit', font: 'inherit', textAlign: 'left',
+    display: 'inline-flex', alignItems: 'center',
+  };
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, position: 'relative' }}>
-      <Avatar user={u} size={36} />
+      <button onClick={openProfile} disabled={!clickable} title={clickable ? `@${u.username}` : ''} style={{ ...linkBtnStyle, padding: 0 }}>
+        <Avatar user={u} size={36} />
+      </button>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', lineHeight: 1.2 }}>
-          <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--cn-text)' }}>
+          <button onClick={openProfile} disabled={!clickable} style={{ ...linkBtnStyle, fontWeight: 700, fontSize: 14, color: 'var(--cn-text)' }}>
             {u.displayName}
-          </span>
+          </button>
           {u.verified && <Icon name="verified" size={13} stroke="var(--cn-accent)" />}
           {tags && tags.length > 0 && (
             <span style={{ display: 'inline-flex', gap: 3, marginLeft: 2 }}>
@@ -48,7 +63,10 @@ function PostHeader({ user, time, tags, edited, postId, isMine, canEdit, onEdit,
           )}
         </div>
         <div style={{ fontSize: 12, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)' }}>
-          @{u.username} · {time}{edited ? ' · edited' : ''}
+          <button onClick={openProfile} disabled={!clickable} style={{ ...linkBtnStyle, fontSize: 'inherit', color: 'inherit', fontFamily: 'inherit' }}>
+            @{u.username}
+          </button>
+          {' · '}{time}{edited ? ' · edited' : ''}
         </div>
       </div>
       <div style={{ position: 'relative' }}>
