@@ -613,17 +613,50 @@ async function getTeamSchedule(leagueCode, teamId, season) {
   const cached = scheduleCache.get(cacheKey);
   if (cached && now - cached.ts < SCHEDULE_TTL_MS) return cached.data;
 
-  const url = new URL(`https://site.api.espn.com/apis/site/v2/sports/${league.path}/teams/${id}/schedule`);
-  if (seasonKey) url.searchParams.set('season', seasonKey);
-  const res = await fetch(url.toString(), {
-    headers: { 'Accept': 'application/json', 'User-Agent': 'cntrd/1.0' },
-  });
-  if (!res.ok) throw new Error(`ESPN schedule HTTP ${res.status}`);
-  const json = await res.json();
+  // ESPN's /teams/{id}/schedule defaults to regular-season events for
+  // most leagues — playoff games (NFL Wild Card, CFB bowls, etc.) don't
+  // appear unless we explicitly ask for seasontype=3. Same for preseason
+  // (1). Fetch all three in parallel and merge so the schedule view
+  // shows the full picture without the user having to switch anything.
+  const baseUrl = `https://site.api.espn.com/apis/site/v2/sports/${league.path}/teams/${id}/schedule`;
+  async function fetchType(type) {
+    try {
+      const url = new URL(baseUrl);
+      if (seasonKey) url.searchParams.set('season', seasonKey);
+      url.searchParams.set('seasontype', String(type));
+      const r = await fetch(url.toString(), {
+        headers: { 'Accept': 'application/json', 'User-Agent': 'cntrd/1.0' },
+      });
+      if (!r.ok) return null;
+      return r.json();
+    } catch { return null; }
+  }
+  const [pre, reg, post] = await Promise.all([fetchType(1), fetchType(2), fetchType(3)]);
+  // Need at least one successful response or we have nothing to show.
+  const sources = [pre, reg, post].filter(Boolean);
+  if (!sources.length) throw new Error(`ESPN schedule unavailable`);
+  // Use whichever response has the richest team header (regular season
+  // tends to carry it; fall back to others).
+  const json = (reg && reg.team) ? reg : (sources.find(s => s.team) || sources[0]);
+
+  // Merge events from every season-type call, dedupe by id, and stamp
+  // the season type onto each event so the client can group them.
+  const merged = new Map();
+  for (const [stId, src] of [[1, pre], [2, reg], [3, post]]) {
+    if (!src) continue;
+    const evs = Array.isArray(src.events) ? src.events : [];
+    for (const ev of evs) {
+      if (!ev?.id) continue;
+      const key = String(ev.id);
+      if (merged.has(key)) continue;
+      // Pin the season type from the URL since ev.seasonType is sometimes
+      // missing on the per-type responses.
+      merged.set(key, { ev, stId });
+    }
+  }
 
   const team = json.team || {};
-  const events = Array.isArray(json.events) ? json.events : [];
-  const games = events.map(ev => {
+  const games = Array.from(merged.values()).map(({ ev, stId }) => {
     const comp = ev.competitions?.[0] || {};
     const status = ev.status?.type || comp.status?.type || {};
     const state =
@@ -641,10 +674,10 @@ async function getTeamSchedule(leagueCode, teamId, season) {
     const homeScore = state === 'scheduled' ? null : readScore(home);
     const awayScore = state === 'scheduled' ? null : readScore(away);
 
-    // Season type — 1 preseason, 2 regular, 3 postseason, 4 offseason.
-    // ESPN exposes this on the event itself or via the season block.
+    // Season type — prefer the explicit one ESPN ships, fall back to the
+    // URL-pinned id (which is always set after the merge).
     const stRaw = ev.seasonType || ev.season?.type || comp.seasonType || null;
-    const seasonTypeId = Number(stRaw?.id ?? stRaw?.type ?? stRaw) || null;
+    const seasonTypeId = Number(stRaw?.id ?? stRaw?.type ?? stRaw) || stId || null;
     const seasonTypeName = stRaw?.name || stRaw?.description || '';
     // Round / bowl / matchup label — ESPN drops this on `notes[]` for
     // playoff or bowl games. Pick the most descriptive headline.
@@ -683,19 +716,46 @@ async function getTeamSchedule(leagueCode, teamId, season) {
   // these years.
   const currentYear = new Date().getUTCFullYear();
   const newest = Math.max(
-    currentYear,
+    currentYear + 1,                          // covers winter leagues whose ESPN year = end year
     Number(json.season?.year) || 0,
     Number(json.requestedSeason?.year) || 0,
   );
+  // Different leagues use different season-year conventions. ESPN's
+  // `?season=Y` parameter takes a single integer; what Y means depends
+  // on the league:
+  //   · NBA / NHL / WNBA → Y is the year the season ENDS
+  //     (so 2026 = 2025-26 season). Display "2025-26".
+  //   · NFL / CFB / CBB / soccer leagues → Y is the year the season
+  //     STARTS. Display "2025-26".
+  //   · MLB → Y is the calendar year (Mar–Oct). Display just "2025".
+  //   · UFC / Boxing / golf / racing → calendar year. Display "2025".
+  // ESPN's API year convention by league. NBA + NHL + WNBA + NCAAM
+  // (basketball runs Nov–Apr) use the END year. NFL + NCAAF (Aug–Jan)
+  // use the START year. Soccer leagues vary; most use START. MLB and
+  // single-year sports stay as the calendar year.
+  const SPLIT_END_YEAR = new Set(['NBA', 'NHL', 'WNBA', 'NCAAM']);
+  const SPLIT_START_YEAR = new Set([
+    'NFL', 'NCAAF',
+    'MLS', 'EPL', 'LaLiga', 'Bundesliga', 'SerieA', 'UCL',
+  ]);
+  function labelFor(year) {
+    if (SPLIT_END_YEAR.has(league.code)) {
+      return `${year - 1}–${String(year).slice(2)}`;
+    }
+    if (SPLIT_START_YEAR.has(league.code)) {
+      return `${year}–${String(year + 1).slice(2)}`;
+    }
+    return `${year}`;
+  }
   const explicit = Array.isArray(json.seasons) ? json.seasons.map(s => ({
     year: Number(s.year),
-    displayName: s.displayName || `${s.year}`,
+    displayName: s.displayName || labelFor(Number(s.year)),
   })).filter(s => Number.isFinite(s.year)) : [];
   const seasons = explicit.length
     ? explicit
     : Array.from({ length: 6 }, (_, i) => {
         const y = newest - i;
-        return { year: y, displayName: `${y}` };
+        return { year: y, displayName: labelFor(y) };
       });
   // Which season this response actually represents (for the dropdown's
   // current value). Falls through to the requested key, then ESPN's
