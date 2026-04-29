@@ -7,7 +7,7 @@
 // Convention: app passes a `messageContext` prop = { selectedId, mode }.
 // `mode` is 'list' | 'thread' | 'new'.
 
-function MessagesRoot({ tweaks, onNav, me, messageContext, setMessageContext, onUnread }) {
+function MessagesRoot({ tweaks, onNav, me, messageContext, setMessageContext, onUnread, unreadMessages = 0 }) {
   const ctx = messageContext || { mode: 'list' };
   if (ctx.mode === 'new') {
     return <NewConversationScreen
@@ -25,6 +25,7 @@ function MessagesRoot({ tweaks, onNav, me, messageContext, setMessageContext, on
   }
   return <MessagesListScreen
     onNav={onNav} me={me}
+    unreadMessages={unreadMessages}
     onOpenThread={(id) => setMessageContext?.({ mode: 'thread', selectedId: id })}
     onCompose={() => setMessageContext?.({ mode: 'new' })}
     onUnread={onUnread}
@@ -32,7 +33,7 @@ function MessagesRoot({ tweaks, onNav, me, messageContext, setMessageContext, on
 }
 
 // ─── List of conversations ────────────────────────────────────────────
-function MessagesListScreen({ onNav, me, onOpenThread, onCompose, onUnread }) {
+function MessagesListScreen({ onNav, me, onOpenThread, onCompose, onUnread, unreadMessages = 0 }) {
   const [convs, setConvs] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState(null);
@@ -73,12 +74,13 @@ function MessagesListScreen({ onNav, me, onOpenThread, onCompose, onUnread }) {
           </button>
         }
       />
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 96 }}>
         {loading ? <Empty>Loading…</Empty>
           : err ? <Empty danger>{err}</Empty>
           : convs.length === 0 ? <EmptyState onCompose={onCompose} />
           : convs.map(c => <ConversationRow key={c.id} conv={c} me={me} onClick={() => onOpenThread(c.id)} />)}
       </div>
+      <BottomNav active="messages" onChange={onNav} unreadMessages={unreadMessages} />
     </div>
   );
 }

@@ -572,7 +572,7 @@ function SettingsScreen({ tweaks, setTweak, onNav, me, onMeUpdated, unreadNotifs
 // List view shown when the user opens Gameday without picking a specific
 // game. Tap a row → opens that game's chat. Favorite-team games (matched
 // league-aware) float to a "YOUR TEAMS" group at the top.
-function GamedayList({ tweaks, onNav, games, me, onPick }) {
+function GamedayList({ tweaks, onNav, games, me, onPick, unreadMessages = 0 }) {
   const allLive     = games?.live     || [];
   const allUpcoming = games?.upcoming || [];
 
@@ -679,7 +679,7 @@ function GamedayList({ tweaks, onNav, games, me, onPick }) {
           })}
         </div>
       )}
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 96 }}>
         {empty ? (
           <div style={{ padding: 32, textAlign: 'center' }}>
             <div style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 22 }}>
@@ -729,6 +729,7 @@ function GamedayList({ tweaks, onNav, games, me, onPick }) {
           </>
         )}
       </div>
+      <BottomNav active="chat" onChange={onNav} unreadMessages={unreadMessages} />
     </div>
   );
 }
@@ -831,7 +832,7 @@ function TeamMini({ team, record, league }) {
 // reaction or pair an emoji with text.
 const CHAT_QUICK_REACTS = ['🔥', '🙌', '👏', '💯', '😱', '🤯', '🤝', '😤', '🏀', '⚽', '🏈', '⚾', '🏒', '🥶'];
 
-function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me }) {
+function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, unreadMessages = 0 }) {
   const [side, setSide] = React.useState('all');
   const [messages, setMessages] = React.useState([]);
   const [draft, setDraft] = React.useState('');
@@ -848,7 +849,7 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me }
 
   // List mode: no specific game picked → show live + upcoming as rows.
   if (!gamedayPick) {
-    return <GamedayList tweaks={tweaks} onNav={onNav} games={games} me={me} onPick={setGamedayPick} />;
+    return <GamedayList tweaks={tweaks} onNav={onNav} games={games} me={me} onPick={setGamedayPick} unreadMessages={unreadMessages} />;
   }
   const game = gamedayPick;
   const home = game.homeTeam || TEAMS[game.home] || { code: game.home, name: game.home, primary: '#666', accent: '#999' };
