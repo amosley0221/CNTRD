@@ -278,24 +278,9 @@ function DesktopRail({ tweaks, onNav, games, me, onOpenGame, onOpenGameday, quer
   const teamFor = (g, side) => g[side + 'Team'] || TEAMS[g[side]] || { code: g[side], name: g[side], primary: '#666', accent: '#999' };
   return (
     <aside style={{ overflowY: 'auto', padding: '20px 22px 40px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-      {/* Search → opens the full Discover screen (people, posts, trending). */}
-      <button
-        type="button"
-        onClick={() => onNav?.('discover')}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '8px 14px', borderRadius: 10,
-          background: 'var(--cn-bg-elev)',
-          border: '0.5px solid var(--cn-border)',
-          color: 'var(--cn-text-mute)',
-          cursor: 'pointer',
-          fontFamily: 'var(--cn-font-body)', fontSize: 13,
-          textAlign: 'left',
-        }}
-      >
-        <Icon name="search" size={16} stroke="var(--cn-text-mute)" />
-        <span style={{ flex: 1 }}>Search posts, users, teams</span>
-      </button>
+      {/* Inline search — type to get live suggestions; Enter or "See all
+          results" jumps to the full Discover screen. */}
+      <DesktopRailSearch onNav={onNav} />
 
       {/* Live now */}
       {live.length > 0 && (
@@ -354,6 +339,200 @@ function DesktopRail({ tweaks, onNav, games, me, onOpenGame, onOpenGameday, quer
       </div>
     </aside>
   );
+}
+
+// Inline rail search. Types in place, debounces a /search request and
+// opens a small dropdown of People + Posts beneath the input. Enter or
+// "See all results" routes to the full Discover screen with the
+// current query pre-filled (via cntrd:open-discover).
+function DesktopRailSearch({ onNav }) {
+  const [q, setQ] = React.useState('');
+  const [results, setResults] = React.useState(null);  // null = idle/loading; {} = no query
+  const [open, setOpen] = React.useState(false);
+  const [searching, setSearching] = React.useState(false);
+  const wrapRef = React.useRef(null);
+  const inputRef = React.useRef(null);
+
+  // Debounced search — 200ms after the last keystroke.
+  React.useEffect(() => {
+    const trimmed = q.trim();
+    if (trimmed.length < 2) { setResults(null); return; }
+    let cancelled = false;
+    setSearching(true);
+    const id = setTimeout(async () => {
+      try {
+        const data = await window.API.search(trimmed);
+        if (!cancelled) setResults(data || { users: [], posts: [] });
+      } catch {
+        if (!cancelled) setResults({ users: [], posts: [] });
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }, 200);
+    return () => { cancelled = true; clearTimeout(id); };
+  }, [q]);
+
+  // Click outside → close the dropdown.
+  React.useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const seeAll = () => {
+    if (!q.trim()) { onNav?.('discover'); return; }
+    window.dispatchEvent(new CustomEvent('cntrd:open-discover', { detail: { q: q.trim() } }));
+    setOpen(false);
+  };
+  const onKeyDown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); seeAll(); }
+    if (e.key === 'Escape') { setOpen(false); inputRef.current?.blur(); }
+  };
+  const openProfile = (username) => {
+    if (!username) return;
+    window.dispatchEvent(new CustomEvent('cntrd:open-user', { detail: { username } }));
+    setOpen(false);
+  };
+
+  const showDropdown = open && q.trim().length >= 2;
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '8px 14px', borderRadius: 10,
+        background: 'var(--cn-bg-elev)',
+        border: '0.5px solid var(--cn-border)',
+      }}>
+        <Icon name="search" size={16} stroke="var(--cn-text-mute)" />
+        <input
+          ref={inputRef}
+          value={q}
+          onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
+          placeholder="Search posts, users, teams"
+          style={{
+            flex: 1, background: 'transparent', border: 'none', outline: 'none',
+            color: 'var(--cn-text)', fontSize: 13,
+            fontFamily: 'var(--cn-font-body)',
+          }}
+        />
+        {q && (
+          <button onClick={() => { setQ(''); setResults(null); inputRef.current?.focus(); }} title="Clear" style={{
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            color: 'var(--cn-text-mute)', padding: 0, display: 'flex',
+          }}>
+            <Icon name="x" size={14} />
+          </button>
+        )}
+      </div>
+
+      {showDropdown && (
+        <div style={{
+          position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 6,
+          background: 'var(--cn-bg-elev)',
+          border: '0.5px solid var(--cn-border)',
+          borderRadius: 10, overflow: 'hidden',
+          boxShadow: '0 12px 32px rgba(0,0,0,0.35)',
+          zIndex: 30,
+          maxHeight: 480, overflowY: 'auto',
+        }}>
+          {searching && !results ? (
+            <div style={{ padding: '12px 14px', fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>
+              Searching…
+            </div>
+          ) : results && (results.users.length || results.posts.length) ? (
+            <>
+              {results.users.length > 0 && (
+                <div>
+                  <RailSearchHeader>People</RailSearchHeader>
+                  {results.users.slice(0, 5).map(u => (
+                    <button key={u.id} onClick={() => openProfile(u.username)} style={railSearchRowStyle()}>
+                      <Avatar user={u} size={28} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {u.displayName}
+                        </div>
+                        <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)' }}>
+                          @{u.username}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {results.posts.length > 0 && (
+                <div>
+                  <RailSearchHeader>Posts</RailSearchHeader>
+                  {results.posts.slice(0, 5).map(p => (
+                    <button key={p.id} onClick={() => openProfile(p.user?.username)} style={railSearchRowStyle()}>
+                      <Avatar user={p.user} size={28} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          fontSize: 12, lineHeight: 1.4,
+                          overflow: 'hidden', textOverflow: 'ellipsis',
+                          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                          color: 'var(--cn-text)',
+                        }}>{p.content || p.text || ''}</div>
+                        <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', marginTop: 2 }}>
+                          @{p.user?.username || ''}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button onClick={seeAll} style={railSearchSeeAllStyle()}>
+                See all results for "{q}" →
+              </button>
+            </>
+          ) : results ? (
+            <div style={{ padding: '14px 16px', fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)', textAlign: 'center', lineHeight: 1.5 }}>
+              No matches yet.<br />
+              <button onClick={seeAll} style={{
+                marginTop: 4, background: 'transparent', border: 'none',
+                color: 'var(--cn-accent)', cursor: 'pointer',
+                fontFamily: 'inherit', fontSize: 11, fontWeight: 700,
+              }}>Open Discover →</button>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RailSearchHeader({ children }) {
+  return (
+    <div style={{
+      padding: '8px 12px 4px',
+      fontFamily: 'var(--cn-font-mono)', fontSize: 9, letterSpacing: 1,
+      color: 'var(--cn-text-mute)', fontWeight: 800, textTransform: 'uppercase',
+    }}>{children}</div>
+  );
+}
+function railSearchRowStyle() {
+  return {
+    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+    padding: '8px 12px',
+    background: 'transparent', border: 'none', cursor: 'pointer',
+    color: 'inherit', textAlign: 'left',
+    fontFamily: 'inherit',
+  };
+}
+function railSearchSeeAllStyle() {
+  return {
+    width: '100%', padding: '10px 14px',
+    background: 'transparent', border: 'none', borderTop: '0.5px solid var(--cn-border)',
+    color: 'var(--cn-accent)', cursor: 'pointer',
+    fontFamily: 'var(--cn-font-mono)', fontSize: 11, fontWeight: 700,
+    letterSpacing: 0.4,
+    textAlign: 'left',
+  };
 }
 
 function DesktopTrending({ onNav, onOpenGame }) {

@@ -102,6 +102,7 @@ function CNTRDApp() {
   const [selectedGame, setSelectedGame] = React.useState(null);  // { id, league }
   const [scheduleTeam, setScheduleTeam] = React.useState(null);  // { league, teamId, name, primary, code, logo }
   const [viewUsername, setViewUsername] = React.useState(null);  // username being inspected on userProfile screen
+  const [discoverQuery, setDiscoverQuery] = React.useState('');   // seeds the Discover screen's input
   const [selectedTag, setSelectedTag]   = React.useState(null);  // 'NFL:PHI' or 'PHI'
   const [selectedPlay, setSelectedPlay] = React.useState(null);  // play object when viewing a specific Play
   const [gamedayPick, setGamedayPick]   = React.useState(null);  // { id, league, ... } when entering chat for a specific game
@@ -469,6 +470,18 @@ function CNTRDApp() {
     return () => window.removeEventListener('cntrd:open-user', handler);
   }, [me?.username]);
 
+  // Inline rail search → "See all results" / Enter routes to the
+  // Discover screen with the query pre-filled.
+  React.useEffect(() => {
+    const handler = (e) => {
+      const q = String(e.detail?.q || '').trim();
+      setDiscoverQuery(q);
+      setScreen('discover');
+    };
+    window.addEventListener('cntrd:open-discover', handler);
+    return () => window.removeEventListener('cntrd:open-discover', handler);
+  }, []);
+
   // Reply button on a post → open the composer with the source post pinned
   // at the top so the user can see what they're replying to.
   React.useEffect(() => {
@@ -524,6 +537,7 @@ function CNTRDApp() {
     selectedGame, selectedTag, selectedPlay,
     scheduleTeam,
     viewUsername,
+    discoverQuery,
     gamedayPick, setGamedayPick,
     onOpenGameday: handleOpenGameday,
     onOpenPlay: handleOpenPlay,

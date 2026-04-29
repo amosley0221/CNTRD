@@ -3,8 +3,14 @@
 // query renders trending tags + live games; typing 2+ chars debounces a
 // /search request and groups results into "People" + "Posts".
 
-function DiscoverScreen({ tweaks, onNav, me, onOpenGame }) {
-  const [q, setQ] = React.useState('');
+function DiscoverScreen({ tweaks, onNav, me, onOpenGame, discoverQuery }) {
+  // Honor an initial query when navigating in from the rail search bar.
+  // Only seeded once on mount — typing is local from there on.
+  const [q, setQ] = React.useState(discoverQuery || '');
+  React.useEffect(() => {
+    if (discoverQuery && discoverQuery !== q) setQ(discoverQuery);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [discoverQuery]);
   const [trending, setTrending] = React.useState(null);  // null = loading
   const [results, setResults] = React.useState(null);    // null = idle / loading
   const [searching, setSearching] = React.useState(false);
