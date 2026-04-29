@@ -253,20 +253,26 @@ function LiveGameCard({ game, onClick, favorite }) {
 }
 
 function CompactScoreRow({ team, score, record, league }) {
+  // Two-column layout: left side (logo + name + record) flexes; the score
+  // sits in a fixed right-aligned column so scores in the same card line
+  // up vertically regardless of name + record width.
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0' }}>
-      <TeamLogo team={team} size={18} radius={4} />
-      <TeamName team={team} league={league} fontSize={12} weight={600} color="var(--cn-text)" />
-      {record && (
-        <span style={{
-          fontFamily: 'var(--cn-font-mono)', fontSize: 9,
-          color: 'var(--cn-text-mute)', flexShrink: 0,
-        }}>{record}</span>
-      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+        <TeamLogo team={team} size={18} radius={4} />
+        <TeamName team={team} league={league} fontSize={12} weight={600} color="var(--cn-text)" />
+        {record && (
+          <span style={{
+            fontFamily: 'var(--cn-font-mono)', fontSize: 9,
+            color: 'var(--cn-text-mute)', flexShrink: 0,
+          }}>{record}</span>
+        )}
+      </div>
       <span style={{
         fontFamily: 'var(--cn-font-display)',
         fontSize: 18, fontWeight: 'var(--cn-display-weight)',
-        fontVariantNumeric: 'tabular-nums', minWidth: 24, textAlign: 'right',
+        fontVariantNumeric: 'tabular-nums',
+        minWidth: 28, textAlign: 'right', flexShrink: 0,
       }}>{score}</span>
     </div>
   );
@@ -359,14 +365,17 @@ function BottomNav({ active = 'home', onChange, unreadMessages = 0 }) {
   return (
     <div style={{
       position: 'absolute', left: 0, right: 0, bottom: 0,
-      paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 16px))',
+      // Pad only by the iOS home-indicator inset (no extra spacing) so
+      // the bar reads flush with the bottom edge in standalone mode.
+      // Falls back to a small comfort gap in regular browser tabs.
+      paddingBottom: 'env(safe-area-inset-bottom, 8px)',
       background: 'color-mix(in srgb, var(--cn-bg) 80%, transparent)',
       backdropFilter: 'blur(24px) saturate(180%)',
       WebkitBackdropFilter: 'blur(24px) saturate(180%)',
       borderTop: '0.5px solid var(--cn-border)',
       display: 'flex', alignItems: 'flex-start',
       justifyContent: 'space-around',
-      paddingTop: 10,
+      paddingTop: 8,
       zIndex: 5,
     }}>
       {tabs.map(t => {
