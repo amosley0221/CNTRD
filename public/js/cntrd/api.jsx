@@ -121,6 +121,8 @@ const API = {
   repostPost(id)           { return request('POST', `/api/posts/${id}/repost`); },
   bookmarkPost(id)         { return request('POST', `/api/posts/${id}/bookmark`); },
   myBookmarks()            { return request('GET',  '/api/posts/me/bookmarks'); },
+  search(q)                { return request('GET',  '/api/search?q=' + encodeURIComponent(q || '')); },
+  trending()               { return request('GET',  '/api/search/trending'); },
   userPosts(username)      { return request('GET',  `/api/users/${username}/posts`); },
   user(username)           { return request('GET',  `/api/users/${username}`); },
   updateMe(payload)        { return request('PATCH','/api/users/me/profile', payload); },

@@ -505,6 +505,7 @@ function CNTRDApp() {
     gameDetail:   GameDetailScreen,
     teamSchedule: TeamScheduleScreen,
     userProfile:  UserProfileScreen,
+    discover:     DiscoverScreen,
     tagFeed:      TagFeedScreen,
     messages:     MessagesRoot,
     notifications: NotificationsScreen,

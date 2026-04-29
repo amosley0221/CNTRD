@@ -89,6 +89,7 @@ function DesktopMainContent({ screen, ...props }) {
     gameDetail:    GameDetailScreen,
     teamSchedule:  TeamScheduleScreen,
     userProfile:   UserProfileScreen,
+    discover:      DiscoverScreen,
     tagFeed:       TagFeedScreen,
     messages:      MessagesRoot,
     notifications: NotificationsScreen,
@@ -277,33 +278,24 @@ function DesktopRail({ tweaks, onNav, games, me, onOpenGame, onOpenGameday, quer
   const teamFor = (g, side) => g[side + 'Team'] || TEAMS[g[side]] || { code: g[side], name: g[side], primary: '#666', accent: '#999' };
   return (
     <aside style={{ overflowY: 'auto', padding: '20px 22px 40px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-      {/* Search */}
-      <label style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '8px 14px', borderRadius: 10,
-        background: 'var(--cn-bg-elev)',
-        border: '0.5px solid var(--cn-border)',
-      }}>
+      {/* Search → opens the full Discover screen (people, posts, trending). */}
+      <button
+        type="button"
+        onClick={() => onNav?.('discover')}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '8px 14px', borderRadius: 10,
+          background: 'var(--cn-bg-elev)',
+          border: '0.5px solid var(--cn-border)',
+          color: 'var(--cn-text-mute)',
+          cursor: 'pointer',
+          fontFamily: 'var(--cn-font-body)', fontSize: 13,
+          textAlign: 'left',
+        }}
+      >
         <Icon name="search" size={16} stroke="var(--cn-text-mute)" />
-        <input
-          value={query || ''}
-          onChange={e => setQuery?.(e.target.value)}
-          placeholder="Search posts, users, teams"
-          style={{
-            flex: 1, background: 'transparent', border: 'none', outline: 'none',
-            color: 'var(--cn-text)', fontSize: 13,
-            fontFamily: 'var(--cn-font-body)',
-          }}
-        />
-        {query && (
-          <button onClick={() => setQuery?.('')} style={{
-            background: 'transparent', border: 'none', cursor: 'pointer',
-            color: 'var(--cn-text-mute)', padding: 0, display: 'flex',
-          }}>
-            <Icon name="x" size={14} />
-          </button>
-        )}
-      </label>
+        <span style={{ flex: 1 }}>Search posts, users, teams</span>
+      </button>
 
       {/* Live now */}
       {live.length > 0 && (

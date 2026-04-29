@@ -306,7 +306,9 @@ function FeedHeader({ playsLabel = 'PLAYS', onNav, unreadNotifs = 0 }) {
         color: 'var(--cn-text)',
       }}>CNTRD</span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <button style={iconBtnStyle()}><Icon name="search" size={20} stroke="var(--cn-text)" /></button>
+        <button onClick={() => onNav?.('discover')} style={iconBtnStyle()} aria-label="Discover">
+          <Icon name="search" size={20} stroke="var(--cn-text)" />
+        </button>
         <button onClick={() => onNav?.('notifications')} style={{ ...iconBtnStyle(), position: 'relative' }} aria-label="Notifications">
           <Icon name="bell" size={20} stroke="var(--cn-text)" />
           {unreadNotifs > 0 && (
@@ -324,7 +326,7 @@ function FeedHeader({ playsLabel = 'PLAYS', onNav, unreadNotifs = 0 }) {
 }
 
 // ─── EDITORIAL HEADER (alt home layout) ───────────────────────
-function EditorialHeader() {
+function EditorialHeader({ onNav } = {}) {
   return (
     <div style={{
       padding: '14px 16px 10px',
@@ -336,7 +338,9 @@ function EditorialHeader() {
           {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
-          <button style={iconBtnStyle()}><Icon name="search" size={18} stroke="var(--cn-text)" /></button>
+          <button onClick={() => onNav?.('discover')} style={iconBtnStyle()} aria-label="Discover">
+            <Icon name="search" size={18} stroke="var(--cn-text)" />
+          </button>
         </div>
       </div>
       <div style={{
@@ -456,7 +460,7 @@ function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame, onOpen
       display: 'flex', flexDirection: 'column',
       position: 'relative',
     }}>
-      {editorial ? <EditorialHeader /> : <FeedHeader onNav={onNav} unreadNotifs={unreadNotifs} />}
+      {editorial ? <EditorialHeader onNav={onNav} /> : <FeedHeader onNav={onNav} unreadNotifs={unreadNotifs} />}
       {feedPending > 0 && (
         <button onClick={refresh} style={{
           position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)',
