@@ -252,6 +252,16 @@ function CNTRDApp() {
     setPendingFeed([]);
   }, [pendingFeed]);
 
+  // Pull-to-refresh: replace the visible feed with the server's latest, and
+  // clear any pending pill since those posts are now part of the main list.
+  const handlePullRefreshFeed = React.useCallback(async () => {
+    try {
+      const fresh = await (authed ? API.feed() : API.explore());
+      setPosts((fresh || []).map(normalizePost));
+      setPendingFeed([]);
+    } catch { /* leave existing posts in place */ }
+  }, [authed]);
+
   // Poll live + recent games every 60s.
   React.useEffect(() => {
     if (!bootstrapped) return;
@@ -509,6 +519,7 @@ function CNTRDApp() {
     replyTo,
     feedPending: pendingFeed.length,
     onRefreshFeed: handleRefreshFeed,
+    onPullRefreshFeed: handlePullRefreshFeed,
     unreadMessages, unreadNotifs,
     onUnread: setUnreadMessages,
     onUnreadNotifs: setUnreadNotifs,

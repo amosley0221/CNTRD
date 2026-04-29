@@ -44,6 +44,9 @@ function NotificationsScreen({ tweaks, onNav, me, setMessageContext, onUnreadNot
     }
   }, []);
 
+  const { distance: pullDistance, refreshing: pullRefreshing } =
+    usePullToRefresh(scrollerRef, refresh);
+
   // Background poll — compares server IDs against what's on screen and
   // stages a "X new" pill instead of mutating the visible list, so the
   // user keeps their position.
@@ -188,7 +191,8 @@ function NotificationsScreen({ tweaks, onNav, me, setMessageContext, onUnreadNot
         ))}
       </div>
 
-      <div ref={scrollerRef} style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
+      <div ref={scrollerRef} style={{ flex: 1, overflowY: 'auto', position: 'relative', overscrollBehaviorY: 'contain' }}>
+        <PullIndicator distance={pullDistance} refreshing={pullRefreshing} />
         {pendingCount > 0 && (
           <button onClick={refresh} style={{
             position: 'sticky', top: 8, left: 0, right: 0, margin: '8px auto',

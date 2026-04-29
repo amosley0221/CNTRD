@@ -251,7 +251,113 @@ function Icon({ name, size = 20, stroke = 'currentColor', fill = 'none', sw = 1.
   }
 }
 
+// usePullToRefresh — touch-only pull-to-refresh for any vertical scroller.
+// Pass a ref to the scrollable element and a refresh callback. The hook
+// returns { distance, refreshing, complete } so the caller can render its
+// own indicator. Triggering only fires when the scroller is already at the
+// top so a normal swipe doesn't intercept the gesture.
+function usePullToRefresh(ref, onRefresh, { threshold = 64, max = 110 } = {}) {
+  const [distance, setDistance] = React.useState(0);
+  const [refreshing, setRefreshing] = React.useState(false);
+  const startY = React.useRef(0);
+  const tracking = React.useRef(false);
+
+  React.useEffect(() => {
+    const el = ref?.current;
+    if (!el) return;
+
+    const onTouchStart = (e) => {
+      if (refreshing) return;
+      if (el.scrollTop > 0) return;     // not at the top — let native scroll win
+      const t = e.touches && e.touches[0];
+      if (!t) return;
+      startY.current = t.clientY;
+      tracking.current = true;
+    };
+    const onTouchMove = (e) => {
+      if (!tracking.current || refreshing) return;
+      const t = e.touches && e.touches[0];
+      if (!t) return;
+      const dy = t.clientY - startY.current;
+      if (dy <= 0) {
+        setDistance(0);
+        return;
+      }
+      // Resistance — pull feels heavier the further you go.
+      const eased = Math.min(max, dy * 0.55);
+      setDistance(eased);
+      // Only intercept the touch once we're actively pulling. Calling
+      // preventDefault keeps the page from rubber-banding on iOS.
+      if (e.cancelable && eased > 8) e.preventDefault();
+    };
+    const onTouchEnd = async () => {
+      if (!tracking.current) return;
+      tracking.current = false;
+      const triggered = distance >= threshold;
+      if (!triggered) {
+        setDistance(0);
+        return;
+      }
+      setRefreshing(true);
+      setDistance(threshold);
+      try { await onRefresh?.(); }
+      catch { /* swallow — caller surfaces errors however it wants */ }
+      finally {
+        setRefreshing(false);
+        setDistance(0);
+      }
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove',  onTouchMove,  { passive: false });
+    el.addEventListener('touchend',   onTouchEnd);
+    el.addEventListener('touchcancel', onTouchEnd);
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove',  onTouchMove);
+      el.removeEventListener('touchend',   onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, [ref, onRefresh, refreshing, distance, threshold, max]);
+
+  return { distance, refreshing };
+}
+
+// Small indicator that pairs with usePullToRefresh. Render it as the first
+// child of the scroller; it occupies whatever vertical space the user has
+// pulled.
+function PullIndicator({ distance, refreshing, threshold = 64 }) {
+  const visible = refreshing || distance > 4;
+  const ready = !refreshing && distance >= threshold;
+  return (
+    <div aria-hidden style={{
+      height: refreshing ? threshold : distance,
+      transition: refreshing ? 'height 180ms ease' : 'none',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      overflow: 'hidden',
+      color: 'var(--cn-text-mute)',
+      fontFamily: 'var(--cn-font-mono)', fontSize: 11, letterSpacing: 0.5,
+    }}>
+      {visible && (
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 8,
+          color: ready || refreshing ? 'var(--cn-accent)' : 'var(--cn-text-mute)',
+        }}>
+          <span style={{
+            width: 14, height: 14, borderRadius: '50%',
+            border: '1.5px solid currentColor',
+            borderTopColor: refreshing ? 'transparent' : 'currentColor',
+            animation: refreshing ? 'cn-spin 0.8s linear infinite' : 'none',
+          }} />
+          {refreshing ? 'REFRESHING' : ready ? 'RELEASE TO REFRESH' : 'PULL TO REFRESH'}
+        </span>
+      )}
+    </div>
+  );
+}
+
 Object.assign(window, {
   THEMES, TYPE_PAIRS, DENSITY, applyTheme, pickContrast, resolveTeam,
   TeamPill, TeamTagsRow, Avatar, Icon,
+  usePullToRefresh, PullIndicator,
 });

@@ -37,7 +37,7 @@ function ProfilePlayTile({ play, onOpen, onDelete }) {
 }
 
 // ─── PROFILE ──────────────────────────────────────────────────
-function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePlay }) {
+function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePlay, onPullRefreshFeed }) {
   const u = me || ME;
   const teams = (u.teams && u.teams.length) ? u.teams : ['LAL'];
   const coverFrom = resolveTeam(teams[0]) || resolveTeam('LAL') || { primary: '#552583', accent: '#FDB927' };
@@ -50,6 +50,17 @@ function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePl
   const [tab, setTab] = React.useState('posts');
   const [bookmarks, setBookmarks] = React.useState(null);
   const [bookmarksErr, setBookmarksErr] = React.useState(null);
+  const scrollerRef = React.useRef(null);
+
+  const loadBookmarks = React.useCallback(async () => {
+    try {
+      const list = await window.API.myBookmarks();
+      setBookmarks((list || []).map(window.normalizePost));
+      setBookmarksErr(null);
+    } catch (e) {
+      setBookmarks([]); setBookmarksErr(e.message || 'Failed to load');
+    }
+  }, []);
 
   // Lazy-load the bookmarks list when the user opens the tab. They're private
   // to the viewer, so this only runs when looking at their own profile.
@@ -66,6 +77,16 @@ function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePl
     })();
     return () => { cancelled = true; };
   }, [tab, bookmarks]);
+
+  // Pull-to-refresh: refetch the feed (which feeds this screen via the
+  // shared `posts` state) and, if we're on the Saved tab, reload bookmarks.
+  const onPullRefresh = React.useCallback(async () => {
+    const tasks = [onPullRefreshFeed?.()];
+    if (tab === 'bookmarks') tasks.push(loadBookmarks());
+    await Promise.all(tasks);
+  }, [tab, onPullRefreshFeed, loadBookmarks]);
+  const { distance: pullDistance, refreshing: pullRefreshing } =
+    usePullToRefresh(scrollerRef, onPullRefresh);
   return (
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
       {/* Top bar */}
@@ -74,7 +95,8 @@ function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePl
         <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 12, color: 'var(--cn-text-dim)' }}>@{u.username}</span>
         <button style={iconBtnStyle()} onClick={() => onNav?.('settings')}><Icon name="settings" size={20} stroke="var(--cn-text)" /></button>
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 96 }}>
+      <div ref={scrollerRef} style={{ flex: 1, overflowY: 'auto', paddingBottom: 96, overscrollBehaviorY: 'contain' }}>
+        <PullIndicator distance={pullDistance} refreshing={pullRefreshing} />
         <div style={{ padding: '20px 16px 0' }}>
           <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 12 }}>
             <Avatar user={u} size={88} ring />

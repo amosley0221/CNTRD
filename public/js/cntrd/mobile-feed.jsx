@@ -408,7 +408,7 @@ function BottomNav({ active = 'home', onChange }) {
 }
 
 // ─── FEED SCREEN ──────────────────────────────────────────────
-function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame, onOpenGameday, onOpenPlay, unreadNotifs, feedPending = 0, onRefreshFeed }) {
+function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame, onOpenGameday, onOpenPlay, unreadNotifs, feedPending = 0, onRefreshFeed, onPullRefreshFeed }) {
   const editorial = tweaks.homeStyle === 'editorial';
   const items = (posts && posts.length ? posts : POSTS);
   const scrollerRef = React.useRef(null);
@@ -416,6 +416,7 @@ function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame, onOpen
     onRefreshFeed?.();
     if (scrollerRef.current) scrollerRef.current.scrollTop = 0;
   };
+  const { distance, refreshing } = usePullToRefresh(scrollerRef, onPullRefreshFeed);
   return (
     <div style={{
       width: '100%', height: '100%',
@@ -441,7 +442,8 @@ function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame, onOpen
           {feedPending} new {feedPending === 1 ? 'post' : 'posts'}
         </button>
       )}
-      <div ref={scrollerRef} style={{ flex: 1, overflowY: 'auto', paddingBottom: 96 }}>
+      <div ref={scrollerRef} style={{ flex: 1, overflowY: 'auto', paddingBottom: 96, overscrollBehaviorY: 'contain' }}>
+        <PullIndicator distance={distance} refreshing={refreshing} />
         <PlaysRail
           playsLabel={tweaks.playsLabel || 'PLAYS'}
           plays={plays}
