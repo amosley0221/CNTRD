@@ -3,8 +3,30 @@
 
 const TOKEN_KEY = 'cntrd:token';
 
-function getToken()  { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } }
-function setToken(t) { try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch {} }
+// Token can be persisted in either localStorage (sticky across sessions —
+// the "Stay signed in" checkbox) or sessionStorage (cleared when the user
+// closes the tab). getToken consults both; setToken writes to whichever the
+// caller picks and clears the other so the two never disagree.
+function getToken() {
+  try { return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY); }
+  catch { return null; }
+}
+function setToken(t, { persist = true } = {}) {
+  try {
+    if (!t) {
+      localStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(TOKEN_KEY);
+      return;
+    }
+    if (persist) {
+      localStorage.setItem(TOKEN_KEY, t);
+      sessionStorage.removeItem(TOKEN_KEY);
+    } else {
+      sessionStorage.setItem(TOKEN_KEY, t);
+      localStorage.removeItem(TOKEN_KEY);
+    }
+  } catch {}
+}
 
 async function request(method, path, body) {
   const headers = { 'Accept': 'application/json' };
@@ -55,6 +77,8 @@ const API = {
   deletePost(id)           { return request('DELETE',`/api/posts/${id}`); },
   likePost(id)             { return request('POST', `/api/posts/${id}/like`); },
   repostPost(id)           { return request('POST', `/api/posts/${id}/repost`); },
+  bookmarkPost(id)         { return request('POST', `/api/posts/${id}/bookmark`); },
+  myBookmarks()            { return request('GET',  '/api/posts/me/bookmarks'); },
   userPosts(username)      { return request('GET',  `/api/users/${username}/posts`); },
   user(username)           { return request('GET',  `/api/users/${username}`); },
   updateMe(payload)        { return request('PATCH','/api/users/me/profile', payload); },

@@ -58,6 +58,7 @@ function hydrate(p) {
     edited_at: p.edited_at,
     liked: !!p.liked,
     reposted: !!p.reposted,
+    bookmarked: !!p.bookmarked,
     user: {
       id: p.user_id,
       username: p.username,
@@ -83,9 +84,10 @@ function normalizeTags(input) {
 }
 
 function attachInteraction(p, userId) {
-  if (!userId) { p.liked = 0; p.reposted = 0; return; }
-  p.liked    = db.prepare('SELECT 1 FROM likes   WHERE user_id = ? AND post_id = ?').get(userId, p.id) ? 1 : 0;
-  p.reposted = db.prepare('SELECT 1 FROM reposts WHERE user_id = ? AND post_id = ?').get(userId, p.id) ? 1 : 0;
+  if (!userId) { p.liked = 0; p.reposted = 0; p.bookmarked = 0; return; }
+  p.liked      = db.prepare('SELECT 1 FROM likes     WHERE user_id = ? AND post_id = ?').get(userId, p.id) ? 1 : 0;
+  p.reposted   = db.prepare('SELECT 1 FROM reposts   WHERE user_id = ? AND post_id = ?').get(userId, p.id) ? 1 : 0;
+  p.bookmarked = db.prepare('SELECT 1 FROM bookmarks WHERE user_id = ? AND post_id = ?').get(userId, p.id) ? 1 : 0;
 }
 
 // Create post
@@ -270,6 +272,33 @@ router.post('/:id/like', requireAuth, (req, res) => {
     const updated = db.prepare('SELECT like_count FROM posts WHERE id = ?').get(req.params.id);
     return res.json({ liked: true, like_count: updated.like_count });
   }
+});
+
+// Toggle bookmark.
+router.post('/:id/bookmark', requireAuth, (req, res) => {
+  const post = db.prepare('SELECT id FROM posts WHERE id = ?').get(req.params.id);
+  if (!post) return res.status(404).json({ error: 'Post not found' });
+  const existing = db.prepare('SELECT 1 FROM bookmarks WHERE user_id = ? AND post_id = ?').get(req.user.id, req.params.id);
+  if (existing) {
+    db.prepare('DELETE FROM bookmarks WHERE user_id = ? AND post_id = ?').run(req.user.id, req.params.id);
+    return res.json({ bookmarked: false });
+  }
+  db.prepare('INSERT INTO bookmarks (user_id, post_id) VALUES (?, ?)').run(req.user.id, req.params.id);
+  return res.json({ bookmarked: true });
+});
+
+// List my bookmarks (most-recent first).
+router.get('/me/bookmarks', requireAuth, (req, res) => {
+  const rows = db.prepare(`
+    ${SELECT_POST}
+    JOIN bookmarks b ON b.post_id = p.id
+    WHERE b.user_id = ?
+      AND u.banned = 0
+    ORDER BY b.created_at DESC
+    LIMIT 50
+  `).all(req.user.id);
+  rows.forEach(r => attachInteraction(r, req.user.id));
+  res.json(rows.map(hydrate));
 });
 
 // Repost / Unrepost

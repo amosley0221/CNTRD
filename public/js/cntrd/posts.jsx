@@ -119,12 +119,18 @@ function iconBtnStyle() {
   };
 }
 
-function PostFooter({ likes, replies, reposts, postId, initiallyLiked }) {
-  const [liked, setLiked] = React.useState(!!initiallyLiked);
-  const [n, setN] = React.useState(likes);
+function PostFooter({ likes, replies, reposts, postId, initiallyLiked, initiallyReposted, initiallyBookmarked }) {
+  const [liked, setLiked]     = React.useState(!!initiallyLiked);
+  const [reposted, setReposted] = React.useState(!!initiallyReposted);
+  const [bookmarked, setBookmarked] = React.useState(!!initiallyBookmarked);
+  const [n, setN]             = React.useState(likes);
+  const [r, setR]             = React.useState(reposts);
   const fmt = (k) => k >= 1000 ? (k / 1000).toFixed(1) + 'k' : k;
-  const Btn = ({ icon, label, color, onClick, active }) => (
-    <button onClick={onClick} style={{
+
+  const ctx = React.useContext(PostActionsContext);
+
+  const Btn = ({ icon, label, color, onClick, active, title }) => (
+    <button onClick={onClick} title={title} style={{
       display: 'flex', alignItems: 'center', gap: 6,
       background: 'transparent', border: 'none',
       color: active ? color : 'var(--cn-text-mute)',
@@ -132,39 +138,83 @@ function PostFooter({ likes, replies, reposts, postId, initiallyLiked }) {
       padding: '6px 4px', cursor: 'pointer',
     }}>
       <Icon name={icon} size={17} sw={1.6} />
-      <span>{fmt(label)}</span>
+      {label !== undefined && <span>{typeof label === 'number' ? fmt(label) : label}</span>}
     </button>
   );
+
+  const onReply = (e) => {
+    e?.stopPropagation();
+    // Trigger an app-level event so the composer screen opens with the
+    // post pre-filled as a reply target.
+    window.dispatchEvent(new CustomEvent('cntrd:open-reply', { detail: { postId } }));
+  };
+  const onRepost = async (e) => {
+    e?.stopPropagation();
+    if (!postId || !window.API?.hasToken?.()) return;
+    const next = !reposted;
+    setReposted(next); setR(r + (next ? 1 : -1));
+    try {
+      const res = await window.API.repostPost(postId);
+      if (typeof res.repost_count === 'number') setR(res.repost_count);
+      if (typeof res.reposted === 'boolean') setReposted(res.reposted);
+    } catch { /* keep optimistic */ }
+  };
+  const onBookmark = async (e) => {
+    e?.stopPropagation();
+    if (!postId || !window.API?.hasToken?.()) return;
+    const next = !bookmarked;
+    setBookmarked(next);
+    try {
+      const res = await window.API.bookmarkPost(postId);
+      if (typeof res.bookmarked === 'boolean') setBookmarked(res.bookmarked);
+    } catch { /* keep optimistic */ }
+  };
+  const onShare = async (e) => {
+    e?.stopPropagation();
+    const url = `${location.origin}/post/${postId}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ url });
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(url);
+        alert('Link copied');
+      }
+    } catch { /* user dismissed share sheet */ }
+  };
+
   return (
     <div style={{
       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       marginTop: 12, marginRight: -4,
     }}>
-      <Btn icon="reply" label={replies} />
-      <Btn icon="repost" label={reposts} color="var(--cn-success)" />
+      <Btn icon="reply"  label={replies} onClick={onReply} title="Reply" />
+      <Btn icon="repost" label={r} color="var(--cn-success)" active={reposted} onClick={onRepost} title="Repost" />
       <Btn
         icon={liked ? 'heart-fill' : 'heart'}
         label={n}
         color="var(--cn-danger)"
         active={liked}
+        title="Like"
         onClick={async () => {
           const next = !liked;
           setLiked(next); setN(n + (next ? 1 : -1));
           if (postId && window.API && window.API.hasToken && window.API.hasToken()) {
             try {
-              const r = await window.API.likePost(postId);
-              if (typeof r.like_count === 'number') setN(r.like_count);
-              if (typeof r.liked === 'boolean') setLiked(r.liked);
-            } catch { /* mock post or offline — keep local toggle */ }
+              const res = await window.API.likePost(postId);
+              if (typeof res.like_count === 'number') setN(res.like_count);
+              if (typeof res.liked === 'boolean') setLiked(res.liked);
+            } catch { /* keep local toggle */ }
           }
         }}
       />
-      <button style={{ ...iconBtnStyle(), color: 'var(--cn-text-mute)' }}>
-        <Icon name="bookmark" size={17} sw={1.6} />
-      </button>
-      <button style={{ ...iconBtnStyle(), color: 'var(--cn-text-mute)' }}>
-        <Icon name="share" size={17} sw={1.6} />
-      </button>
+      <Btn
+        icon={bookmarked ? 'bookmark' : 'bookmark'}
+        color="var(--cn-accent)"
+        active={bookmarked}
+        title={bookmarked ? 'Remove bookmark' : 'Bookmark'}
+        onClick={onBookmark}
+      />
+      <Btn icon="share" title="Share" onClick={onShare} />
     </div>
   );
 }
@@ -255,7 +305,13 @@ function PostShell({ children, post }) {
           onSave={save} onCancel={() => setEditing(false)}
         />
       ) : children}
-      <PostFooter likes={post.likes} replies={post.replies} reposts={post.reposts} postId={post.id} initiallyLiked={post.liked} />
+      <PostFooter
+        likes={post.likes} replies={post.replies} reposts={post.reposts}
+        postId={post.id}
+        initiallyLiked={post.liked}
+        initiallyReposted={post.reposted}
+        initiallyBookmarked={post.bookmarked}
+      />
     </article>
   );
 }

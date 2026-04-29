@@ -4,13 +4,17 @@
 function LoginScreen({ tweaks, onNav, onLogin }) {
   const [email, setEmail] = React.useState('');
   const [pw, setPw] = React.useState('');
+  const [showPw, setShowPw] = React.useState(false);
+  const [persist, setPersist] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
   const [err,  setErr]  = React.useState(null);
   const submit = async () => {
     if (!email || !pw || busy) return;
     setBusy(true); setErr(null);
     try {
-      if (onLogin) await onLogin({ login: email.trim(), password: pw });
+      // `persist` = checkbox state. When unchecked we'll keep the token
+      // in sessionStorage so closing the tab logs the user out.
+      if (onLogin) await onLogin({ login: email.trim(), password: pw, persist });
       onNav?.('home');
     } catch (e) {
       setErr(e.message || 'Sign-in failed');
@@ -25,8 +29,12 @@ function LoginScreen({ tweaks, onNav, onLogin }) {
         <div style={{ marginTop: 8, fontSize: 14, color: 'var(--cn-text-dim)', fontStyle: 'italic' }}>Where the game gets loud.</div>
 
         <div style={{ marginTop: 56, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Field label="Email or username" value={email} onChange={setEmail} placeholder="you@email.com" />
-          <Field label="Password" value={pw} onChange={setPw} placeholder="••••••••" type="password" />
+          <Field label="Email or username" value={email} onChange={setEmail} placeholder="you@email.com" autoCapitalize="none" autoCorrect="off" />
+          <PasswordField label="Password" value={pw} onChange={setPw} show={showPw} onToggleShow={() => setShowPw(s => !s)} />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+            <input type="checkbox" checked={persist} onChange={e => setPersist(e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--cn-accent)' }} />
+            <span style={{ fontSize: 13, color: 'var(--cn-text-dim)' }}>Stay signed in on this device</span>
+          </label>
           {err && <div style={{ fontSize: 12, color: 'var(--cn-danger)', fontFamily: 'var(--cn-font-mono)' }}>{err}</div>}
           <button onClick={submit} disabled={busy} style={{
             marginTop: 8, padding: '14px', borderRadius: 12,
@@ -55,16 +63,75 @@ function LoginScreen({ tweaks, onNav, onLogin }) {
   );
 }
 
-function Field({ label, value, onChange, placeholder, type = 'text' }) {
+function Field({ label, value, onChange, placeholder, type = 'text', autoCapitalize, autoCorrect }) {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
       <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1, textTransform: 'uppercase' }}>{label}</span>
-      <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={{
+      <input
+        type={type} value={value} onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoCapitalize={autoCapitalize} autoCorrect={autoCorrect}
+        style={{
+          background: 'var(--cn-bg-elev)', border: '0.5px solid var(--cn-border-s)',
+          borderRadius: 10, padding: '12px 14px',
+          color: 'var(--cn-text)', fontSize: 15,
+          outline: 'none', fontFamily: 'var(--cn-font-body)',
+        }}
+      />
+    </label>
+  );
+}
+
+// Password field with an eye toggle to reveal the value as plain text.
+function PasswordField({ label, value, onChange, placeholder = '••••••••', show, onToggleShow }) {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1, textTransform: 'uppercase' }}>{label}</span>
+      <div style={{
+        position: 'relative',
         background: 'var(--cn-bg-elev)', border: '0.5px solid var(--cn-border-s)',
-        borderRadius: 10, padding: '12px 14px',
-        color: 'var(--cn-text)', fontSize: 15,
-        outline: 'none', fontFamily: 'var(--cn-font-body)',
-      }} />
+        borderRadius: 10,
+        display: 'flex', alignItems: 'center',
+      }}>
+        <input
+          type={show ? 'text' : 'password'}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          autoCapitalize="none" autoCorrect="off" autoComplete="current-password"
+          style={{
+            flex: 1,
+            background: 'transparent', border: 'none',
+            padding: '12px 44px 12px 14px',
+            color: 'var(--cn-text)', fontSize: 15,
+            outline: 'none', fontFamily: 'var(--cn-font-body)',
+          }}
+        />
+        <button type="button" onClick={onToggleShow}
+          aria-label={show ? 'Hide password' : 'Show password'}
+          style={{
+            position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+            width: 32, height: 32, borderRadius: 8,
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            color: 'var(--cn-text-mute)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+            {show ? (
+              <>
+                <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z" />
+                <circle cx="12" cy="12" r="3" />
+                <line x1="3" y1="3" x2="21" y2="21" />
+              </>
+            ) : (
+              <>
+                <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z" />
+                <circle cx="12" cy="12" r="3" />
+              </>
+            )}
+          </svg>
+        </button>
+      </div>
     </label>
   );
 }
@@ -120,6 +187,7 @@ function SignupScreen({ tweaks, onNav, onSignup }) {
   const [email, setEmail] = React.useState('');
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
+  const [showSignupPw, setShowSignupPw] = React.useState(false);
   const [picks, setPicks] = React.useState([]);
   const [leaguePicks, setLeaguePicks] = React.useState([]);
   const [avatarHue, setAvatarHue] = React.useState(280);
@@ -199,8 +267,8 @@ function SignupScreen({ tweaks, onNav, onSignup }) {
             <H1>Create your account</H1>
             <Subhead>You'll need an email and a password. We'll never share either.</Subhead>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 24 }}>
-              <Field label="Email" value={email} onChange={setEmail} placeholder="you@email.com" />
-              <Field label="Password" value={password} onChange={setPassword} placeholder="8+ chars, 1 capital, 1 number, 1 symbol" type="password" />
+              <Field label="Email" value={email} onChange={setEmail} placeholder="you@email.com" autoCapitalize="none" autoCorrect="off" />
+              <PasswordField label="Password" value={password} onChange={setPassword} placeholder="8+ chars, 1 capital, 1 number, 1 symbol" show={showSignupPw} onToggleShow={() => setShowSignupPw(s => !s)} />
               <PasswordChecklist password={password} />
             </div>
           </>

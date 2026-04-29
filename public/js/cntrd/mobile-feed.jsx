@@ -249,7 +249,7 @@ function CompactScoreRow({ team, score }) {
 }
 
 // ─── HEADER ───────────────────────────────────────────────────
-function FeedHeader({ playsLabel = 'PLAYS' }) {
+function FeedHeader({ playsLabel = 'PLAYS', onNav, unreadNotifs = 0 }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -269,7 +269,17 @@ function FeedHeader({ playsLabel = 'PLAYS' }) {
       }}>CNTRD</span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <button style={iconBtnStyle()}><Icon name="search" size={20} stroke="var(--cn-text)" /></button>
-        <button style={iconBtnStyle()}><Icon name="bell" size={20} stroke="var(--cn-text)" /></button>
+        <button onClick={() => onNav?.('notifications')} style={{ ...iconBtnStyle(), position: 'relative' }} aria-label="Notifications">
+          <Icon name="bell" size={20} stroke="var(--cn-text)" />
+          {unreadNotifs > 0 && (
+            <span aria-hidden style={{
+              position: 'absolute', top: 4, right: 4,
+              width: 8, height: 8, borderRadius: '50%',
+              background: 'var(--cn-accent)',
+              boxShadow: '0 0 0 1.5px var(--cn-bg)',
+            }} />
+          )}
+        </button>
       </div>
     </div>
   );
@@ -369,7 +379,7 @@ function BottomNav({ active = 'home', onChange }) {
 }
 
 // ─── FEED SCREEN ──────────────────────────────────────────────
-function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame, onOpenGameday, onOpenPlay }) {
+function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame, onOpenGameday, onOpenPlay, unreadNotifs }) {
   const editorial = tweaks.homeStyle === 'editorial';
   const items = (posts && posts.length ? posts : POSTS);
   return (
@@ -380,7 +390,7 @@ function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame, onOpen
       fontFamily: 'var(--cn-font-body)',
       display: 'flex', flexDirection: 'column',
     }}>
-      {editorial ? <EditorialHeader /> : <FeedHeader />}
+      {editorial ? <EditorialHeader /> : <FeedHeader onNav={onNav} unreadNotifs={unreadNotifs} />}
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 96 }}>
         <PlaysRail
           playsLabel={tweaks.playsLabel || 'PLAYS'}

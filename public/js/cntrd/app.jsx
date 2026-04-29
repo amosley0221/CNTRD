@@ -95,6 +95,7 @@ function CNTRDApp() {
   const [messageContext, setMessageContext] = React.useState({ mode: 'list' });
   const [unreadMessages, setUnreadMessages] = React.useState(0);
   const [unreadNotifs, setUnreadNotifs]     = React.useState(0);
+  const [replyTo, setReplyTo] = React.useState(null);   // post being replied to in composer
   const [screen, setScreen] = React.useState('login');
 
   const isWide = useMediaQuery('(min-width: 980px)');
@@ -208,13 +209,16 @@ function CNTRDApp() {
     // Sidebar / direct nav to Gameday (without picking a game) lands on the
     // list view. handleOpenGameday is the only path that sets gamedayPick.
     if (target === 'chat') setGamedayPick(null);
+    // Leaving the composer (or going to plain compose) drops any pinned reply
+    // target so the next session starts fresh.
+    if (target !== 'compose') setReplyTo(null);
     setScreen(target);
     try { localStorage.setItem(STORAGE.screen, target); } catch {}
   }, []);
 
-  const handleLogin = React.useCallback(async ({ login, password }) => {
+  const handleLogin = React.useCallback(async ({ login, password, persist = true }) => {
     const { token, user } = await API.login({ login, password });
-    API.setToken(token);
+    API.setToken(token, { persist });
     setMe(normalizeMe(user));
   }, []);
 
@@ -224,7 +228,9 @@ function CNTRDApp() {
       display_name: username,
       teams, leagues, avatar_hue,
     });
-    API.setToken(token);
+    // New signups stick around — they're putting effort into the onboarding,
+    // they don't want to be logged out as soon as they close the tab.
+    API.setToken(token, { persist: true });
     setMe(normalizeMe(user));
   }, []);
 
@@ -234,8 +240,20 @@ function CNTRDApp() {
     // URLs and type-specific data make it to the server intact.
     const created = await API.createPost(payload);
     const norm = normalizePost(created);
-    setPosts(prev => [norm, ...prev]);
-    setMe(prev => prev ? { ...prev, posts: (prev.posts ?? 0) + 1 } : prev);
+    setPosts(prev => {
+      // If this is a reply, bump the parent's reply_count locally so the
+      // count under the post updates without a refetch.
+      if (payload?.reply_to) {
+        return prev.map(p => p.id === payload.reply_to
+          ? { ...p, replies: (p.replies ?? 0) + 1 }
+          : p);
+      }
+      return [norm, ...prev];
+    });
+    if (!payload?.reply_to) {
+      setMe(prev => prev ? { ...prev, posts: (prev.posts ?? 0) + 1 } : prev);
+    }
+    setReplyTo(null);
   }, []);
 
   const handlePostUpdated = React.useCallback((updated) => {
@@ -345,6 +363,21 @@ function CNTRDApp() {
     return () => window.removeEventListener('cntrd:open-game-from-notif', handler);
   }, []);
 
+  // Reply button on a post → open the composer with the source post pinned
+  // at the top so the user can see what they're replying to.
+  React.useEffect(() => {
+    const handler = (e) => {
+      const id = e.detail?.postId;
+      if (!id) return;
+      const target = posts.find(p => p.id === id) || null;
+      setReplyTo(target || { id });
+      setScreen('compose');
+      try { localStorage.setItem(STORAGE.screen, 'compose'); } catch {}
+    };
+    window.addEventListener('cntrd:open-reply', handler);
+    return () => window.removeEventListener('cntrd:open-reply', handler);
+  }, [posts]);
+
   const screenMap = {
     home:         FeedScreen,
     profile:      ProfileScreen,
@@ -386,6 +419,7 @@ function CNTRDApp() {
     onOpenPlay: handleOpenPlay,
     onDeletePlay: handleDeletePlay,
     messageContext, setMessageContext,
+    replyTo,
     unreadMessages, unreadNotifs,
     onUnread: setUnreadMessages,
     onUnreadNotifs: setUnreadNotifs,

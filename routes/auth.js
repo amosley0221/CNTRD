@@ -82,7 +82,10 @@ router.post('/register', (req, res) => {
     return res.status(400).json({ error: 'Password needs ' + pwErrs.join(', ') });
   }
 
-  const existingUser = db.prepare('SELECT id FROM users WHERE username = ? OR email = ?').get(username, email);
+  // Both checks case-insensitive so "ALICE" can't sneak past "alice".
+  const existingUser = db.prepare(
+    'SELECT id FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)'
+  ).get(username, email);
   if (existingUser) {
     return res.status(409).json({ error: 'Username or email already taken' });
   }
@@ -123,7 +126,12 @@ router.post('/login', (req, res) => {
     return res.status(400).json({ error: 'Login and password are required' });
   }
 
-  const user = db.prepare('SELECT * FROM users WHERE username = ? OR email = ?').get(login, login);
+  // Match on either username or email, case-insensitively. Users
+  // routinely capitalize their email out of habit; that shouldn't break
+  // login.
+  const user = db.prepare(
+    'SELECT * FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)'
+  ).get(String(login).trim(), String(login).trim());
   if (!user || !bcrypt.compareSync(password, user.password)) {
     return res.status(401).json({ error: 'Invalid credentials' });
   }

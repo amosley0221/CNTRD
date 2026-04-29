@@ -48,6 +48,24 @@ function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePl
         (typeof p.user === 'string' ? p.user : p.user?.username) === u.username
       ).concat(POSTS.slice(0, 3));
   const [tab, setTab] = React.useState('posts');
+  const [bookmarks, setBookmarks] = React.useState(null);
+  const [bookmarksErr, setBookmarksErr] = React.useState(null);
+
+  // Lazy-load the bookmarks list when the user opens the tab. They're private
+  // to the viewer, so this only runs when looking at their own profile.
+  React.useEffect(() => {
+    if (tab !== 'bookmarks' || bookmarks !== null) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await window.API.myBookmarks();
+        if (!cancelled) setBookmarks((list || []).map(window.normalizePost));
+      } catch (e) {
+        if (!cancelled) { setBookmarks([]); setBookmarksErr(e.message || 'Failed to load'); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [tab, bookmarks]);
   return (
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
       {/* Top bar */}
@@ -100,6 +118,7 @@ function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePl
             { id: 'posts', label: 'Posts' },
             { id: 'plays', label: tweaks.playsLabel || 'Plays' },
             { id: 'media', label: 'Media' },
+            { id: 'bookmarks', label: 'Saved' },
             { id: 'likes', label: 'Likes' },
           ].map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
@@ -136,6 +155,15 @@ function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePl
             <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
               {Array.from({ length: 6 }).map((_, i) => <PhotoPlaceholder key={i} hue={200 + i * 30} ratio={1} label="" />)}
             </div>
+          )}
+          {tab === 'bookmarks' && (
+            bookmarks === null
+              ? <div style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>Loading…</div>
+              : bookmarksErr
+                ? <div style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--cn-danger)', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>{bookmarksErr}</div>
+                : bookmarks.length === 0
+                  ? <div style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>No bookmarks yet. Tap the bookmark icon under any post to save it here.</div>
+                  : bookmarks.map((p, i) => <Post key={p.id || i} post={p} />)
           )}
           {tab === 'likes' && <div style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>Likes are private to you.</div>}
         </div>
@@ -251,9 +279,10 @@ function ComposerMediaSlot({ type, media, uploading, onPick, onClear }) {
 }
 
 // ─── COMPOSER ─────────────────────────────────────────────────
-function ComposerScreen({ tweaks, onNav, onPost, me }) {
+function ComposerScreen({ tweaks, onNav, onPost, me, replyTo }) {
   const meUser = me || ME;
   const meTeams = (meUser.teams && meUser.teams.length) ? meUser.teams : ['LAL', 'NYG', 'ARS'];
+  const isReply = !!replyTo?.id;
   const [text, setText] = React.useState('');
   const [type, setType] = React.useState('take');
   const [tag, setTag] = React.useState(meTeams[0]);
@@ -290,6 +319,7 @@ function ComposerScreen({ tweaks, onNav, onPost, me }) {
       const body = { content: text.trim(), type, tags: [tag] };
       if (type === 'photo' && media?.url) body.image = media.url;
       if (type === 'clip'  && media?.url) body.extra = { video_url: media.url };
+      if (isReply) body.reply_to = replyTo.id;
       if (onPost) await onPost(body);
       setText(''); setMedia(null);
       onNav?.('home');
@@ -315,11 +345,34 @@ function ComposerScreen({ tweaks, onNav, onPost, me }) {
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: '0.5px solid var(--cn-border)' }}>
         <button onClick={() => onNav?.('home')} style={{ background: 'transparent', border: 'none', color: 'var(--cn-text-dim)', fontSize: 14, fontFamily: 'var(--cn-font-body)', cursor: 'pointer' }}>Cancel</button>
-        <span style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 14 }}>NEW POST</span>
+        <span style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 14 }}>{isReply ? 'REPLY' : 'NEW POST'}</span>
         <button onClick={submit} disabled={!canSubmit || busy || uploading} style={{ padding: '7px 14px', borderRadius: 999, background: canSubmit && !busy && !uploading ? 'var(--cn-accent)' : 'var(--cn-bg-elev2)', color: canSubmit && !busy && !uploading ? 'var(--cn-on-accent)' : 'var(--cn-text-mute)', border: 'none', fontWeight: 700, fontSize: 13, cursor: canSubmit && !busy && !uploading ? 'pointer' : 'not-allowed' }}>{busy ? 'Posting…' : uploading ? 'Uploading…' : 'Post'}</button>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
         {err && <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: 'color-mix(in srgb, var(--cn-danger) 18%, transparent)', color: 'var(--cn-danger)', fontSize: 12, fontFamily: 'var(--cn-font-mono)' }}>{err}</div>}
+        {isReply && (
+          <div style={{
+            marginBottom: 12, padding: '10px 12px',
+            border: '0.5px solid var(--cn-border-s)',
+            background: 'var(--cn-bg-elev)',
+            borderRadius: 10,
+            display: 'flex', gap: 10, alignItems: 'flex-start',
+          }}>
+            {replyTo.user && <Avatar user={replyTo.user} size={28} />}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>
+                Replying to {replyTo.user?.username ? '@' + replyTo.user.username : 'post'}
+              </div>
+              {(replyTo.text || replyTo.content) && (
+                <div style={{
+                  marginTop: 4, fontSize: 13, color: 'var(--cn-text-dim)',
+                  display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>{replyTo.text || replyTo.content}</div>
+              )}
+            </div>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 10 }}>
           <Avatar user={meUser} size={36} />
           <div style={{ flex: 1 }}>
