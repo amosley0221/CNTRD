@@ -507,18 +507,27 @@ async function getGameDetail(leagueCode, eventId) {
       description: a.description || '',
     })),
     // Play-by-play used by the live notifier to push per-event notifications.
-    plays: (json.plays || []).map(p => ({
-      id: String(p.id ?? ''),
-      text: p.text || '',
-      scoringPlay: !!p.scoringPlay,
-      scoreValue: Number(p.scoreValue || 0),
-      type: p.type?.text || p.type?.name || '',
-      period: Number(p.period?.number || 0),
-      clock: p.clock?.displayValue || '',
-      team: p.team?.abbreviation || null,
-      homeScore: Number(p.homeScore || 0),
-      awayScore: Number(p.awayScore || 0),
-    })),
+    plays: (json.plays || []).map(p => {
+      // ESPN ships `team` as either a string (older feeds, MLB sometimes)
+      // or an object { abbreviation, id }. Normalize so the notifier can
+      // match on g.home / g.away regardless of the source.
+      let teamCode = null;
+      if (typeof p.team === 'string') teamCode = p.team.toUpperCase();
+      else if (p.team?.abbreviation) teamCode = String(p.team.abbreviation).toUpperCase();
+      else if (p.team?.id && p.start?.team?.abbreviation) teamCode = String(p.start.team.abbreviation).toUpperCase();
+      return {
+        id: String(p.id ?? ''),
+        text: p.text || '',
+        scoringPlay: !!p.scoringPlay,
+        scoreValue: Number(p.scoreValue || 0),
+        type: p.type?.text || p.type?.name || '',
+        period: Number(p.period?.number || 0),
+        clock: p.clock?.displayValue || '',
+        team: teamCode,
+        homeScore: Number(p.homeScore || 0),
+        awayScore: Number(p.awayScore || 0),
+      };
+    }),
   };
 
   detailCache.set(key, { ts: Date.now(), data: detail });

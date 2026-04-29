@@ -283,31 +283,13 @@ function NotifIcon({ n }) {
   if (n.actor) return <Avatar user={n.actor} size={36} />;
   const d = n.data || {};
 
-  // Pick which team's logo to show. For per-play scoring, the scoring side
-  // is what matters. For finals, show the winner. live_game uses the
-  // matchup's home team as a default so the user sees something concrete.
-  const sideForType = (() => {
-    if (n.type === 'score' && d.scoring_side) return d.scoring_side;
-    if (n.type === 'final') {
-      const hs = Number(d.home_score), as = Number(d.away_score);
-      if (Number.isFinite(hs) && Number.isFinite(as)) {
-        if (hs > as) return 'home';
-        if (as > hs) return 'away';
-      }
-      return null;
-    }
-    if (n.type === 'live_game') return 'home';
-    return null;
-  })();
+  // League-level events ride the league mark — start of game, end of
+  // period / half / quarter, intermissions. The league logo communicates
+  // "the moment matters for everyone watching", not a specific side.
+  const LEAGUE_LEVEL = new Set(['live_game', 'period_end']);
+  const leagueLogo = LEAGUE_LOGOS[d.league] || '';
 
-  const teamLogo    = sideForType === 'home' ? d.home_logo    : sideForType === 'away' ? d.away_logo    : '';
-  const teamName    = sideForType === 'home' ? d.home_name    : sideForType === 'away' ? d.away_name    : '';
-  const teamCode    = sideForType === 'home' ? d.home         : sideForType === 'away' ? d.away         : '';
-  const teamPrimary = sideForType === 'home' ? d.home_primary : sideForType === 'away' ? d.away_primary : '';
-
-  // period_end → league logo (no single team owns the moment).
-  if (n.type === 'period_end') {
-    const leagueLogo = LEAGUE_LOGOS[d.league] || '';
+  if (LEAGUE_LEVEL.has(n.type)) {
     if (leagueLogo) {
       return (
         <img
@@ -322,20 +304,39 @@ function NotifIcon({ n }) {
     return <LeagueBadge league={d.league} />;
   }
 
-  // Per-team events (score / final / live_game) — render the team's logo.
-  if (sideForType && (teamLogo || teamCode)) {
-    return (
-      <TeamLogo
-        team={{ logo: teamLogo, code: teamCode, name: teamName, primary: teamPrimary }}
-        size={36}
-        radius={8}
-      />
-    );
+  // Team-level events (score / final) — render the team logo. score uses
+  // the scoring side; final uses the winner; if we can't tell, fall back
+  // to the home team so we at least show a team mark.
+  let side = null;
+  if (n.type === 'score') {
+    side = d.scoring_side || 'home';
+  } else if (n.type === 'final') {
+    const hs = Number(d.home_score), as = Number(d.away_score);
+    if (Number.isFinite(hs) && Number.isFinite(as)) {
+      side = hs > as ? 'home' : as > hs ? 'away' : 'home';
+    } else {
+      side = 'home';
+    }
+  }
+
+  if (side) {
+    const teamLogo    = side === 'home' ? d.home_logo    : d.away_logo;
+    const teamName    = side === 'home' ? d.home_name    : d.away_name;
+    const teamCode    = side === 'home' ? d.home         : d.away;
+    const teamPrimary = side === 'home' ? d.home_primary : d.away_primary;
+    if (teamLogo || teamCode) {
+      return (
+        <TeamLogo
+          team={{ logo: teamLogo, code: teamCode, name: teamName, primary: teamPrimary }}
+          size={36}
+          radius={8}
+        />
+      );
+    }
   }
 
   // Generic fallback for any other game-related notification — the league
   // mark beats a free-floating emoji.
-  const leagueLogo = LEAGUE_LOGOS[d.league] || '';
   if (leagueLogo) {
     return (
       <img

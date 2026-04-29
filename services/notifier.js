@@ -156,14 +156,42 @@ async function liveGameTick() {
         try {
           const detail = await getEspn().getGameDetail(g.league, g.id);
           if (detail?.plays?.length) {
+            // Track the running cumulative score so we can infer which side
+            // scored when ESPN doesn't supply a team on the play itself.
+            let lastHome = state.lastPlayHomeScore ?? 0;
+            let lastAway = state.lastPlayAwayScore ?? 0;
             for (const play of detail.plays) {
-              if (!play.id || state.seenPlayIds.has(play.id)) continue;
+              if (!play.id || state.seenPlayIds.has(play.id)) {
+                // Even if we've seen the play before, advance the running
+                // tally so deltas stay consistent.
+                lastHome = play.homeScore ?? lastHome;
+                lastAway = play.awayScore ?? lastAway;
+                continue;
+              }
               state.seenPlayIds.add(play.id);
-              if (!play.scoringPlay) continue;
-              if (basketball) continue;
-              const scoringSide = play.team
-                ? (play.team === g.home ? 'home' : (play.team === g.away ? 'away' : null))
-                : null;
+              if (!play.scoringPlay) {
+                lastHome = play.homeScore ?? lastHome;
+                lastAway = play.awayScore ?? lastAway;
+                continue;
+              }
+              if (basketball) {
+                lastHome = play.homeScore ?? lastHome;
+                lastAway = play.awayScore ?? lastAway;
+                continue;
+              }
+              // Prefer the explicit team tag; fall back to whichever side's
+              // cumulative score went up on this play.
+              let scoringSide = null;
+              if (play.team) {
+                if (play.team === g.home) scoringSide = 'home';
+                else if (play.team === g.away) scoringSide = 'away';
+              }
+              if (!scoringSide) {
+                const homeDelta = (play.homeScore ?? lastHome) - lastHome;
+                const awayDelta = (play.awayScore ?? lastAway) - lastAway;
+                if (homeDelta > awayDelta) scoringSide = 'home';
+                else if (awayDelta > homeDelta) scoringSide = 'away';
+              }
               const dedupeKey = `play:${g.id}:${play.id}`;
               const data = {
                 ...gamePayload(g),
@@ -178,7 +206,11 @@ async function liveGameTick() {
               for (const userId of recipients) {
                 notify({ userId, type: 'score', data, dedupeKey, bumpOnDedupe: false });
               }
+              lastHome = play.homeScore ?? lastHome;
+              lastAway = play.awayScore ?? lastAway;
             }
+            state.lastPlayHomeScore = lastHome;
+            state.lastPlayAwayScore = lastAway;
           }
         } catch (e) {
           // ESPN summary missing or rate-limited — fall through; status-text
