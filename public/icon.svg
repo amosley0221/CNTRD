@@ -1,12 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="CNTRD">
   <!--
     Brand mark: dark stadium background with the letter "C" set in
-    the same Anton typeface used for the CNTRD wordmark on the site.
-    Browser tab / desktop favicon contexts that fetch the SVG and
-    honor @import will render true Anton; iOS apple-touch-icon
-    rasterization may fall back to Impact (visually similar). Either
-    way the C reads as the wordmark's "C" rather than a hand-drawn
-    geometric shape.
+    Anton (the same typeface as the CNTRD wordmark on the site). At
+    font-size 196 the cap height is ~138, leaving ~60px clearance
+    from the rounded corners on top and bottom — the C reads at its
+    natural condensed width without being stretched.
   -->
   <defs>
     <style type="text/css">
@@ -21,8 +19,7 @@
   </defs>
   <rect width="256" height="256" rx="48" ry="48" fill="#0A0A0B"/>
   <text class="cntrd-c"
-        x="128" y="216"
-        font-size="280"
-        text-anchor="middle"
-        textLength="160" lengthAdjust="spacingAndGlyphs">C</text>
+        x="128" y="196"
+        font-size="196"
+        text-anchor="middle">C</text>
 </svg>
