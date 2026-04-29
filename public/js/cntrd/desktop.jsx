@@ -102,7 +102,7 @@ function DesktopNav({ onNav, me, screen, unreadMessages, unreadNotifs }) {
   const meUser = me || ME;
   const items = [
     { screen: 'home',          icon: 'home',     label: 'Feed' },
-    { screen: 'home',          icon: 'search',   label: 'Discover',     key: 'discover' },
+    { screen: 'discover',      icon: 'search',   label: 'Discover' },
     { screen: 'notifications', icon: 'bell',     label: 'Notifications', count: unreadNotifs || 0 },
     { screen: 'messages',      icon: 'chat',     label: 'Messages',      count: unreadMessages || 0 },
     { screen: 'chat',          icon: 'whistle',  label: 'Gameday',       badge: 'LIVE' },
