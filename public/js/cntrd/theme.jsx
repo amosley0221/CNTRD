@@ -512,10 +512,111 @@ function PullIndicator({ distance, refreshing, threshold = 64 }) {
   );
 }
 
+// ─── Branded confirm dialog ──────────────────────────────────────────
+// Replaces the native browser confirm() popup so destructive actions
+// (dismiss read notifications, delete post, cancel event, etc.) match
+// the rest of the design. Use:
+//   const ok = await confirmAction({ title: '...', message: '...',
+//                                    confirmLabel: 'Delete',
+//                                    danger: true });
+// Returns a Promise<boolean>. Falls back to native confirm() if the
+// host hasn't mounted yet — keeps things safe on first render.
+let _confirmHostSetOpen = null;
+function confirmAction({
+  title = 'Are you sure?',
+  message = '',
+  confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
+  danger = false,
+} = {}) {
+  return new Promise(resolve => {
+    if (typeof _confirmHostSetOpen !== 'function') {
+      try { resolve(typeof confirm === 'function' ? confirm(message || title) : true); }
+      catch { resolve(true); }
+      return;
+    }
+    _confirmHostSetOpen({ title, message, confirmLabel, cancelLabel, danger, resolve });
+  });
+}
+
+// Mount once at the app root. Renders a modal whenever confirmAction is
+// called and resolves the caller's promise on confirm/cancel.
+function ConfirmHost() {
+  const [state, setState] = React.useState(null);
+  React.useEffect(() => {
+    _confirmHostSetOpen = setState;
+    return () => { _confirmHostSetOpen = null; };
+  }, []);
+  if (!state) return null;
+  const close = (value) => {
+    state.resolve(value);
+    setState(null);
+  };
+  const onKey = (e) => {
+    if (e.key === 'Escape') close(false);
+    if (e.key === 'Enter') close(true);
+  };
+  return (
+    <div
+      onClick={() => close(false)}
+      onKeyDown={onKey}
+      tabIndex={-1}
+      autoFocus
+      style={{
+        position: 'fixed', inset: 0, zIndex: 100,
+        background: 'rgba(0,0,0,0.55)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 16,
+      }}
+    >
+      <div onClick={(e) => e.stopPropagation()} style={{
+        width: '100%', maxWidth: 360,
+        background: 'var(--cn-bg-elev)',
+        border: '0.5px solid var(--cn-border)',
+        borderRadius: 14,
+        boxShadow: '0 24px 60px rgba(0,0,0,0.45)',
+        overflow: 'hidden',
+        color: 'var(--cn-text)',
+        fontFamily: 'var(--cn-font-body)',
+      }}>
+        <div style={{ padding: '18px 18px 4px' }}>
+          <div style={{
+            fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)',
+            textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)',
+            fontSize: 18, marginBottom: state.message ? 6 : 0,
+          }}>{state.title}</div>
+          {state.message && (
+            <div style={{ fontSize: 13, color: 'var(--cn-text-dim)', lineHeight: 1.5 }}>
+              {state.message}
+            </div>
+          )}
+        </div>
+        <div style={{ padding: '14px 16px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button onClick={() => close(false)} autoFocus style={{
+            padding: '8px 16px', borderRadius: 999,
+            background: 'transparent', color: 'var(--cn-text-dim)',
+            border: '0.5px solid var(--cn-border-s)',
+            cursor: 'pointer',
+            fontWeight: 600, fontSize: 13, fontFamily: 'var(--cn-font-body)',
+          }}>{state.cancelLabel}</button>
+          <button onClick={() => close(true)} style={{
+            padding: '8px 18px', borderRadius: 999,
+            background: state.danger ? 'var(--cn-danger)' : 'var(--cn-accent)',
+            color: state.danger ? '#fff' : 'var(--cn-on-accent)',
+            border: 'none', cursor: 'pointer',
+            fontWeight: 800, fontSize: 13, fontFamily: 'var(--cn-font-body)',
+          }}>{state.confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 Object.assign(window, {
   THEMES, TYPE_PAIRS, DENSITY, applyTheme, pickContrast, resolveTeam,
   TeamPill, TeamTagsRow, Avatar, Icon,
   usePullToRefresh, PullIndicator,
   LEAGUE_LOGOS, TeamLogo, TeamName,
   dedupeUclOverlap,
+  confirmAction, ConfirmHost,
 });

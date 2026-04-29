@@ -572,6 +572,8 @@ function CNTRDApp() {
       <PostActionsContext.Provider value={postActionsValue}>
         {children}
       </PostActionsContext.Provider>
+      {/* Branded replacement for native confirm() — see theme.jsx. */}
+      <ConfirmHost />
     </div>
   );
 

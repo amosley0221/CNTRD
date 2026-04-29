@@ -91,7 +91,13 @@ function NotificationsScreen({ tweaks, onNav, me, setMessageContext, onUnreadNot
     onUnread?.(0);
   };
   const clearRead = async () => {
-    if (typeof confirm === 'function' && !confirm('Dismiss every notification you\'ve already read?')) return;
+    const ok = await confirmAction({
+      title: 'Clear read notifications?',
+      message: "Dismiss every notification you've already read. Unread ones stay put.",
+      confirmLabel: 'Clear read',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await API.dismissReadNotifs();
       setNotifs(prev => prev.filter(n => !n.read));

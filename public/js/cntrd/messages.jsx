@@ -480,8 +480,14 @@ function EventStrip({ events, me, onCancel }) {
             </div>
             {canCancel && (
               <button
-                onClick={() => {
-                  if (typeof confirm === 'function' && !confirm(`Cancel "${ev.title}"?`)) return;
+                onClick={async () => {
+                  const ok = await confirmAction({
+                    title: `Cancel "${ev.title}"?`,
+                    message: 'The event will disappear for everyone in the group.',
+                    confirmLabel: 'Cancel event',
+                    danger: true,
+                  });
+                  if (!ok) return;
                   onCancel?.(ev.id);
                 }}
                 title="Cancel event"

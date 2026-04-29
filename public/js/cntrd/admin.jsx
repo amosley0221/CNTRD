@@ -46,7 +46,13 @@ function AdminScreen({ tweaks, onNav, me }) {
     }
   };
   const deletePost = async (userId, postId) => {
-    if (!confirm('Delete this post permanently?')) return;
+    const ok = await confirmAction({
+      title: 'Delete this post?',
+      message: "This will remove it for everyone. Can't be undone.",
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await API.adminDeletePost(postId);
       setPostsByUser(prev => ({ ...prev, [userId]: (prev[userId] || []).filter(p => p.id !== postId) }));

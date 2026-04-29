@@ -7,7 +7,13 @@ function ProfilePlayTile({ play, onOpen, onDelete }) {
   const team = resolveTeam(play.team) || { primary: '#444', accent: '#888', name: '' };
   const remove = async (e) => {
     e.stopPropagation();
-    if (typeof confirm === 'function' && !confirm('Delete this Play permanently?')) return;
+    const ok = await confirmAction({
+      title: 'Delete this Play?',
+      message: "This can't be undone.",
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!ok) return;
     try { await onDelete?.(play.id); } catch (e) { alert(e.message || 'Failed'); }
   };
   return (
@@ -1247,7 +1253,13 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
   }
 
   const remove = async () => {
-    if (typeof confirm === 'function' && !confirm('Delete this Play permanently?')) return;
+    const ok = await confirmAction({
+      title: 'Delete this Play?',
+      message: "This can't be undone.",
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await onDeletePlay?.(play.id);
       onNav?.('home');

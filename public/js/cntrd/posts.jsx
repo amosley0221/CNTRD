@@ -280,7 +280,13 @@ function PostShell({ children, post }) {
     }
   };
   const remove = async () => {
-    if (typeof confirm === 'function' && !confirm('Delete this post permanently?')) return;
+    const ok = await confirmAction({
+      title: 'Delete this post?',
+      message: "This can't be undone.",
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await window.API.deletePost(post.id);
       onPostDeleted?.(post.id);
@@ -289,7 +295,13 @@ function PostShell({ children, post }) {
   const block = async () => {
     const handle = post.user?.username;
     if (!handle) return;
-    if (typeof confirm === 'function' && !confirm(`Block @${handle}? You won't see their posts and they won't see yours.`)) return;
+    const ok = await confirmAction({
+      title: `Block @${handle}?`,
+      message: "You won't see their posts and they won't see yours.",
+      confirmLabel: 'Block',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await window.API.blockUser(handle);
       onUserBlocked?.(post.user.id);
