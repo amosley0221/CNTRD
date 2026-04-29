@@ -55,6 +55,40 @@ function teamFromCompetitor(comp) {
   };
 }
 
+function pickRecord(records) {
+  if (!Array.isArray(records)) return '';
+  // ESPN tags one entry as "total" — fall back to the first if absent.
+  const total = records.find(r => r?.type === 'total' || r?.name === 'overall');
+  return (total || records[0])?.summary || '';
+}
+
+function normalizeSeries(comp) {
+  // Playoff series live on `competitions[0].series` (NBA/NHL/MLB) — short
+  // record like "0-2" or "Best of 7". We surface both.
+  const s = comp?.series || comp?.headToHeadGames;
+  if (!s) return null;
+  const homeWins = Number(s.competitors?.[0]?.wins ?? s.summary?.split('-')?.[0] ?? NaN);
+  const awayWins = Number(s.competitors?.[1]?.wins ?? s.summary?.split('-')?.[1] ?? NaN);
+  const length   = Number(s.totalCompetitions || s.length || 0);
+  const summary  = s.summary || s.description || '';
+  return {
+    summary,
+    bestOf: length > 0 ? length : null,
+    homeWins: Number.isFinite(homeWins) ? homeWins : null,
+    awayWins: Number.isFinite(awayWins) ? awayWins : null,
+  };
+}
+
+function normalizeAggregate(home, away) {
+  // Soccer two-leg ties (UCL knockouts) ship per-side aggregate scores.
+  const h = home?.aggregateScore ?? home?.aggregate;
+  const a = away?.aggregateScore ?? away?.aggregate;
+  if (h == null || a == null) return null;
+  const hn = Number(h), an = Number(a);
+  if (!Number.isFinite(hn) || !Number.isFinite(an)) return null;
+  return { home: hn, away: an };
+}
+
 function normalizeEvent(ev, leagueCode) {
   const comp = ev?.competitions?.[0];
   if (!comp) return null;
@@ -87,6 +121,10 @@ function normalizeEvent(ev, leagueCode) {
     awayTeam,
     homeScore: state === 'scheduled' ? '–' : Number(home.score ?? 0),
     awayScore: state === 'scheduled' ? '–' : Number(away.score ?? 0),
+    homeRecord: pickRecord(home.records),
+    awayRecord: pickRecord(away.records),
+    series: normalizeSeries(comp),
+    aggregate: normalizeAggregate(home, away),
     period,
     clock,
     venue: comp.venue?.fullName || '',
@@ -363,23 +401,27 @@ async function getGameDetail(leagueCode, eventId) {
     period: status.shortDetail || status.detail || '',
     venue: comp.venue?.fullName || '',
     date: header.competitions?.[0]?.date || '',
+    series: normalizeSeries(comp),
+    aggregate: normalizeAggregate(home, away),
     home: {
+      id: home.team?.id ? String(home.team.id) : null,
       code: (home.team?.abbreviation || '').toUpperCase(),
       name: home.team?.shortDisplayName || home.team?.displayName || '',
       logo: (home.team?.logos?.[0]?.href) || home.team?.logo || '',
       primary: colorHex(home.team?.color),
       score: state === 'scheduled' ? '–' : Number(home.score ?? 0),
-      record: (home.records || []).find(r => r.type === 'total')?.summary || '',
+      record: pickRecord(home.records),
       stats: summarizeTeamStats((json.boxscore?.teams || []).find(t => t?.team?.id === home.team?.id)),
       players: extractPlayers(json.boxscore, home.team?.id),
     },
     away: {
+      id: away.team?.id ? String(away.team.id) : null,
       code: (away.team?.abbreviation || '').toUpperCase(),
       name: away.team?.shortDisplayName || away.team?.displayName || '',
       logo: (away.team?.logos?.[0]?.href) || away.team?.logo || '',
       primary: colorHex(away.team?.color),
       score: state === 'scheduled' ? '–' : Number(away.score ?? 0),
-      record: (away.records || []).find(r => r.type === 'total')?.summary || '',
+      record: pickRecord(away.records),
       stats: summarizeTeamStats((json.boxscore?.teams || []).find(t => t?.team?.id === away.team?.id)),
       players: extractPlayers(json.boxscore, away.team?.id),
     },
@@ -437,4 +479,88 @@ async function getAllTeams() {
   return teamsInflight;
 }
 
-module.exports = { getAll, getAllTeams, getGameDetail, LEAGUES };
+// ── Team schedule ───────────────────────────────────────────────────────
+const SCHEDULE_TTL_MS = 5 * 60 * 1000;       // 5 minutes
+const scheduleCache = new Map();             // `${league}|${teamId}|${season}` → { ts, data }
+
+async function getTeamSchedule(leagueCode, teamId, season) {
+  const league = leagueByCode(leagueCode);
+  if (!league) throw new Error('Unknown league');
+  const id = String(teamId).replace(/[^0-9]/g, '');
+  if (!id) throw new Error('Invalid team id');
+  const seasonKey = season ? String(Number(season)) : '';
+  const cacheKey = `${league.code}|${id}|${seasonKey}`;
+  const now = Date.now();
+  const cached = scheduleCache.get(cacheKey);
+  if (cached && now - cached.ts < SCHEDULE_TTL_MS) return cached.data;
+
+  const url = new URL(`https://site.api.espn.com/apis/site/v2/sports/${league.path}/teams/${id}/schedule`);
+  if (seasonKey) url.searchParams.set('season', seasonKey);
+  const res = await fetch(url.toString(), {
+    headers: { 'Accept': 'application/json', 'User-Agent': 'cntrd/1.0' },
+  });
+  if (!res.ok) throw new Error(`ESPN schedule HTTP ${res.status}`);
+  const json = await res.json();
+
+  const team = json.team || {};
+  const events = Array.isArray(json.events) ? json.events : [];
+  const games = events.map(ev => {
+    const comp = ev.competitions?.[0] || {};
+    const status = ev.status?.type || comp.status?.type || {};
+    const state =
+      status.state === 'in'   ? 'live' :
+      status.state === 'post' ? 'final' :
+      status.state === 'pre'  ? 'scheduled' :
+      'unknown';
+    const home = comp.competitors?.find(c => c.homeAway === 'home');
+    const away = comp.competitors?.find(c => c.homeAway === 'away');
+    const homeT = home ? teamFromCompetitor(home) : null;
+    const awayT = away ? teamFromCompetitor(away) : null;
+    return {
+      id: String(ev.id),
+      league: league.code,
+      state,
+      date: ev.date,
+      period: status.shortDetail || status.detail || '',
+      home: homeT?.code || '',
+      away: awayT?.code || '',
+      homeTeam: homeT,
+      awayTeam: awayT,
+      homeScore: state === 'scheduled' ? '–' : Number(home?.score ?? 0),
+      awayScore: state === 'scheduled' ? '–' : Number(away?.score ?? 0),
+      isHome: home?.team?.id === id,
+      result: home?.team?.id === id ? home?.winner ? 'W' : (state === 'final' ? 'L' : '')
+                                    : away?.winner ? 'W' : (state === 'final' ? 'L' : ''),
+      venue: comp.venue?.fullName || '',
+    };
+  });
+  // ESPN ships current + a couple historical seasons in `seasonTypes` /
+  // `seasons`. Surface the season list so the client can render a dropdown.
+  const seasons = Array.isArray(json.seasons) ? json.seasons.map(s => ({
+    year: Number(s.year),
+    displayName: s.displayName || `${s.year}`,
+  })) : [];
+  // If the API doesn't tell us which season this response represents, fall
+  // back to the requested year (or the current calendar year).
+  const requestedSeason = seasonKey ? Number(seasonKey)
+    : (json.season?.year || json.requestedSeason?.year || new Date().getUTCFullYear());
+
+  const data = {
+    league: league.code,
+    team: {
+      id,
+      name: team.displayName || team.name || '',
+      abbreviation: (team.abbreviation || '').toUpperCase(),
+      logo: team.logos?.[0]?.href || team.logo || '',
+      record: team.recordSummary || (team.record?.items || [])[0]?.summary || '',
+      primary: colorHex(team.color),
+    },
+    season: requestedSeason,
+    seasons,
+    games,
+  };
+  scheduleCache.set(cacheKey, { ts: Date.now(), data });
+  return data;
+}
+
+module.exports = { getAll, getAllTeams, getGameDetail, getTeamSchedule, LEAGUES };

@@ -710,6 +710,12 @@ function GamedayGroup({ label, live, accent, items, liveFlags, onPick }) {
 function GamedayRow({ game, live, favorite, onClick }) {
   const home = game.homeTeam || TEAMS[game.home] || { code: game.home, name: game.home, primary: '#666', accent: '#999' };
   const away = game.awayTeam || TEAMS[game.away] || { code: game.away, name: game.away, primary: '#666', accent: '#999' };
+  const seriesText = game.series && (game.series.summary || game.series.bestOf)
+    ? `${game.series.summary || ''}${game.series.bestOf ? ` · best of ${game.series.bestOf}` : ''}`.trim()
+    : '';
+  const aggText = game.aggregate
+    ? `agg ${game.aggregate.away}–${game.aggregate.home}`
+    : '';
   return (
     <div onClick={onClick} style={{
       display: 'flex', alignItems: 'center', gap: 12,
@@ -719,13 +725,15 @@ function GamedayRow({ game, live, favorite, onClick }) {
     }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)' }}>
-          <TeamMini team={away} />
+          <TeamMini team={away} record={game.awayRecord} />
           <span style={{ color: 'var(--cn-text-mute)', fontSize: 11, fontFamily: 'var(--cn-font-mono)' }}>@</span>
-          <TeamMini team={home} />
+          <TeamMini team={home} record={game.homeRecord} />
           {favorite && <span title="Your team" style={{ color: 'var(--cn-accent)', fontSize: 12, fontWeight: 800 }}>★</span>}
         </div>
         <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', marginTop: 4 }}>
           {game.league} · {game.period || (live ? 'LIVE' : 'Scheduled')}
+          {seriesText && <span style={{ color: 'var(--cn-accent)' }}> · {seriesText}</span>}
+          {aggText && <span> · {aggText}</span>}
         </div>
       </div>
       {live ? (
@@ -744,7 +752,7 @@ function GamedayRow({ game, live, favorite, onClick }) {
   );
 }
 
-function TeamMini({ team }) {
+function TeamMini({ team, record }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
       <span style={{
@@ -754,6 +762,12 @@ function TeamMini({ team }) {
         fontSize: 9, fontWeight: 800, letterSpacing: 0.4,
       }}>{team.code}</span>
       <span style={{ fontSize: 14 }}>{team.name}</span>
+      {record && (
+        <span style={{
+          fontFamily: 'var(--cn-font-mono)', fontSize: 10,
+          color: 'var(--cn-text-mute)', marginLeft: 2,
+        }}>({record})</span>
+      )}
     </span>
   );
 }

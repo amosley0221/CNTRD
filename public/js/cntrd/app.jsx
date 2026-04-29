@@ -100,6 +100,7 @@ function CNTRDApp() {
   const [plays, setPlays] = React.useState([]);
   const [games, setGames] = React.useState({ live: [], upcoming: [], recent: [] });
   const [selectedGame, setSelectedGame] = React.useState(null);  // { id, league }
+  const [scheduleTeam, setScheduleTeam] = React.useState(null);  // { league, teamId, name, primary, code, logo }
   const [selectedTag, setSelectedTag]   = React.useState(null);  // 'NFL:PHI' or 'PHI'
   const [selectedPlay, setSelectedPlay] = React.useState(null);  // play object when viewing a specific Play
   const [gamedayPick, setGamedayPick]   = React.useState(null);  // { id, league, ... } when entering chat for a specific game
@@ -434,6 +435,19 @@ function CNTRDApp() {
     return () => window.removeEventListener('cntrd:open-game-from-notif', handler);
   }, []);
 
+  // GameDetailScreen fires this when the user taps "[Team] schedule →".
+  React.useEffect(() => {
+    const handler = (e) => {
+      const t = e.detail;
+      if (!t?.league || !t?.teamId) return;
+      setScheduleTeam(t);
+      setScreen('teamSchedule');
+      try { localStorage.setItem(STORAGE.screen, 'teamSchedule'); } catch {}
+    };
+    window.addEventListener('cntrd:open-team-schedule', handler);
+    return () => window.removeEventListener('cntrd:open-team-schedule', handler);
+  }, []);
+
   // Reply button on a post → open the composer with the source post pinned
   // at the top so the user can see what they're replying to.
   React.useEffect(() => {
@@ -469,6 +483,7 @@ function CNTRDApp() {
     privacy:      PrivacyScreen,
     about:        AboutScreen,
     gameDetail:   GameDetailScreen,
+    teamSchedule: TeamScheduleScreen,
     tagFeed:      TagFeedScreen,
     messages:     MessagesRoot,
     notifications: NotificationsScreen,
@@ -485,6 +500,7 @@ function CNTRDApp() {
     tweaks, setTweak, onNav: handleNav,
     me, posts, plays, games,
     selectedGame, selectedTag, selectedPlay,
+    scheduleTeam,
     gamedayPick, setGamedayPick,
     onOpenGameday: handleOpenGameday,
     onOpenPlay: handleOpenPlay,

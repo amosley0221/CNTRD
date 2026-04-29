@@ -32,4 +32,18 @@ router.get('/all', async (req, res) => {
   }
 });
 
+// Full schedule for a team in a given season. Falls back to ESPN's idea of
+// "current" when no season is supplied.
+router.get('/:league/:teamId/schedule', async (req, res) => {
+  try {
+    const data = await espn.getTeamSchedule(req.params.league, req.params.teamId, req.query.season);
+    res.set('Cache-Control', 'public, max-age=120');
+    res.json(data);
+  } catch (err) {
+    console.error('team schedule error:', err.message);
+    const status = /Unknown league|Invalid team id/i.test(err.message) ? 400 : 502;
+    res.status(status).json({ error: err.message || 'Upstream schedule unavailable' });
+  }
+});
+
 module.exports = router;

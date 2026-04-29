@@ -69,6 +69,10 @@ const API = {
   leagueCatalog()          { return request('GET',  '/api/leagues'); },
   games()                  { return request('GET',  '/api/games'); },
   gameDetail(league, id)   { return request('GET',  `/api/games/${encodeURIComponent(league)}/${encodeURIComponent(id)}`); },
+  teamSchedule(league, teamId, season) {
+    const qs = season ? `?season=${encodeURIComponent(season)}` : '';
+    return request('GET', `/api/teams/${encodeURIComponent(league)}/${encodeURIComponent(teamId)}/schedule${qs}`);
+  },
 
   feed()                   { return request('GET',  '/api/posts/feed'); },
   explore()                { return request('GET',  '/api/posts/explore'); },

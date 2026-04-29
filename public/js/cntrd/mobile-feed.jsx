@@ -223,13 +223,36 @@ function LiveGameCard({ game, onClick, favorite }) {
           <span title="Your team" style={{ color: 'var(--cn-accent)', fontSize: 11, lineHeight: 1, fontWeight: 800 }}>★</span>
         )}
       </div>
-      <CompactScoreRow team={away} score={game.awayScore} />
-      <CompactScoreRow team={home} score={game.homeScore} />
+      {game.series && (game.series.summary || game.series.bestOf) && (
+        <div style={{
+          fontFamily: 'var(--cn-font-mono)', fontSize: 9,
+          color: 'var(--cn-accent)', letterSpacing: 0.5,
+          marginBottom: 4,
+        }}>
+          SERIES {game.series.summary || ''}{game.series.bestOf ? ` · BEST OF ${game.series.bestOf}` : ''}
+        </div>
+      )}
+      <CompactScoreRow team={away} score={game.awayScore} record={game.awayRecord} />
+      <CompactScoreRow team={home} score={game.homeScore} record={game.homeRecord} />
+      {game.aggregate && (
+        <div style={{
+          marginTop: 6, paddingTop: 6,
+          borderTop: '0.5px solid var(--cn-border-s)',
+          fontFamily: 'var(--cn-font-mono)', fontSize: 10,
+          color: 'var(--cn-text-dim)', letterSpacing: 0.4,
+          display: 'flex', justifyContent: 'space-between',
+        }}>
+          <span>AGG</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+            {game.aggregate.away}–{game.aggregate.home}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
 
-function CompactScoreRow({ team, score }) {
+function CompactScoreRow({ team, score, record }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0' }}>
       <div style={{
@@ -238,7 +261,13 @@ function CompactScoreRow({ team, score }) {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 8, fontWeight: 800, letterSpacing: 0.3,
       }}>{team.code}</div>
-      <span style={{ flex: 1, fontSize: 12, fontWeight: 600 }}>{team.name}</span>
+      <span style={{ flex: 1, fontSize: 12, fontWeight: 600, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{team.name}</span>
+      {record && (
+        <span style={{
+          fontFamily: 'var(--cn-font-mono)', fontSize: 9,
+          color: 'var(--cn-text-mute)', flexShrink: 0,
+        }}>{record}</span>
+      )}
       <span style={{
         fontFamily: 'var(--cn-font-display)',
         fontSize: 18, fontWeight: 'var(--cn-display-weight)',

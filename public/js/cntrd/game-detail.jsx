@@ -19,6 +19,13 @@ function GameDetailScreen({ tweaks, onNav, selectedGame }) {
     return () => { cancelled = true; };
   }, [league, id]);
 
+  const openSchedule = (team) => {
+    if (!team?.id || !data?.league) return;
+    window.dispatchEvent(new CustomEvent('cntrd:open-team-schedule', {
+      detail: { league: data.league, teamId: team.id, name: team.name, primary: team.primary, code: team.code, logo: team.logo },
+    }));
+  };
+
   return (
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
       <div style={{
@@ -47,6 +54,52 @@ function GameDetailScreen({ tweaks, onNav, selectedGame }) {
             <>
               <DetailHeader data={data} />
               <DetailScoreCard data={data} />
+              {data.series && (data.series.summary || data.series.bestOf) && (
+                <div style={{
+                  marginTop: 10, padding: '10px 14px',
+                  border: '0.5px solid var(--cn-accent)',
+                  borderRadius: 10,
+                  background: 'color-mix(in srgb, var(--cn-accent) 8%, transparent)',
+                  fontFamily: 'var(--cn-font-mono)', fontSize: 11,
+                  color: 'var(--cn-accent)', letterSpacing: 0.6, textTransform: 'uppercase',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+                }}>
+                  <span>Playoff series</span>
+                  <span style={{ color: 'var(--cn-text)', fontWeight: 800 }}>
+                    {data.series.summary || ''}
+                    {data.series.bestOf ? ` · best of ${data.series.bestOf}` : ''}
+                  </span>
+                </div>
+              )}
+              {data.aggregate && (
+                <div style={{
+                  marginTop: 10, padding: '10px 14px',
+                  border: '0.5px solid var(--cn-border)',
+                  borderRadius: 10, background: 'var(--cn-bg-elev)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  fontFamily: 'var(--cn-font-mono)', fontSize: 11,
+                  color: 'var(--cn-text-mute)', letterSpacing: 0.5, textTransform: 'uppercase',
+                }}>
+                  <span>Aggregate</span>
+                  <span style={{ color: 'var(--cn-text)', fontVariantNumeric: 'tabular-nums', fontWeight: 800 }}>
+                    {data.away.code || 'A'} {data.aggregate.away} – {data.aggregate.home} {data.home.code || 'H'}
+                  </span>
+                </div>
+              )}
+              {(data.home?.id || data.away?.id) && (
+                <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {data.away?.id && (
+                    <button onClick={() => openSchedule(data.away)} style={scheduleBtnStyle()}>
+                      {data.away.name} schedule →
+                    </button>
+                  )}
+                  {data.home?.id && (
+                    <button onClick={() => openSchedule(data.home)} style={scheduleBtnStyle()}>
+                      {data.home.name} schedule →
+                    </button>
+                  )}
+                </div>
+              )}
               <DetailStatsBlock home={data.home} away={data.away} />
               <DetailLeaders leaders={data.leaders} home={data.home} away={data.away} />
               {(data.headlines || []).length > 0 && <DetailHeadlines headlines={data.headlines} />}
@@ -56,6 +109,17 @@ function GameDetailScreen({ tweaks, onNav, selectedGame }) {
       </div>
     </div>
   );
+}
+
+function scheduleBtnStyle() {
+  return {
+    padding: '7px 14px', borderRadius: 999,
+    background: 'var(--cn-bg-elev)',
+    border: '0.5px solid var(--cn-border-s)',
+    color: 'var(--cn-text-dim)',
+    fontSize: 12, fontWeight: 600, fontFamily: 'var(--cn-font-body)',
+    cursor: 'pointer',
+  };
 }
 
 function Empty({ children, danger }) {
@@ -424,4 +488,171 @@ function SectionHeading({ children }) {
   );
 }
 
-Object.assign(window, { GameDetailScreen });
+// ─── TEAM SCHEDULE ──────────────────────────────────────────────
+// Full season schedule for one team. Reachable from the GameDetail "schedule"
+// buttons. The selected team is held in screen state (`scheduleTeam`); a
+// season dropdown picks current vs previous years.
+function TeamScheduleScreen({ tweaks, onNav, scheduleTeam, onOpenGame }) {
+  const [data, setData] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [err, setErr] = React.useState(null);
+  const [season, setSeason] = React.useState(null);    // null = current
+
+  const league = scheduleTeam?.league;
+  const teamId = scheduleTeam?.teamId;
+
+  React.useEffect(() => {
+    if (!league || !teamId) { setLoading(false); return; }
+    let cancelled = false;
+    setLoading(true); setErr(null);
+    window.API.teamSchedule(league, teamId, season || undefined)
+      .then(d => { if (!cancelled) { setData(d); setLoading(false); } })
+      .catch(e => { if (!cancelled) { setErr(e.message || 'Failed to load'); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [league, teamId, season]);
+
+  // Use the seed info from the click (logo/primary/name) until the API
+  // payload arrives.
+  const team = data?.team || {
+    id: teamId, name: scheduleTeam?.name, abbreviation: scheduleTeam?.code,
+    logo: scheduleTeam?.logo, primary: scheduleTeam?.primary,
+  };
+
+  const seasons = (data?.seasons || []).slice().sort((a, b) => (b.year || 0) - (a.year || 0));
+  const seasonValue = season || data?.season || '';
+
+  const games = data?.games || [];
+
+  return (
+    <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 14px', borderBottom: '0.5px solid var(--cn-border)',
+        background: 'var(--cn-bg-elev2)',
+      }}>
+        <button style={iconBtnStyle()} onClick={() => onNav?.('home')}>
+          <Icon name="chevron-l" size={22} stroke="var(--cn-text)" />
+        </button>
+        <span style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 14 }}>
+          SCHEDULE
+        </span>
+        <span style={{ width: 32 }} />
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 80px' }}>
+        <div style={{ maxWidth: 720, margin: '0 auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+            {team.logo ? (
+              <img src={team.logo} alt="" style={{ width: 44, height: 44, objectFit: 'contain' }} />
+            ) : (
+              <div style={{
+                width: 44, height: 44, borderRadius: 8,
+                background: team.primary || '#666', color: pickContrast(team.primary || '#666'),
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 13, fontWeight: 800,
+              }}>{team.abbreviation || team.code || '??'}</div>
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>{team.name || '—'}</div>
+              {team.record && <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)', marginTop: 2 }}>{team.record}</div>}
+            </div>
+            {seasons.length > 0 && (
+              <select
+                value={seasonValue}
+                onChange={(e) => setSeason(Number(e.target.value) || null)}
+                style={{
+                  padding: '7px 12px', borderRadius: 8,
+                  background: 'var(--cn-bg-elev)', color: 'var(--cn-text)',
+                  border: '0.5px solid var(--cn-border-s)',
+                  fontFamily: 'var(--cn-font-mono)', fontSize: 12,
+                }}
+              >
+                {seasons.map(s => (
+                  <option key={s.year} value={s.year}>{s.displayName || s.year}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {loading ? (
+            <Empty>Loading schedule…</Empty>
+          ) : err ? (
+            <Empty danger>{err}</Empty>
+          ) : games.length === 0 ? (
+            <Empty>No games for this season yet.</Empty>
+          ) : (
+            <div style={{
+              borderRadius: 12, overflow: 'hidden',
+              border: '0.5px solid var(--cn-border)',
+              background: 'var(--cn-bg-elev)',
+            }}>
+              {games.map((g, i) => (
+                <ScheduleRow
+                  key={g.id || i}
+                  g={g}
+                  first={i === 0}
+                  onClick={() => onOpenGame?.(g)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScheduleRow({ g, first, onClick }) {
+  const opp = g.isHome ? g.awayTeam : g.homeTeam;
+  const oppName = opp?.name || (g.isHome ? g.away : g.home) || '—';
+  const date = g.date ? new Date(g.date) : null;
+  const dateLabel = date && !isNaN(date)
+    ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : '';
+  const isFinal = g.state === 'final';
+  const isLive = g.state === 'live';
+  const resultColor = g.result === 'W' ? 'var(--cn-success)'
+                    : g.result === 'L' ? 'var(--cn-danger)'
+                    : 'var(--cn-text-mute)';
+  return (
+    <div onClick={onClick} style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: '12px 14px',
+      borderTop: first ? 'none' : '0.5px solid var(--cn-border)',
+      cursor: onClick ? 'pointer' : 'default',
+    }}>
+      <div style={{
+        width: 44, fontFamily: 'var(--cn-font-mono)', fontSize: 11,
+        color: 'var(--cn-text-mute)', flexShrink: 0,
+      }}>{dateLabel}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {g.isHome ? 'vs ' : '@ '}{oppName}
+        </div>
+        <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', marginTop: 2 }}>
+          {isLive ? 'LIVE' : (isFinal ? 'FINAL' : (g.period || 'Scheduled'))}
+        </div>
+      </div>
+      {isFinal ? (
+        <div style={{ textAlign: 'right' }}>
+          <div style={{
+            fontFamily: 'var(--cn-font-mono)', fontSize: 11, fontWeight: 800,
+            color: resultColor, letterSpacing: 0.5,
+          }}>{g.result || '—'}</div>
+          <div style={{
+            fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)',
+            fontSize: 14, fontVariantNumeric: 'tabular-nums', color: 'var(--cn-text-dim)',
+          }}>
+            {g.isHome ? `${g.homeScore}–${g.awayScore}` : `${g.awayScore}–${g.homeScore}`}
+          </div>
+        </div>
+      ) : isLive ? (
+        <div style={{ fontFamily: 'var(--cn-font-display)', fontSize: 16, fontVariantNumeric: 'tabular-nums' }}>
+          {g.isHome ? `${g.homeScore}–${g.awayScore}` : `${g.awayScore}–${g.homeScore}`}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+Object.assign(window, { GameDetailScreen, TeamScheduleScreen });
