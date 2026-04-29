@@ -249,6 +249,39 @@ function pickStatRow(stats, candidates) {
   return null;
 }
 
+// Return per-player boxscore rows for a team. ESPN ships them grouped by
+// stat *category* (basketball has one; football has rushing/passing/etc).
+// We pass everything through and let the client lay it out — that keeps
+// the helper sport-agnostic.
+function extractPlayers(boxscore, teamId) {
+  if (!teamId) return [];
+  const block = (boxscore?.players || []).find(b => b?.team?.id === teamId);
+  if (!block) return [];
+  const out = [];
+  for (const cat of (block.statistics || [])) {
+    const keys   = Array.isArray(cat.keys)  ? cat.keys  : [];
+    const labels = Array.isArray(cat.names) ? cat.names : keys;
+    const athletes = (cat.athletes || []).map(a => ({
+      id: a.athlete?.id ? String(a.athlete.id) : '',
+      name: a.athlete?.shortName || a.athlete?.displayName || '',
+      fullName: a.athlete?.displayName || '',
+      position: a.athlete?.position?.abbreviation || '',
+      starter: !!a.starter,
+      didNotPlay: !!a.didNotPlay,
+      stats: Array.isArray(a.stats) ? a.stats.map(v => v == null ? '' : String(v)) : [],
+    })).filter(a => a.name);
+    if (!athletes.length) continue;
+    out.push({
+      name: cat.name || cat.text || '',
+      label: cat.text || cat.name || '',
+      keys,
+      labels,
+      athletes,
+    });
+  }
+  return out;
+}
+
 function summarizeTeamStats(team) {
   // ESPN stats vary per sport. Try the most useful candidates.
   const stats = team?.statistics || [];
@@ -332,6 +365,7 @@ async function getGameDetail(leagueCode, eventId) {
       score: state === 'scheduled' ? '–' : Number(home.score ?? 0),
       record: (home.records || []).find(r => r.type === 'total')?.summary || '',
       stats: summarizeTeamStats((json.boxscore?.teams || []).find(t => t?.team?.id === home.team?.id)),
+      players: extractPlayers(json.boxscore, home.team?.id),
     },
     away: {
       code: (away.team?.abbreviation || '').toUpperCase(),
@@ -341,6 +375,7 @@ async function getGameDetail(leagueCode, eventId) {
       score: state === 'scheduled' ? '–' : Number(away.score ?? 0),
       record: (away.records || []).find(r => r.type === 'total')?.summary || '',
       stats: summarizeTeamStats((json.boxscore?.teams || []).find(t => t?.team?.id === away.team?.id)),
+      players: extractPlayers(json.boxscore, away.team?.id),
     },
     leaders: [
       ...normalizeLeaders(home.leaders).map(l => ({ ...l, side: 'home' })),

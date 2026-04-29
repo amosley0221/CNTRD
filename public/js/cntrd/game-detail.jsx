@@ -47,7 +47,7 @@ function GameDetailScreen({ tweaks, onNav, selectedGame }) {
             <>
               <DetailHeader data={data} />
               <DetailScoreCard data={data} />
-              <DetailStatsTable home={data.home} away={data.away} />
+              <DetailStatsBlock home={data.home} away={data.away} />
               <DetailLeaders leaders={data.leaders} home={data.home} away={data.away} />
               {(data.headlines || []).length > 0 && <DetailHeadlines headlines={data.headlines} />}
             </>
@@ -133,15 +133,173 @@ function DetailTeamRow({ team, score, winner }) {
   );
 }
 
-function DetailStatsTable({ home, away }) {
+// Toggle-able stats card. "Team" shows the side-by-side team table that
+// already existed; "Player" pivots to per-player boxscore rows pulled from
+// ESPN's summary.players block. Picked tab is darker; the other is muted.
+function DetailStatsBlock({ home, away }) {
+  const teamHasStats = !!((home.stats?.length || 0) + (away.stats?.length || 0));
+  const playerHasStats = !!((home.players?.length || 0) + (away.players?.length || 0));
+  const initial = teamHasStats ? 'team' : (playerHasStats ? 'player' : null);
+  const [tab, setTab] = React.useState(initial);
+
+  if (!teamHasStats && !playerHasStats) return null;
+
+  const segBtn = (id, label, disabled) => {
+    const active = tab === id;
+    return (
+      <button
+        key={id}
+        onClick={() => !disabled && setTab(id)}
+        disabled={disabled}
+        style={{
+          padding: 0,
+          background: 'transparent',
+          border: 'none',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          fontFamily: 'var(--cn-font-mono)', fontSize: 10,
+          letterSpacing: 1, textTransform: 'uppercase',
+          color: disabled ? 'var(--cn-text-mute)' : (active ? 'var(--cn-text)' : 'var(--cn-text-dim)'),
+          fontWeight: active ? 800 : 600,
+          opacity: disabled ? 0.4 : 1,
+        }}
+      >{label}</button>
+    );
+  };
+
+  return (
+    <div style={{ marginTop: 22 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 8 }}>
+        {segBtn('team',   'Team stats',   !teamHasStats)}
+        {segBtn('player', 'Player stats', !playerHasStats)}
+      </div>
+      {tab === 'team'
+        ? <DetailStatsTable home={home} away={away} hideHeading />
+        : <DetailPlayerTable home={home} away={away} />}
+    </div>
+  );
+}
+
+// Per-team list of player rows, grouped by stat category. Each row is the
+// athlete's name + position + the stat values aligned to the category's
+// column keys. Two side-by-side columns (away then home) on wide layouts;
+// stacks vertically when narrow.
+function DetailPlayerTable({ home, away }) {
+  const sides = [
+    { side: 'away', team: away, cats: away.players || [] },
+    { side: 'home', team: home, cats: home.players || [] },
+  ].filter(s => s.cats.length);
+  if (!sides.length) {
+    return (
+      <div style={{
+        padding: '14px 16px', borderRadius: 12,
+        border: '0.5px solid var(--cn-border)',
+        background: 'var(--cn-bg-elev)',
+        fontFamily: 'var(--cn-font-mono)', fontSize: 11,
+        color: 'var(--cn-text-mute)',
+      }}>
+        Per-player stats aren't available for this game yet.
+      </div>
+    );
+  }
+  return (
+    <div style={{
+      display: 'grid', gap: 14,
+      gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    }}>
+      {sides.map(({ side, team, cats }) => (
+        <div key={side} style={{
+          borderRadius: 12, overflow: 'hidden',
+          border: '0.5px solid var(--cn-border)',
+          background: 'var(--cn-bg-elev)',
+        }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 12px',
+            background: 'var(--cn-bg-elev2)',
+            borderBottom: '0.5px solid var(--cn-border)',
+          }}>
+            <div style={{
+              width: 22, height: 22, borderRadius: 4,
+              background: team.primary, color: pickContrast(team.primary),
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 9, fontWeight: 800, flexShrink: 0,
+            }}>{team.code}</div>
+            <span style={{ fontWeight: 700, fontSize: 13 }}>{team.name}</span>
+          </div>
+          {cats.map((cat, i) => <PlayerCategory key={i} cat={cat} />)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PlayerCategory({ cat }) {
+  // Trim to the most useful columns. Anything beyond ~6 wraps awkwardly on
+  // mobile widths, so cap at 6 and let the rest go.
+  const COLS = 6;
+  const keys = (cat.keys || []).slice(0, COLS);
+  return (
+    <div style={{ borderTop: '0.5px solid var(--cn-border)' }}>
+      {cat.label && cat.label.toLowerCase() !== 'starters' && (
+        <div style={{
+          padding: '6px 12px', background: 'var(--cn-bg)',
+          fontFamily: 'var(--cn-font-mono)', fontSize: 10,
+          letterSpacing: 1, textTransform: 'uppercase',
+          color: 'var(--cn-text-mute)',
+        }}>{cat.label}</div>
+      )}
+      {/* Header row */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: `1fr repeat(${keys.length}, 36px)`,
+        padding: '6px 12px',
+        background: 'var(--cn-bg-elev2)',
+        fontFamily: 'var(--cn-font-mono)', fontSize: 9, letterSpacing: 0.5,
+        color: 'var(--cn-text-mute)', textTransform: 'uppercase',
+        gap: 4,
+      }}>
+        <span>Player</span>
+        {keys.map((k, i) => <span key={i} style={{ textAlign: 'right' }}>{k}</span>)}
+      </div>
+      {(cat.athletes || []).map((a, i) => (
+        <div key={i} style={{
+          display: 'grid',
+          gridTemplateColumns: `1fr repeat(${keys.length}, 36px)`,
+          padding: '8px 12px',
+          borderTop: '0.5px solid var(--cn-border)',
+          alignItems: 'center', gap: 4,
+          fontSize: 12,
+          background: a.starter ? 'var(--cn-bg-elev)' : 'transparent',
+        }}>
+          <span style={{
+            display: 'flex', alignItems: 'baseline', gap: 6,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            <span style={{ fontWeight: 600 }}>{a.name}</span>
+            {a.position && <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, color: 'var(--cn-text-mute)' }}>{a.position}</span>}
+          </span>
+          {keys.map((_, j) => (
+            <span key={j} style={{
+              textAlign: 'right',
+              fontFamily: 'var(--cn-font-mono)', fontVariantNumeric: 'tabular-nums',
+              color: a.didNotPlay ? 'var(--cn-text-mute)' : 'var(--cn-text)',
+            }}>{(a.stats?.[j] ?? '') || (a.didNotPlay ? '—' : '0')}</span>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DetailStatsTable({ home, away, hideHeading }) {
   // Match labels by intersecting both teams' stat lists.
   const homeMap = Object.fromEntries(home.stats || []);
   const awayMap = Object.fromEntries(away.stats || []);
   const labels = Array.from(new Set([...Object.keys(homeMap), ...Object.keys(awayMap)]));
   if (!labels.length) return null;
   return (
-    <div style={{ marginTop: 22 }}>
-      <SectionHeading>Team stats</SectionHeading>
+    <div>
+      {!hideHeading && <SectionHeading>Team stats</SectionHeading>}
       <div style={{ borderRadius: 12, border: '0.5px solid var(--cn-border)', overflow: 'hidden' }}>
         <div style={{
           display: 'grid', gridTemplateColumns: '1fr 90px 90px',
