@@ -583,26 +583,94 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me, games }) {
     (meUser.teams && meUser.teams.length) ? meUser.teams : []
   );
   const [overlay, setOverlay] = React.useState(meTeams[0] || null);
-  // Sticker state — null = no sticker; 'tag' / 'score' / 'text' attach
-  // a real overlay only when the user picks one. No more hardcoded
-  // LAL/BOS placeholder.
+  // Sticker state — null = no sticker; only attaches when the user picks one.
   const [stickerKind, setStickerKind] = React.useState(null);
   const [stickerGame, setStickerGame] = React.useState(null);
-  const [picker, setPicker] = React.useState(null);   // 'score' opens the live-game picker
+  const [picker, setPicker] = React.useState(null);     // 'score' opens the live-game picker
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState(null);
 
-  // Camera state — null = haven't asked; 'pending' while requesting;
-  // 'ok' once the stream is live; 'denied' / 'unavailable' otherwise.
-  const [camState, setCamState] = React.useState('pending');
+  // Plays opens to a library prompt — most users have a clip already
+  // shot. They can switch to the live camera for capture, then come
+  // back to library if they change their minds. After picking or
+  // capturing, we land on a preview screen ("Use this play" /
+  // "Choose different") so users can swap the file freely.
+  const [mode, setMode] = React.useState('library');    // library | camera | preview
+  const [preview, setPreview] = React.useState(null);   // { url, kind, file }
+
+  // Camera state — only relevant when mode === 'camera'.
+  const [camState, setCamState] = React.useState('idle'); // idle | pending | ok | denied | unavailable
   const [camErr, setCamErr] = React.useState(null);
+  const [facing, setFacing] = React.useState('environment'); // 'environment' | 'user'
+  const [hasMultipleCameras, setHasMultipleCameras] = React.useState(false);
   const videoRef = React.useRef(null);
   const streamRef = React.useRef(null);
   const fileInputRef = React.useRef(null);
   const captureCanvasRef = React.useRef(null);
 
-  // Limit picks to live games whose league is followed or whose
-  // home/away matches a favorite team — same rule as the gameday list.
+  // Detect whether the device has more than one camera so we know
+  // whether to render the flip button. Asking once on mount is enough.
+  React.useEffect(() => {
+    const md = navigator.mediaDevices;
+    if (!md || !md.enumerateDevices) return;
+    md.enumerateDevices().then(devices => {
+      const cams = devices.filter(d => d.kind === 'videoinput');
+      setHasMultipleCameras(cams.length > 1);
+    }).catch(() => {});
+  }, []);
+
+  // Tear down the active stream — used on unmount, on flip, and when
+  // leaving camera mode.
+  const stopStream = React.useCallback(() => {
+    const s = streamRef.current;
+    if (s) s.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+  }, []);
+
+  // (Re)start the camera with the current `facing` constraint. Falls
+  // back to any camera if the requested side isn't available, then
+  // surfaces a clear error if nothing works.
+  const startCamera = React.useCallback(async () => {
+    const md = navigator.mediaDevices;
+    if (!md || !md.getUserMedia) {
+      setCamState('unavailable');
+      setCamErr('Your browser does not expose a camera.');
+      return;
+    }
+    setCamState('pending');
+    setCamErr(null);
+    try {
+      stopStream();
+      const stream = await md.getUserMedia({
+        video: { facingMode: { ideal: facing } },
+        audio: false,
+      }).catch(() => md.getUserMedia({ video: true, audio: false }));
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => {});
+      }
+      setCamState('ok');
+    } catch (e) {
+      const msg = (e?.name === 'NotAllowedError') ? 'Camera permission denied.'
+                : (e?.name === 'NotFoundError') ? 'No camera detected on this device.'
+                : (e?.message || 'Camera unavailable.');
+      setCamState(e?.name === 'NotAllowedError' ? 'denied' : 'unavailable');
+      setCamErr(msg);
+    }
+  }, [facing, stopStream]);
+
+  // Auto-start the camera when the user switches to camera mode and
+  // restart it when they flip front/back. Stop on cleanup.
+  React.useEffect(() => {
+    if (mode === 'camera') startCamera();
+    else stopStream();
+    return stopStream;
+  }, [mode, facing]);    // eslint-disable-line
+
+  // Limit live-game score sticker picks to leagues the user follows /
+  // teams they favorite — same rule as Gameday.
   const liveForUser = React.useMemo(() => {
     const followed = new Set(meUser.leagues || []);
     const favs = new Set(meTeams);
@@ -617,51 +685,12 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me, games }) {
     });
   }, [games?.live, meUser.leagues, meTeams]);
 
-  // Start the camera once on mount. We try the rear camera first (the
-  // typical phone use case for capturing a clip) and fall back to any
-  // camera. Anything else lands on the "no camera" empty state.
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const md = navigator.mediaDevices;
-      if (!md || !md.getUserMedia) {
-        setCamState('unavailable');
-        setCamErr('Your browser does not expose a camera.');
-        return;
-      }
-      try {
-        const stream = await md.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
-          audio: false,
-        }).catch(() => md.getUserMedia({ video: true, audio: false }));
-        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => {});
-        }
-        setCamState('ok');
-      } catch (e) {
-        const msg = (e && e.name === 'NotAllowedError')
-          ? 'Camera permission denied.'
-          : (e && e.name === 'NotFoundError')
-            ? 'No camera detected on this device.'
-            : (e?.message || 'Camera unavailable.');
-        setCamState(e?.name === 'NotAllowedError' ? 'denied' : 'unavailable');
-        setCamErr(msg);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      const s = streamRef.current;
-      if (s) s.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-    };
-  }, []);
-
   const overlayTeam = overlay ? resolveTeam(overlay) : null;
 
-  const upload = async (file) => {
+  // Pick a file from disk → enforce ≤30s on video → show preview.
+  const onFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
     setErr(null);
     if (file.type.startsWith('video/')) {
@@ -671,9 +700,35 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me, games }) {
         return;
       }
     }
-    setBusy(true);
+    const url = URL.createObjectURL(file);
+    setPreview({ url, kind: file.type.startsWith('video/') ? 'video' : 'image', file });
+    setMode('preview');
+  };
+
+  const captureFromCamera = async () => {
+    if (camState !== 'ok' || busy) return;
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+    const canvas = captureCanvasRef.current || document.createElement('canvas');
+    captureCanvasRef.current = canvas;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+    if (!blob) { setErr('Capture failed.'); return; }
+    const file = new File([blob], `play-${Date.now()}.jpg`, { type: 'image/jpeg' });
+    const url = URL.createObjectURL(blob);
+    setPreview({ url, kind: 'image', file });
+    setMode('preview');
+  };
+
+  const flipCamera = () => setFacing(f => f === 'environment' ? 'user' : 'environment');
+
+  const usePreview = async () => {
+    if (!preview?.file || busy) return;
+    setBusy(true); setErr(null);
     try {
-      const { url, kind } = await window.API.uploadMedia(file);
+      const { url, kind } = await window.API.uploadMedia(preview.file);
       if (onCreate) {
         await onCreate({
           team_code: overlayTeam?.code || overlay || null,
@@ -691,65 +746,73 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me, games }) {
     }
   };
 
-  const onFile = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    upload(file);
+  const clearPreview = () => {
+    if (preview?.url) { try { URL.revokeObjectURL(preview.url); } catch {} }
+    setPreview(null);
   };
-
-  const captureFromCamera = async () => {
-    if (camState !== 'ok' || busy) return;
-    const video = videoRef.current;
-    if (!video || !video.videoWidth) return;
-    const canvas = captureCanvasRef.current || document.createElement('canvas');
-    captureCanvasRef.current = canvas;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
-    if (!blob) { setErr('Capture failed.'); return; }
-    const file = new File([blob], `play-${Date.now()}.jpg`, { type: 'image/jpeg' });
-    upload(file);
+  const swapForAnother = () => {
+    clearPreview();
+    setMode('library');
+    setTimeout(() => fileInputRef.current?.click(), 50);
   };
 
   const pickFile = () => fileInputRef.current?.click();
 
   return (
     <div style={{ width: '100%', height: '100%', background: '#000', color: '#fff', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-      {/* Camera preview — fills the viewport when granted; "no camera"
-          state otherwise. Either way, file upload remains available. */}
-      {camState === 'ok' ? (
-        <video
-          ref={videoRef}
-          autoPlay muted playsInline
-          style={{
+      {/* Background — depends on mode. */}
+      {mode === 'preview' && preview ? (
+        preview.kind === 'video' ? (
+          <video src={preview.url} autoPlay loop muted playsInline style={{
             position: 'absolute', inset: 0, width: '100%', height: '100%',
-            objectFit: 'cover', background: '#000',
-          }}
-        />
+            objectFit: 'contain', background: '#000',
+          }} />
+        ) : (
+          <img src={preview.url} alt="" style={{
+            position: 'absolute', inset: 0, width: '100%', height: '100%',
+            objectFit: 'contain', background: '#000',
+          }} />
+        )
+      ) : mode === 'camera' ? (
+        camState === 'ok' ? (
+          <video
+            ref={videoRef}
+            autoPlay muted playsInline
+            // Mirror the front camera so the user-facing preview matches
+            // a typical "selfie" mirror. Rear feed renders un-mirrored.
+            style={{
+              position: 'absolute', inset: 0, width: '100%', height: '100%',
+              objectFit: 'cover', background: '#000',
+              transform: facing === 'user' ? 'scaleX(-1)' : 'none',
+            }}
+          />
+        ) : (
+          <CameraEmpty state={camState} err={camErr} onSwitchToLibrary={() => setMode('library')} />
+        )
       ) : (
-        <div style={{
+        // Library hero — gradient background with a tap-to-pick affordance.
+        <div onClick={pickFile} style={{
           position: 'absolute', inset: 0,
           background: 'radial-gradient(circle at 50% 40%, #1a2a3a 0%, #050810 70%)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: 24, textAlign: 'center',
+          padding: 24, textAlign: 'center', cursor: 'pointer',
         }}>
           <div style={{ maxWidth: 320 }}>
             <div style={{
+              width: 80, height: 80, borderRadius: 18, margin: '0 auto 16px',
+              background: 'rgba(255,255,255,0.08)',
+              border: '0.5px dashed rgba(255,255,255,0.4)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Icon name="image" size={36} stroke="#fff" />
+            </div>
+            <div style={{
               fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)',
               textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)',
-              fontSize: 22, color: '#fff', marginBottom: 10,
-            }}>
-              {camState === 'pending' ? 'Connecting to camera…'
-                : camState === 'denied' ? 'Camera permission denied'
-                : 'No camera detected'}
-            </div>
+              fontSize: 22, color: '#fff', marginBottom: 8,
+            }}>Choose a photo or clip</div>
             <div style={{ fontFamily: 'var(--cn-font-body)', fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 1.5 }}>
-              {camState === 'denied'
-                ? 'Allow camera access in your browser settings, or pick a photo / clip from your library below.'
-                : camState === 'unavailable'
-                  ? `${camErr || 'No camera detected on this device.'} You can still upload a photo or short clip from your library.`
-                  : 'Hold tight — asking your browser for camera permission.'}
+              Tap to pick from your library, or switch to the camera to take a new one.
             </div>
           </div>
         </div>
@@ -757,107 +820,199 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me, games }) {
 
       {/* top bar */}
       <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', zIndex: 2 }}>
-        <button onClick={() => onNav?.('home')} style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', border: 'none', borderRadius: '50%', width: 36, height: 36, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name="x" size={20} stroke="#fff" />
-        </button>
-        <div style={{ display: 'flex', gap: 6, padding: 4, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', borderRadius: 999 }}>
-          {[tweaks.playsLabel || 'Play'].map((m) => (
-            <span key={m} style={{ padding: '5px 12px', borderRadius: 999, background: '#fff', color: '#000', fontWeight: 700, fontSize: 11, fontFamily: 'var(--cn-font-mono)', letterSpacing: 0.5 }}>{m.toUpperCase()}</span>
-          ))}
-        </div>
-        <span style={{ width: 36 }} />
-      </div>
-
-      {/* live overlay sticker placed on top of the camera preview */}
-      {stickerKind === 'score' && stickerGame && (
-        <ScoreStickerOverlay game={stickerGame} onClear={() => { setStickerKind(null); setStickerGame(null); }} />
-      )}
-      {stickerKind === 'tag' && overlayTeam && (
         <button
-          onClick={() => setStickerKind(null)}
-          title="Remove tag"
-          style={{
-            position: 'absolute', top: '40%', left: 30, transform: 'rotate(-8deg)',
-            padding: '6px 12px', background: overlayTeam.primary,
-            color: pickContrast(overlayTeam.primary),
-            fontFamily: 'var(--cn-font-display)', fontWeight: 800, fontSize: 28,
-            letterSpacing: 0.5, zIndex: 3, border: 'none',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
-            cursor: 'pointer',
+          onClick={() => {
+            if (mode === 'preview') { clearPreview(); setMode('library'); return; }
+            onNav?.('home');
           }}
-        >GO {overlayTeam.code}</button>
-      )}
-
-      {/* sticker tray */}
-      <div style={{ position: 'absolute', top: '50%', right: 8, transform: 'translateY(-50%)', display: 'flex', flexDirection: 'column', gap: 12, zIndex: 3 }}>
-        {[
-          { id: 'score', icon: 'whistle', label: 'Score', enabled: liveForUser.length > 0 },
-          { id: 'tag', icon: 'flame', label: 'Tag', enabled: !!overlayTeam },
-          { id: 'text', icon: 'text', label: 'Text', enabled: false },
-          { id: 'sticker', icon: 'sticker', label: 'Sticker', enabled: false },
-        ].map(s => (
-          <button
-            key={s.id}
-            disabled={!s.enabled}
-            onClick={() => {
-              if (!s.enabled) return;
-              if (s.id === 'score') { setPicker('score'); return; }
-              setStickerKind(prev => prev === s.id ? null : s.id);
-            }}
-            title={!s.enabled
-              ? (s.id === 'score'
-                  ? 'No live games from leagues you follow'
-                  : s.id === 'tag'
-                    ? 'Pick a team in your profile first'
-                    : 'Coming soon')
-              : s.label}
-            style={{
-              width: 44, height: 44, borderRadius: '50%',
-              background: stickerKind === s.id ? '#fff' : 'rgba(0,0,0,0.5)',
-              backdropFilter: 'blur(10px)',
-              border: '0.5px solid rgba(255,255,255,0.18)',
-              color: stickerKind === s.id ? '#000' : '#fff',
-              opacity: s.enabled ? 1 : 0.35,
-              cursor: s.enabled ? 'pointer' : 'not-allowed',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <Icon name={s.icon} size={18} stroke={stickerKind === s.id ? '#000' : '#fff'} />
-          </button>
-        ))}
-      </div>
-
-      {/* bottom: shutter + library */}
-      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 28, padding: '0 24px', zIndex: 3 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          {/* Library button — accepts both photo + clip from device. */}
-          <button onClick={pickFile} title="Pick from library" style={{
-            width: 44, height: 44, borderRadius: 8,
-            background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(10px)',
-            border: '0.5px solid rgba(255,255,255,0.2)',
+          style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', border: 'none', borderRadius: '50%', width: 36, height: 36, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          title={mode === 'preview' ? 'Back' : 'Close'}
+        >
+          <Icon name={mode === 'preview' ? 'chevron-l' : 'x'} size={20} stroke="#fff" />
+        </button>
+        {/* Mode toggle — Library / Camera. Hidden on preview since the
+            controls below cover the swap path. */}
+        {mode !== 'preview' && (
+          <div style={{ display: 'flex', gap: 4, padding: 4, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', borderRadius: 999 }}>
+            {[
+              { id: 'library', label: 'Library' },
+              { id: 'camera',  label: 'Camera' },
+            ].map(opt => {
+              const active = mode === opt.id;
+              return (
+                <button key={opt.id} onClick={() => setMode(opt.id)} style={{
+                  padding: '5px 14px', borderRadius: 999,
+                  background: active ? '#fff' : 'transparent',
+                  color: active ? '#000' : '#fff',
+                  border: 'none', cursor: 'pointer',
+                  fontWeight: 700, fontSize: 11,
+                  fontFamily: 'var(--cn-font-mono)', letterSpacing: 0.5,
+                }}>{opt.label.toUpperCase()}</button>
+              );
+            })}
+          </div>
+        )}
+        {/* Top-right: flip-camera in camera mode, otherwise spacer. */}
+        {mode === 'camera' && hasMultipleCameras && camState === 'ok' ? (
+          <button onClick={flipCamera} title="Flip camera" style={{
+            background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)',
+            border: 'none', borderRadius: '50%', width: 36, height: 36,
             color: '#fff', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-            <Icon name="image" size={18} stroke="#fff" />
+            <Icon name="repost" size={18} stroke="#fff" />
           </button>
-          <button
-            onClick={camState === 'ok' ? captureFromCamera : pickFile}
-            disabled={busy}
-            style={{
-              width: 72, height: 72, borderRadius: '50%',
-              background: 'transparent', border: '4px solid #fff',
+        ) : <span style={{ width: 36 }} />}
+      </div>
+
+      {/* Stickers — only render when not in preview (preview is a flat
+          image / video; the sticker tray is a creator-time tool). */}
+      {mode !== 'preview' && (
+        <>
+          {stickerKind === 'score' && stickerGame && (
+            <ScoreStickerOverlay game={stickerGame} onClear={() => { setStickerKind(null); setStickerGame(null); }} />
+          )}
+          {stickerKind === 'tag' && overlayTeam && (
+            <button
+              onClick={() => setStickerKind(null)}
+              title="Remove tag"
+              style={{
+                position: 'absolute', top: '40%', left: 30, transform: 'rotate(-8deg)',
+                padding: '6px 12px', background: overlayTeam.primary,
+                color: pickContrast(overlayTeam.primary),
+                fontFamily: 'var(--cn-font-display)', fontWeight: 800, fontSize: 28,
+                letterSpacing: 0.5, zIndex: 3, border: 'none',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+                cursor: 'pointer',
+              }}
+            >GO {overlayTeam.code}</button>
+          )}
+
+          <div style={{ position: 'absolute', top: '50%', right: 8, transform: 'translateY(-50%)', display: 'flex', flexDirection: 'column', gap: 12, zIndex: 3 }}>
+            {[
+              { id: 'score', icon: 'whistle', label: 'Score', enabled: liveForUser.length > 0 },
+              { id: 'tag', icon: 'flame', label: 'Tag', enabled: !!overlayTeam },
+              { id: 'text', icon: 'text', label: 'Text', enabled: false },
+              { id: 'sticker', icon: 'sticker', label: 'Sticker', enabled: false },
+            ].map(s => (
+              <button
+                key={s.id}
+                disabled={!s.enabled}
+                onClick={() => {
+                  if (!s.enabled) return;
+                  if (s.id === 'score') { setPicker('score'); return; }
+                  setStickerKind(prev => prev === s.id ? null : s.id);
+                }}
+                title={!s.enabled
+                  ? (s.id === 'score'
+                      ? 'No live games from leagues you follow'
+                      : s.id === 'tag'
+                        ? 'Pick a team in your profile first'
+                        : 'Coming soon')
+                  : s.label}
+                style={{
+                  width: 44, height: 44, borderRadius: '50%',
+                  background: stickerKind === s.id ? '#fff' : 'rgba(0,0,0,0.5)',
+                  backdropFilter: 'blur(10px)',
+                  border: '0.5px solid rgba(255,255,255,0.18)',
+                  color: stickerKind === s.id ? '#000' : '#fff',
+                  opacity: s.enabled ? 1 : 0.35,
+                  cursor: s.enabled ? 'pointer' : 'not-allowed',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <Icon name={s.icon} size={18} stroke={stickerKind === s.id ? '#000' : '#fff'} />
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Bottom controls — depend on mode. */}
+      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 28, padding: '0 24px', zIndex: 3 }}>
+        {mode === 'library' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+            <button onClick={pickFile} disabled={busy} style={{
+              padding: '12px 28px', borderRadius: 999,
+              background: '#fff', color: '#000',
+              border: 'none', cursor: busy ? 'not-allowed' : 'pointer',
+              fontWeight: 800, fontSize: 14, fontFamily: 'var(--cn-font-body)',
+              letterSpacing: 0.3,
+              opacity: busy ? 0.6 : 1,
+            }}>Choose from library</button>
+            <button onClick={() => setMode('camera')} style={{
+              padding: '8px 16px', borderRadius: 999,
+              background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)',
+              border: '0.5px solid rgba(255,255,255,0.2)',
+              color: '#fff', cursor: 'pointer',
+              fontWeight: 700, fontSize: 12,
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              fontFamily: 'var(--cn-font-mono)', letterSpacing: 0.5,
+            }}>
+              <Icon name="video" size={14} stroke="#fff" /> TAKE PHOTO OR VIDEO
+            </button>
+          </div>
+        ) : mode === 'camera' ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <button onClick={() => setMode('library')} title="Back to library" style={{
+              width: 44, height: 44, borderRadius: 8,
+              background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(10px)',
+              border: '0.5px solid rgba(255,255,255,0.2)',
+              color: '#fff', cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1,
-            }}
-          >
-            <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#fff' }} />
-          </button>
-          <span style={{ width: 44 }} />
-        </div>
-        <div style={{ textAlign: 'center', fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'rgba(255,255,255,0.6)', marginTop: 10, letterSpacing: 1 }}>
-          {busy ? 'UPLOADING…'
-            : camState === 'ok' ? 'TAP SHUTTER FOR PHOTO · LIBRARY FOR CLIP'
-            : `TAP TO PICK A PHOTO OR ≤${PLAY_VIDEO_MAX_SEC}s CLIP`}
+            }}>
+              <Icon name="image" size={18} stroke="#fff" />
+            </button>
+            <button
+              onClick={captureFromCamera}
+              disabled={camState !== 'ok' || busy}
+              style={{
+                width: 72, height: 72, borderRadius: '50%',
+                background: 'transparent', border: '4px solid #fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: (camState !== 'ok' || busy) ? 'not-allowed' : 'pointer',
+                opacity: (camState !== 'ok' || busy) ? 0.4 : 1,
+              }}
+            >
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#fff' }} />
+            </button>
+            {hasMultipleCameras && camState === 'ok' ? (
+              <button onClick={flipCamera} title="Flip camera" style={{
+                width: 44, height: 44, borderRadius: '50%',
+                background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(10px)',
+                border: '0.5px solid rgba(255,255,255,0.2)',
+                color: '#fff', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Icon name="repost" size={18} stroke="#fff" />
+              </button>
+            ) : <span style={{ width: 44 }} />}
+          </div>
+        ) : (
+          // Preview controls
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+            <button onClick={swapForAnother} disabled={busy} style={{
+              padding: '10px 18px', borderRadius: 999,
+              background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)',
+              border: '0.5px solid rgba(255,255,255,0.2)',
+              color: '#fff', cursor: busy ? 'not-allowed' : 'pointer',
+              fontWeight: 700, fontSize: 12, fontFamily: 'var(--cn-font-body)',
+              opacity: busy ? 0.6 : 1,
+            }}>Choose different</button>
+            <button onClick={usePreview} disabled={busy} style={{
+              padding: '10px 22px', borderRadius: 999,
+              background: '#fff', color: '#000',
+              border: 'none', cursor: busy ? 'not-allowed' : 'pointer',
+              fontWeight: 800, fontSize: 13, fontFamily: 'var(--cn-font-body)',
+              opacity: busy ? 0.6 : 1,
+            }}>{busy ? 'Posting…' : 'Use this play'}</button>
+          </div>
+        )}
+
+        <div style={{ textAlign: 'center', fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'rgba(255,255,255,0.55)', marginTop: 10, letterSpacing: 1 }}>
+          {mode === 'library' ? `JPG · PNG · MP4 · MOV · ≤${PLAY_VIDEO_MAX_SEC}S CLIP`
+            : mode === 'camera' ? (camState === 'ok' ? 'TAP SHUTTER FOR PHOTO' : (camState === 'pending' ? 'STARTING CAMERA…' : 'CAMERA UNAVAILABLE'))
+            : 'PREVIEW · USE OR CHOOSE DIFFERENT'}
         </div>
         {err && (
           <div style={{ marginTop: 6, textAlign: 'center', fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: '#FF6F61' }}>
@@ -880,6 +1035,46 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me, games }) {
         onChange={onFile}
         style={{ display: 'none' }}
       />
+    </div>
+  );
+}
+
+// "No camera" / "permission denied" state with a one-tap path back to
+// the library so users aren't trapped.
+function CameraEmpty({ state, err, onSwitchToLibrary }) {
+  return (
+    <div style={{
+      position: 'absolute', inset: 0,
+      background: 'radial-gradient(circle at 50% 40%, #1a2a3a 0%, #050810 70%)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 24, textAlign: 'center',
+    }}>
+      <div style={{ maxWidth: 320 }}>
+        <div style={{
+          fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)',
+          textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)',
+          fontSize: 22, color: '#fff', marginBottom: 10,
+        }}>
+          {state === 'pending' ? 'Connecting to camera…'
+            : state === 'denied' ? 'Camera permission denied'
+            : 'No camera detected'}
+        </div>
+        <div style={{ fontFamily: 'var(--cn-font-body)', fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 1.5, marginBottom: 14 }}>
+          {state === 'denied'
+            ? 'Allow camera access in your browser settings, or choose a photo / clip from your library.'
+            : state === 'unavailable'
+              ? `${err || 'No camera detected on this device.'} You can still upload a photo or short clip from your library.`
+              : 'Hold tight — asking your browser for camera permission.'}
+        </div>
+        {state !== 'pending' && (
+          <button onClick={onSwitchToLibrary} style={{
+            padding: '8px 16px', borderRadius: 999,
+            background: '#fff', color: '#000', border: 'none',
+            fontWeight: 700, fontSize: 12, cursor: 'pointer',
+            fontFamily: 'var(--cn-font-body)',
+          }}>Use library instead</button>
+        )}
+      </div>
     </div>
   );
 }
