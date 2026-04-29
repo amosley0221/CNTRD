@@ -42,7 +42,10 @@ app.get('*', (req, res) => {
 // Background notifier — polls ESPN every 60s and creates a one-time
 // notification per user when a game involving their team / league goes live.
 if (process.env.DISABLE_LIVE_TICKER !== '1') {
-  require('./services/notifier').startLiveGameTicker(60_000);
+  const notifier = require('./services/notifier');
+  notifier.startLiveGameTicker(60_000);
+  // Group event pre-alerts: same cadence; cheap SQL scan per minute.
+  notifier.startEventAlertTicker(60_000);
 }
 
 app.listen(PORT, () => {

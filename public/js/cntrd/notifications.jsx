@@ -6,7 +6,7 @@
 //               we add a queueing concept)
 
 const SCORE_TYPES    = new Set(['live_game', 'score', 'period_end', 'final']);
-const ACTIVITY_TYPES = new Set(['follow', 'follow_accept', 'message', 'post']);
+const ACTIVITY_TYPES = new Set(['follow', 'follow_accept', 'message', 'post', 'event_alert']);
 
 function categorizeNotif(n) {
   if (SCORE_TYPES.has(n.type))    return 'scores';
@@ -111,6 +111,11 @@ function NotificationsScreen({ tweaks, onNav, me, setMessageContext, onUnreadNot
       setNotifs(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
     }
     if (n.type === 'message' && n.data?.conversation_id) {
+      setMessageContext?.({ mode: 'thread', selectedId: n.data.conversation_id });
+      onNav?.('messages');
+      return;
+    }
+    if (n.type === 'event_alert' && n.data?.conversation_id) {
       setMessageContext?.({ mode: 'thread', selectedId: n.data.conversation_id });
       onNav?.('messages');
       return;
@@ -261,6 +266,20 @@ function NotifRow({ n, onClick, onDismiss }) {
 }
 
 function NotifIcon({ n }) {
+  // Group event alerts get a calendar-style icon — distinct from per-user
+  // and per-game marks since the event is collective.
+  if (n.type === 'event_alert') {
+    return (
+      <div style={{
+        width: 36, height: 36, borderRadius: 10,
+        background: 'color-mix(in srgb, var(--cn-accent) 22%, var(--cn-bg-elev))',
+        border: '0.5px solid var(--cn-accent)',
+        color: 'var(--cn-accent)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 18,
+      }} aria-hidden>📅</div>
+    );
+  }
   if (n.actor) return <Avatar user={n.actor} size={36} />;
   const d = n.data || {};
 
@@ -371,6 +390,19 @@ function renderNotifText(n) {
         ? `${actor} posted`
         : `${actor} posted ${count} times today`;
       return { headline, body: d.preview || '' };
+    }
+    case 'event_alert': {
+      const title = d.title || 'Event';
+      const group = d.group_name ? `· ${d.group_name}` : '';
+      // Build a pretty start-time string the same way the strip does.
+      let when = '';
+      if (d.start_at) {
+        const t = Date.parse(String(d.start_at).replace(' ', 'T') + 'Z');
+        if (Number.isFinite(t)) {
+          when = new Date(t).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+        }
+      }
+      return { headline: `${title} starts in 15 min`, body: [when, group].filter(Boolean).join(' · ') };
     }
     case 'live_game':
       return { headline: `${matchup} just tipped off`, body: `${d.league || ''} · ${d.period || 'Live'}` };

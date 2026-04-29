@@ -16,7 +16,7 @@ function getEspn() {
 const KNOWN_TYPES = [
   'live_game', 'score', 'period_end', 'final',
   'follow', 'follow_request', 'follow_accept', 'message',
-  'post',
+  'post', 'event_alert',
 ];
 
 // Defaults: every type on. Users can opt out from Settings.
@@ -226,6 +226,55 @@ function startLiveGameTicker(intervalMs = 60 * 1000) {
   tickerInterval = setInterval(liveGameTick, intervalMs);
 }
 
+// ─── Group event pre-alerts ──────────────────────────────────────────────
+// Fires "event_alert" notifications to every member of the host group 15
+// minutes before the event's start_at, exactly once per event. SQLite's
+// datetime() lets us compare ISO strings as long as we stored them in the
+// same format.
+let eventTickerInterval = null;
+function eventAlertTick() {
+  try {
+    const due = db.prepare(`
+      SELECT e.id, e.conversation_id, e.title, e.start_at, e.created_by
+      FROM events e
+      WHERE e.pre_alert_sent = 0
+        AND datetime(e.start_at) <= datetime('now', '+15 minutes')
+        AND datetime(e.start_at) >= datetime('now')
+    `).all();
+
+    for (const ev of due) {
+      const members = db.prepare(`
+        SELECT user_id FROM conversation_members WHERE conversation_id = ?
+      `).all(ev.conversation_id);
+      const conv = db.prepare(`SELECT name FROM conversations WHERE id = ?`).get(ev.conversation_id);
+      const groupName = conv?.name || 'group';
+      const dedupeKey = `event:${ev.id}:pre`;
+      for (const m of members) {
+        notify({
+          userId: m.user_id, type: 'event_alert', actorId: ev.created_by,
+          data: {
+            event_id: ev.id,
+            conversation_id: ev.conversation_id,
+            title: ev.title,
+            start_at: ev.start_at,
+            group_name: groupName,
+          },
+          dedupeKey, bumpOnDedupe: false,
+        });
+      }
+      db.prepare('UPDATE events SET pre_alert_sent = 1 WHERE id = ?').run(ev.id);
+    }
+  } catch (e) {
+    console.error('event alert tick error:', e.message);
+  }
+}
+
+function startEventAlertTicker(intervalMs = 60 * 1000) {
+  if (eventTickerInterval) return;
+  setTimeout(eventAlertTick, 10_000);
+  eventTickerInterval = setInterval(eventAlertTick, intervalMs);
+}
+
 // Roll up posts from a single author into one notification per follower
 // per UTC day. The first post of the day creates the row with count=1; each
 // later post bumps count, refreshes the preview, and clears read_at so the
@@ -279,7 +328,9 @@ module.exports = {
   notify,
   rollupPostNotif,
   startLiveGameTicker,
+  startEventAlertTicker,
   liveGameTick,
+  eventAlertTick,
   KNOWN_TYPES,
   DEFAULT_PREFS,
   parsePrefs,

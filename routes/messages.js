@@ -299,4 +299,73 @@ router.post('/:id/messages', (req, res) => {
   });
 });
 
+// ─── Group events ─────────────────────────────────────────────
+// Events live inside a group conversation. Any member can schedule one
+// and any member can dismiss it. The notifier fires a single
+// "event_alert" 15 minutes before start (per recipient).
+
+function hydrateEvent(row) {
+  return {
+    id: row.id,
+    conversation_id: row.conversation_id,
+    title: row.title,
+    description: row.description || '',
+    start_at: row.start_at,
+    created_by: row.created_by,
+    created_at: row.created_at,
+    pre_alert_sent: !!row.pre_alert_sent,
+  };
+}
+
+router.get('/:id/events', (req, res) => {
+  const member = db.prepare('SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!member) return res.status(404).json({ error: 'Conversation not found' });
+  const rows = db.prepare(`
+    SELECT * FROM events
+    WHERE conversation_id = ?
+    ORDER BY start_at ASC
+  `).all(req.params.id);
+  res.json(rows.map(hydrateEvent));
+});
+
+router.post('/:id/events', (req, res) => {
+  const conv = db.prepare('SELECT * FROM conversations WHERE id = ?').get(req.params.id);
+  if (!conv) return res.status(404).json({ error: 'Conversation not found' });
+  if (!conv.is_group) return res.status(400).json({ error: 'Events are only for groups' });
+  const member = db.prepare('SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?').get(conv.id, req.user.id);
+  if (!member) return res.status(403).json({ error: 'Not a member' });
+
+  const title = String(req.body?.title || '').trim().slice(0, 120);
+  const description = String(req.body?.description || '').trim().slice(0, 500);
+  const start = new Date(String(req.body?.start_at || ''));
+  if (!title) return res.status(400).json({ error: 'Title is required' });
+  if (isNaN(start.getTime())) return res.status(400).json({ error: 'Invalid start time' });
+  // Allow scheduling from "now" onwards. Past times don't make sense for
+  // a heads-up notification.
+  if (start.getTime() < Date.now() - 60_000) return res.status(400).json({ error: 'Event start must be in the future' });
+
+  const id = uuidv4();
+  // Store as ISO UTC so the notifier's `datetime('now')` comparisons line up.
+  const startIso = start.toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
+  db.prepare(`
+    INSERT INTO events (id, conversation_id, title, description, start_at, created_by)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(id, conv.id, title, description, startIso, req.user.id);
+
+  const row = db.prepare('SELECT * FROM events WHERE id = ?').get(id);
+  res.status(201).json(hydrateEvent(row));
+});
+
+router.delete('/:id/events/:eventId', (req, res) => {
+  const ev = db.prepare('SELECT * FROM events WHERE id = ? AND conversation_id = ?')
+    .get(req.params.eventId, req.params.id);
+  if (!ev) return res.status(404).json({ error: 'Event not found' });
+  const member = db.prepare('SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?').get(ev.conversation_id, req.user.id);
+  if (!member) return res.status(403).json({ error: 'Not a member' });
+  // Creator can always cancel; other members can also dismiss for the
+  // group since membership is implicit trust.
+  db.prepare('DELETE FROM events WHERE id = ?').run(ev.id);
+  res.json({ deleted: true });
+});
+
 module.exports = router;

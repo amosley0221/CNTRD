@@ -178,6 +178,8 @@ function conversationTitle(conv, me) {
 function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
   const [conv, setConv] = React.useState(null);
   const [messages, setMessages] = React.useState([]);
+  const [events, setEvents] = React.useState([]);
+  const [eventOpen, setEventOpen] = React.useState(false);
   const [draft, setDraft] = React.useState('');
   const [err, setErr] = React.useState(null);
   const [sending, setSending] = React.useState(false);
@@ -194,6 +196,15 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
       setConv(c);
       setMessages(ms);
       onUnread?.(0);            // we just opened it; clear unread badge optimistically
+      // Group events live alongside messages — load only for groups.
+      if (c?.is_group) {
+        try {
+          const evs = await API.conversationEvents(conversationId);
+          setEvents(evs || []);
+        } catch { /* ignore */ }
+      } else {
+        setEvents([]);
+      }
     } catch (e) {
       setErr(e.message || 'Failed to load');
     }
@@ -297,7 +308,32 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
             </>
           )}
         </div>
+        {conv.is_group && (
+          <button onClick={() => setEventOpen(true)} title="Schedule an event" style={{
+            padding: '6px 10px', borderRadius: 999,
+            background: 'var(--cn-accent)', color: 'var(--cn-on-accent)',
+            border: 'none', cursor: 'pointer',
+            fontFamily: 'var(--cn-font-body)', fontSize: 11, fontWeight: 700,
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+          }}>
+            <Icon name="plus" size={12} stroke="var(--cn-on-accent)" sw={2.4} />
+            Event
+          </button>
+        )}
       </div>
+
+      {conv.is_group && events.length > 0 && (
+        <EventStrip
+          events={events}
+          me={me}
+          onCancel={async (eventId) => {
+            try {
+              await API.deleteEvent(conversationId, eventId);
+              setEvents(prev => prev.filter(e => e.id !== eventId));
+            } catch (e) { alert(e.message || 'Could not cancel'); }
+          }}
+        />
+      )}
 
       <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 6px', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {messages.length === 0 ? (
@@ -341,6 +377,261 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
         }}>
           <Icon name="send" size={16} stroke="currentColor" />
         </button>
+      </div>
+      {eventOpen && (
+        <EventScheduleModal
+          onClose={() => setEventOpen(false)}
+          onCreate={async ({ title, description, start_at }) => {
+            try {
+              const ev = await API.createEvent(conversationId, { title, description, start_at });
+              setEvents(prev => [...prev, ev].sort((a, b) => a.start_at < b.start_at ? -1 : 1));
+              setEventOpen(false);
+            } catch (e) { alert(e.message || 'Could not create'); }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Group event helpers ──────────────────────────────────────────────
+function parseSqliteDate(s) {
+  if (!s) return null;
+  // Stored as "YYYY-MM-DD HH:MM:SS" UTC; ensure JS parses it as UTC.
+  const iso = s.includes('T') ? s : s.replace(' ', 'T') + 'Z';
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? new Date(t) : null;
+}
+function formatEventTime(s) {
+  const d = parseSqliteDate(s);
+  if (!d) return '';
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+function relStartTime(s) {
+  const d = parseSqliteDate(s);
+  if (!d) return '';
+  const diff = d.getTime() - Date.now();
+  if (diff < 0) {
+    const past = Math.abs(diff);
+    if (past < 60_000) return 'started just now';
+    if (past < 3_600_000) return `started ${Math.floor(past / 60_000)}m ago`;
+    return 'started';
+  }
+  if (diff < 60_000) return 'starts in <1m';
+  if (diff < 3_600_000) return `starts in ${Math.floor(diff / 60_000)}m`;
+  if (diff < 86_400_000) return `starts in ${Math.floor(diff / 3_600_000)}h`;
+  return `starts ${formatEventTime(s)}`;
+}
+
+function EventStrip({ events, me, onCancel }) {
+  const [now, setNow] = React.useState(Date.now());
+  // Tick every 30s so the relative "starts in X" label stays fresh.
+  React.useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  // Hide events that ended >2h ago — keep recent ones around briefly so
+  // the "in progress" indicator has a chance to surface.
+  const visible = events.filter(e => {
+    const d = parseSqliteDate(e.start_at);
+    return d && (d.getTime() > now - 2 * 3600_000);
+  });
+  if (!visible.length) return null;
+  return (
+    <div style={{
+      borderBottom: '0.5px solid var(--cn-border)',
+      background: 'color-mix(in srgb, var(--cn-accent) 6%, var(--cn-bg-elev))',
+      padding: '8px 12px',
+      display: 'flex', flexDirection: 'column', gap: 6,
+    }}>
+      {visible.map(ev => {
+        const d = parseSqliteDate(ev.start_at);
+        const diff = d ? d.getTime() - now : 0;
+        const live = diff <= 0;
+        const canCancel = !!me && (ev.created_by === me.id || true);  // any member can dismiss
+        return (
+          <div key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: 8,
+              background: live ? 'var(--cn-live)' : 'var(--cn-accent)',
+              color: 'var(--cn-on-accent)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 14, fontWeight: 800, flexShrink: 0,
+            }} aria-hidden>📅</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.title}</span>
+                {live && (
+                  <span style={{
+                    padding: '1px 6px', borderRadius: 4,
+                    background: 'var(--cn-live)', color: '#fff',
+                    fontFamily: 'var(--cn-font-mono)', fontSize: 9, fontWeight: 800, letterSpacing: 0.6,
+                  }}>LIVE</span>
+                )}
+              </div>
+              <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)' }}>
+                {formatEventTime(ev.start_at)} · {relStartTime(ev.start_at)}
+              </div>
+              {ev.description && (
+                <div style={{ fontSize: 12, color: 'var(--cn-text-dim)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {ev.description}
+                </div>
+              )}
+            </div>
+            {canCancel && (
+              <button
+                onClick={() => {
+                  if (typeof confirm === 'function' && !confirm(`Cancel "${ev.title}"?`)) return;
+                  onCancel?.(ev.id);
+                }}
+                title="Cancel event"
+                style={{
+                  width: 26, height: 26, borderRadius: '50%',
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  color: 'var(--cn-text-mute)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Icon name="x" size={14} sw={2} />
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function defaultStartIso(offsetMin = 60) {
+  // Round up to the next quarter hour, then pad by offsetMin.
+  const d = new Date(Date.now() + offsetMin * 60_000);
+  d.setSeconds(0, 0);
+  d.setMinutes(d.getMinutes() + ((15 - (d.getMinutes() % 15)) % 15));
+  // datetime-local needs YYYY-MM-DDTHH:MM in *local* time.
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function EventScheduleModal({ onClose, onCreate }) {
+  const [title, setTitle] = React.useState('');
+  const [description, setDescription] = React.useState('');
+  const [startLocal, setStartLocal] = React.useState(() => defaultStartIso(60));
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState(null);
+
+  const submit = async () => {
+    if (!title.trim() || !startLocal || busy) return;
+    setBusy(true); setErr(null);
+    try {
+      // Convert the local datetime-local value to a UTC ISO string the
+      // server can store directly.
+      const start = new Date(startLocal);
+      if (isNaN(start.getTime())) throw new Error('Invalid start time');
+      if (start.getTime() < Date.now()) throw new Error('Pick a time in the future');
+      await onCreate({
+        title: title.trim(),
+        description: description.trim(),
+        start_at: start.toISOString(),
+      });
+    } catch (e) {
+      setErr(e.message || 'Could not create');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, zIndex: 80,
+      background: 'rgba(0,0,0,0.55)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 16,
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        width: '100%', maxWidth: 360,
+        background: 'var(--cn-bg-elev)',
+        border: '0.5px solid var(--cn-border)',
+        borderRadius: 14, overflow: 'hidden',
+      }}>
+        <div style={{ padding: '12px 16px', borderBottom: '0.5px solid var(--cn-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{
+            fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)',
+            textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)',
+            fontSize: 14,
+          }}>SCHEDULE EVENT</span>
+          <button onClick={onClose} style={{
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            color: 'var(--cn-text-mute)', display: 'flex',
+          }} title="Close">
+            <Icon name="x" size={16} sw={2} />
+          </button>
+        </div>
+        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <label style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 0.6, textTransform: 'uppercase' }}>Title</label>
+          <input
+            value={title}
+            onChange={e => setTitle(e.target.value.slice(0, 120))}
+            autoFocus
+            placeholder="Fight night watch party with the boys"
+            style={{
+              padding: '10px 12px', borderRadius: 8,
+              background: 'var(--cn-bg)',
+              border: '0.5px solid var(--cn-border-s)',
+              color: 'var(--cn-text)', fontSize: 14, outline: 'none',
+              fontFamily: 'var(--cn-font-body)',
+            }}
+          />
+          <label style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 0.6, textTransform: 'uppercase' }}>Starts</label>
+          <input
+            type="datetime-local"
+            value={startLocal}
+            onChange={e => setStartLocal(e.target.value)}
+            style={{
+              padding: '10px 12px', borderRadius: 8,
+              background: 'var(--cn-bg)',
+              border: '0.5px solid var(--cn-border-s)',
+              color: 'var(--cn-text)', fontSize: 14, outline: 'none',
+              fontFamily: 'var(--cn-font-body)',
+            }}
+          />
+          <label style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 0.6, textTransform: 'uppercase' }}>Notes (optional)</label>
+          <textarea
+            value={description}
+            onChange={e => setDescription(e.target.value.slice(0, 500))}
+            rows={3}
+            placeholder="Doors at 8, fight starts 9:30…"
+            style={{
+              padding: '10px 12px', borderRadius: 8,
+              background: 'var(--cn-bg)',
+              border: '0.5px solid var(--cn-border-s)',
+              color: 'var(--cn-text)', fontSize: 13, outline: 'none',
+              fontFamily: 'var(--cn-font-body)', resize: 'vertical',
+            }}
+          />
+          {err && (
+            <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-danger)' }}>{err}</div>
+          )}
+          <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', lineHeight: 1.5 }}>
+            Everyone in the group gets a notification 15 minutes before start.
+          </div>
+        </div>
+        <div style={{ padding: '10px 14px', borderTop: '0.5px solid var(--cn-border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button onClick={onClose} style={{
+            padding: '8px 14px', borderRadius: 999,
+            background: 'transparent', color: 'var(--cn-text-dim)',
+            border: '0.5px solid var(--cn-border-s)', cursor: 'pointer',
+            fontWeight: 600, fontSize: 12, fontFamily: 'var(--cn-font-body)',
+          }}>Cancel</button>
+          <button onClick={submit} disabled={!title.trim() || !startLocal || busy} style={{
+            padding: '8px 14px', borderRadius: 999,
+            background: title.trim() && startLocal && !busy ? 'var(--cn-accent)' : 'var(--cn-bg-elev2)',
+            color:      title.trim() && startLocal && !busy ? 'var(--cn-on-accent)' : 'var(--cn-text-mute)',
+            border: 'none',
+            cursor: title.trim() && startLocal && !busy ? 'pointer' : 'not-allowed',
+            fontWeight: 700, fontSize: 12, fontFamily: 'var(--cn-font-body)',
+          }}>{busy ? 'Saving…' : 'Schedule'}</button>
+        </div>
       </div>
     </div>
   );

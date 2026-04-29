@@ -157,6 +157,21 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_blocks_blocked ON blocks(blocked_id);
 
+  CREATE TABLE IF NOT EXISTS events (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    start_at TEXT NOT NULL,                -- ISO timestamp; UTC on insert
+    created_by TEXT NOT NULL,
+    pre_alert_sent INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_events_conv ON events(conversation_id, start_at);
+  CREATE INDEX IF NOT EXISTS idx_events_pending ON events(start_at, pre_alert_sent);
+
   CREATE TABLE IF NOT EXISTS bookmarks (
     user_id TEXT NOT NULL,
     post_id TEXT NOT NULL,

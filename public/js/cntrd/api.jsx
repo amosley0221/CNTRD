@@ -124,6 +124,9 @@ const API = {
   renameConversation(id, name)          { return request('PATCH',`/api/messages/${id}`, { name }); },
   searchUsers(q)                        { return request('GET',  '/api/messages/users/search?q=' + encodeURIComponent(q)); },
   leaveConversation(id)                 { return request('DELETE', `/api/messages/${id}/members/me`); },
+  conversationEvents(id)                { return request('GET',  `/api/messages/${id}/events`); },
+  createEvent(id, payload)              { return request('POST', `/api/messages/${id}/events`, payload); },
+  deleteEvent(id, eventId)              { return request('DELETE', `/api/messages/${id}/events/${eventId}`); },
 
   // Admin (server enforces is_admin)
   adminUsers(q)            { return request('GET',  '/api/admin/users' + (q ? '?q=' + encodeURIComponent(q) : '')); },
