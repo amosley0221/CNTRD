@@ -856,7 +856,7 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me }
 function SideTeam({ team, score, reverse }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexDirection: reverse ? 'row-reverse' : 'row' }}>
-      <div style={{ width: 36, height: 36, borderRadius: 8, background: team.primary, color: pickContrast(team.primary), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, letterSpacing: 0.5 }}>{team.code}</div>
+      <TeamLogo team={team} size={36} radius={8} />
       <div style={{ textAlign: reverse ? 'right' : 'left' }}>
         <div style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 800, fontSize: 28, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{score}</div>
         <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, color: 'var(--cn-text-mute)', letterSpacing: 0.5, textTransform: 'uppercase' }}>{team.name}</div>

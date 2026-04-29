@@ -63,6 +63,25 @@ function teamFromCompetitor(comp) {
   };
 }
 
+// ESPN ships competitor scores in three different shapes depending on the
+// endpoint: a bare number, a string, or `{ value, displayValue }`. Coerce
+// to a finite number, or return null when there's nothing to show. (Older
+// code did `Number(score)` on the object form, which produced NaN — and
+// JSON serialization turned that into "null" on the wire, which is why
+// the schedule ever rendered "null-null".)
+function readScore(comp) {
+  if (!comp) return null;
+  const s = comp.score;
+  if (s == null) return null;
+  if (typeof s === 'object') {
+    const v = s.value ?? s.displayValue;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
 function pickRecord(records) {
   if (!Array.isArray(records)) return '';
   // ESPN tags one entry as "total" — fall back to the first if absent.
@@ -127,8 +146,8 @@ function normalizeEvent(ev, leagueCode) {
     away: awayTeam.code,
     homeTeam,
     awayTeam,
-    homeScore: state === 'scheduled' ? '–' : Number(home.score ?? 0),
-    awayScore: state === 'scheduled' ? '–' : Number(away.score ?? 0),
+    homeScore: state === 'scheduled' ? '–' : (readScore(home) ?? 0),
+    awayScore: state === 'scheduled' ? '–' : (readScore(away) ?? 0),
     homeRecord: pickRecord(home.records),
     awayRecord: pickRecord(away.records),
     series: normalizeSeries(comp),
@@ -417,7 +436,7 @@ async function getGameDetail(leagueCode, eventId) {
       name: home.team?.shortDisplayName || home.team?.displayName || '',
       logo: (home.team?.logos?.[0]?.href) || home.team?.logo || '',
       primary: colorHex(home.team?.color),
-      score: state === 'scheduled' ? '–' : Number(home.score ?? 0),
+      score: state === 'scheduled' ? '–' : (readScore(home) ?? 0),
       record: pickRecord(home.records),
       stats: summarizeTeamStats((json.boxscore?.teams || []).find(t => t?.team?.id === home.team?.id)),
       players: extractPlayers(json.boxscore, home.team?.id),
@@ -428,7 +447,7 @@ async function getGameDetail(leagueCode, eventId) {
       name: away.team?.shortDisplayName || away.team?.displayName || '',
       logo: (away.team?.logos?.[0]?.href) || away.team?.logo || '',
       primary: colorHex(away.team?.color),
-      score: state === 'scheduled' ? '–' : Number(away.score ?? 0),
+      score: state === 'scheduled' ? '–' : (readScore(away) ?? 0),
       record: pickRecord(away.records),
       stats: summarizeTeamStats((json.boxscore?.teams || []).find(t => t?.team?.id === away.team?.id)),
       players: extractPlayers(json.boxscore, away.team?.id),
@@ -524,6 +543,11 @@ async function getTeamSchedule(leagueCode, teamId, season) {
     const away = comp.competitors?.find(c => c.homeAway === 'away');
     const homeT = home ? teamFromCompetitor(home) : null;
     const awayT = away ? teamFromCompetitor(away) : null;
+    // null when the score isn't known yet; client renders '–' in that case.
+    // Don't coerce to 0 — that paints scheduled / spring-training games
+    // as "0–0" which is misleading.
+    const homeScore = state === 'scheduled' ? null : readScore(home);
+    const awayScore = state === 'scheduled' ? null : readScore(away);
     return {
       id: String(ev.id),
       league: league.code,
@@ -534,24 +558,42 @@ async function getTeamSchedule(leagueCode, teamId, season) {
       away: awayT?.code || '',
       homeTeam: homeT,
       awayTeam: awayT,
-      homeScore: state === 'scheduled' ? '–' : Number(home?.score ?? 0),
-      awayScore: state === 'scheduled' ? '–' : Number(away?.score ?? 0),
+      homeScore, awayScore,
       isHome: home?.team?.id === id,
       result: home?.team?.id === id ? home?.winner ? 'W' : (state === 'final' ? 'L' : '')
                                     : away?.winner ? 'W' : (state === 'final' ? 'L' : ''),
       venue: comp.venue?.fullName || '',
     };
   });
-  // ESPN ships current + a couple historical seasons in `seasonTypes` /
-  // `seasons`. Surface the season list so the client can render a dropdown.
-  const seasons = Array.isArray(json.seasons) ? json.seasons.map(s => ({
+  // ESPN's team schedule endpoint typically ships a single `season` field
+  // (the season the response represents) and no list of available seasons.
+  // The "newest" year we know about anchors the dropdown — use the current
+  // calendar year as a floor so the list doesn't shrink when the user is
+  // looking at last year's schedule. ESPN accepts ?season=YYYY for any of
+  // these years.
+  const currentYear = new Date().getUTCFullYear();
+  const newest = Math.max(
+    currentYear,
+    Number(json.season?.year) || 0,
+    Number(json.requestedSeason?.year) || 0,
+  );
+  const explicit = Array.isArray(json.seasons) ? json.seasons.map(s => ({
     year: Number(s.year),
     displayName: s.displayName || `${s.year}`,
-  })) : [];
-  // If the API doesn't tell us which season this response represents, fall
-  // back to the requested year (or the current calendar year).
-  const requestedSeason = seasonKey ? Number(seasonKey)
-    : (json.season?.year || json.requestedSeason?.year || new Date().getUTCFullYear());
+  })).filter(s => Number.isFinite(s.year)) : [];
+  const seasons = explicit.length
+    ? explicit
+    : Array.from({ length: 6 }, (_, i) => {
+        const y = newest - i;
+        return { year: y, displayName: `${y}` };
+      });
+  // Which season this response actually represents (for the dropdown's
+  // current value). Falls through to the requested key, then ESPN's
+  // reported season, then the newest year as a safe default.
+  const requestedSeason = (seasonKey && Number(seasonKey))
+    || Number(json.season?.year)
+    || Number(json.requestedSeason?.year)
+    || newest;
 
   const data = {
     league: league.code,

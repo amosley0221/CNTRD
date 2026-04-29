@@ -614,6 +614,13 @@ function ScheduleRow({ g, first, onClick }) {
   const resultColor = g.result === 'W' ? 'var(--cn-success)'
                     : g.result === 'L' ? 'var(--cn-danger)'
                     : 'var(--cn-text-mute)';
+  // Render '–' for missing/null scores — happens for scheduled games and
+  // any final ESPN didn't ship a numeric score for.
+  const fmt = (v) => (Number.isFinite(Number(v)) ? Number(v) : '–');
+  const myScore  = g.isHome ? fmt(g.homeScore) : fmt(g.awayScore);
+  const oppScore = g.isHome ? fmt(g.awayScore) : fmt(g.homeScore);
+  const scoreText = `${myScore}–${oppScore}`;
+  const hasScores = myScore !== '–' || oppScore !== '–';
   return (
     <div onClick={onClick} style={{
       display: 'flex', alignItems: 'center', gap: 12,
@@ -625,6 +632,7 @@ function ScheduleRow({ g, first, onClick }) {
         width: 44, fontFamily: 'var(--cn-font-mono)', fontSize: 11,
         color: 'var(--cn-text-mute)', flexShrink: 0,
       }}>{dateLabel}</div>
+      <TeamLogo team={opp} size={22} radius={5} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {g.isHome ? 'vs ' : '@ '}{oppName}
@@ -639,16 +647,16 @@ function ScheduleRow({ g, first, onClick }) {
             fontFamily: 'var(--cn-font-mono)', fontSize: 11, fontWeight: 800,
             color: resultColor, letterSpacing: 0.5,
           }}>{g.result || '—'}</div>
-          <div style={{
-            fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)',
-            fontSize: 14, fontVariantNumeric: 'tabular-nums', color: 'var(--cn-text-dim)',
-          }}>
-            {g.isHome ? `${g.homeScore}–${g.awayScore}` : `${g.awayScore}–${g.homeScore}`}
-          </div>
+          {hasScores && (
+            <div style={{
+              fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)',
+              fontSize: 14, fontVariantNumeric: 'tabular-nums', color: 'var(--cn-text-dim)',
+            }}>{scoreText}</div>
+          )}
         </div>
-      ) : isLive ? (
+      ) : isLive && hasScores ? (
         <div style={{ fontFamily: 'var(--cn-font-display)', fontSize: 16, fontVariantNumeric: 'tabular-nums' }}>
-          {g.isHome ? `${g.homeScore}–${g.awayScore}` : `${g.awayScore}–${g.homeScore}`}
+          {scoreText}
         </div>
       ) : null}
     </div>
