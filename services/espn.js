@@ -259,12 +259,18 @@ function extractPlayers(boxscore, teamId) {
   if (!block) return [];
   const out = [];
   for (const cat of (block.statistics || [])) {
-    const keys   = Array.isArray(cat.keys)  ? cat.keys  : [];
-    const labels = Array.isArray(cat.names) ? cat.names : keys;
+    const keys   = Array.isArray(cat.keys)   ? cat.keys   : [];
+    // ESPN ships pretty short labels in `labels` (MIN, FG, 3PT, +/-).
+    // Fall back to keys when labels are missing — uppercased so the
+    // header row stays terse even if ESPN gives us long camelCase.
+    const rawLabels = Array.isArray(cat.labels) ? cat.labels : keys;
+    const labels = rawLabels.map(l => String(l || '').toUpperCase());
     const athletes = (cat.athletes || []).map(a => ({
       id: a.athlete?.id ? String(a.athlete.id) : '',
-      name: a.athlete?.shortName || a.athlete?.displayName || '',
-      fullName: a.athlete?.displayName || '',
+      // Prefer the full display name; shortName comes back as "P. Cox"
+      // which the user explicitly asked us not to surface.
+      name: a.athlete?.displayName || a.athlete?.shortName || '',
+      shortName: a.athlete?.shortName || '',
       position: a.athlete?.position?.abbreviation || '',
       starter: !!a.starter,
       didNotPlay: !!a.didNotPlay,

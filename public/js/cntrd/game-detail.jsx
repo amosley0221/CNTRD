@@ -179,15 +179,15 @@ function DetailStatsBlock({ home, away }) {
   );
 }
 
-// Per-team list of player rows, grouped by stat category. Each row is the
-// athlete's name + position + the stat values aligned to the category's
-// column keys. Two side-by-side columns (away then home) on wide layouts;
-// stacks vertically when narrow.
+// Per-team boxscore. Shows ONE team at a time with a small toggle at the
+// top so column widths have room. Selected team gets the dark/strong
+// styling; the other is muted.
 function DetailPlayerTable({ home, away }) {
   const sides = [
-    { side: 'away', team: away, cats: away.players || [] },
-    { side: 'home', team: home, cats: home.players || [] },
+    { key: 'away', team: away, cats: away.players || [] },
+    { key: 'home', team: home, cats: home.players || [] },
   ].filter(s => s.cats.length);
+
   if (!sides.length) {
     return (
       <div style={{
@@ -201,48 +201,74 @@ function DetailPlayerTable({ home, away }) {
       </div>
     );
   }
+
+  const [pick, setPick] = React.useState(sides[0].key);
+  React.useEffect(() => {
+    // If the selected side disappears (e.g., away has no boxscore), fall
+    // back to whatever's available.
+    if (!sides.some(s => s.key === pick)) setPick(sides[0].key);
+  }, [sides.length, pick]);
+
+  const active = sides.find(s => s.key === pick) || sides[0];
+
   return (
-    <div style={{
-      display: 'grid', gap: 14,
-      gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-    }}>
-      {sides.map(({ side, team, cats }) => (
-        <div key={side} style={{
-          borderRadius: 12, overflow: 'hidden',
-          border: '0.5px solid var(--cn-border)',
-          background: 'var(--cn-bg-elev)',
-        }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '8px 12px',
-            background: 'var(--cn-bg-elev2)',
-            borderBottom: '0.5px solid var(--cn-border)',
-          }}>
-            <div style={{
-              width: 22, height: 22, borderRadius: 4,
-              background: team.primary, color: pickContrast(team.primary),
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 9, fontWeight: 800, flexShrink: 0,
-            }}>{team.code}</div>
-            <span style={{ fontWeight: 700, fontSize: 13 }}>{team.name}</span>
-          </div>
-          {cats.map((cat, i) => <PlayerCategory key={i} cat={cat} />)}
-        </div>
-      ))}
+    <div>
+      {/* Team toggle: same vibe as the Team / Player segmented control. */}
+      <div style={{
+        display: 'flex', gap: 4, padding: 3,
+        background: 'var(--cn-bg-elev)',
+        border: '0.5px solid var(--cn-border)',
+        borderRadius: 10, marginBottom: 10,
+        width: 'fit-content',
+      }}>
+        {sides.map(s => {
+          const sel = s.key === pick;
+          return (
+            <button key={s.key} onClick={() => setPick(s.key)} style={{
+              padding: '6px 14px', borderRadius: 8,
+              background: sel ? 'var(--cn-text)' : 'transparent',
+              color:      sel ? 'var(--cn-bg)'   : 'var(--cn-text-dim)',
+              border: 'none', cursor: 'pointer',
+              fontFamily: 'var(--cn-font-body)',
+              fontSize: 12, fontWeight: sel ? 700 : 600,
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+            }}>
+              <span style={{
+                width: 18, height: 18, borderRadius: 4,
+                background: s.team.primary, color: pickContrast(s.team.primary),
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 9, fontWeight: 800, letterSpacing: 0.3,
+              }}>{s.team.code}</span>
+              {s.team.name}
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{
+        borderRadius: 12, overflow: 'hidden',
+        border: '0.5px solid var(--cn-border)',
+        background: 'var(--cn-bg-elev)',
+      }}>
+        {active.cats.map((cat, i) => <PlayerCategory key={i} cat={cat} />)}
+      </div>
     </div>
   );
 }
 
 function PlayerCategory({ cat }) {
-  // Trim to the most useful columns. Anything beyond ~6 wraps awkwardly on
-  // mobile widths, so cap at 6 and let the rest go.
-  const COLS = 6;
-  const keys = (cat.keys || []).slice(0, COLS);
+  const labels = (cat.labels && cat.labels.length ? cat.labels : cat.keys) || [];
+  const COLS_MAX = 8;
+  const cols = labels.slice(0, COLS_MAX);
+  // First column flexes to fit names; each stat gets a fixed track wide
+  // enough for short ESPN labels like "FG", "3PT", "+/-", "MIN".
+  const grid = `minmax(140px, 1.6fr) repeat(${cols.length}, minmax(46px, 1fr))`;
+  const showCatLabel = cat.label && cat.label.toLowerCase() !== 'starters';
   return (
     <div style={{ borderTop: '0.5px solid var(--cn-border)' }}>
-      {cat.label && cat.label.toLowerCase() !== 'starters' && (
+      {showCatLabel && (
         <div style={{
-          padding: '6px 12px', background: 'var(--cn-bg)',
+          padding: '6px 14px', background: 'var(--cn-bg)',
           fontFamily: 'var(--cn-font-mono)', fontSize: 10,
           letterSpacing: 1, textTransform: 'uppercase',
           color: 'var(--cn-text-mute)',
@@ -250,40 +276,44 @@ function PlayerCategory({ cat }) {
       )}
       {/* Header row */}
       <div style={{
-        display: 'grid',
-        gridTemplateColumns: `1fr repeat(${keys.length}, 36px)`,
-        padding: '6px 12px',
+        display: 'grid', gridTemplateColumns: grid,
+        padding: '8px 14px',
         background: 'var(--cn-bg-elev2)',
-        fontFamily: 'var(--cn-font-mono)', fontSize: 9, letterSpacing: 0.5,
+        fontFamily: 'var(--cn-font-mono)', fontSize: 10, letterSpacing: 0.5,
         color: 'var(--cn-text-mute)', textTransform: 'uppercase',
-        gap: 4,
+        gap: 8,
       }}>
         <span>Player</span>
-        {keys.map((k, i) => <span key={i} style={{ textAlign: 'right' }}>{k}</span>)}
+        {cols.map((c, i) => <span key={i} style={{ textAlign: 'right' }}>{c}</span>)}
       </div>
       {(cat.athletes || []).map((a, i) => (
         <div key={i} style={{
-          display: 'grid',
-          gridTemplateColumns: `1fr repeat(${keys.length}, 36px)`,
-          padding: '8px 12px',
+          display: 'grid', gridTemplateColumns: grid,
+          padding: '8px 14px',
           borderTop: '0.5px solid var(--cn-border)',
-          alignItems: 'center', gap: 4,
-          fontSize: 12,
+          alignItems: 'center', gap: 8,
+          fontSize: 13,
           background: a.starter ? 'var(--cn-bg-elev)' : 'transparent',
         }}>
           <span style={{
-            display: 'flex', alignItems: 'baseline', gap: 6,
+            display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
-            <span style={{ fontWeight: 600 }}>{a.name}</span>
-            {a.position && <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, color: 'var(--cn-text-mute)' }}>{a.position}</span>}
+            <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</span>
+            {a.position && (
+              <span style={{
+                fontFamily: 'var(--cn-font-mono)', fontSize: 9,
+                color: 'var(--cn-text-mute)', flexShrink: 0,
+              }}>{a.position}</span>
+            )}
           </span>
-          {keys.map((_, j) => (
+          {cols.map((_, j) => (
             <span key={j} style={{
               textAlign: 'right',
-              fontFamily: 'var(--cn-font-mono)', fontVariantNumeric: 'tabular-nums',
+              fontFamily: 'var(--cn-font-mono)',
+              fontVariantNumeric: 'tabular-nums',
               color: a.didNotPlay ? 'var(--cn-text-mute)' : 'var(--cn-text)',
-            }}>{(a.stats?.[j] ?? '') || (a.didNotPlay ? '—' : '0')}</span>
+            }}>{(a.stats?.[j] ?? '') || (a.didNotPlay ? '—' : '')}</span>
           ))}
         </div>
       ))}
