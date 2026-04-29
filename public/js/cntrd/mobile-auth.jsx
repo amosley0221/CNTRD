@@ -767,8 +767,26 @@ function TeamMini({ team, record, league }) {
   );
 }
 
+// Quick-react picker shown above the input when the + button is tapped.
+// Tapping a face appends it to the draft so users can build up a longer
+// reaction or pair an emoji with text.
+const CHAT_QUICK_REACTS = ['🔥', '🙌', '👏', '💯', '😱', '🤯', '🤝', '😤', '🏀', '⚽', '🏈', '⚾', '🏒', '🥶'];
+
 function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me }) {
   const [side, setSide] = React.useState('all');
+  const [messages, setMessages] = React.useState([]);
+  const [draft, setDraft] = React.useState('');
+  const [showReacts, setShowReacts] = React.useState(false);
+
+  // Reset chat state when the user switches to a different game.
+  const gameId = gamedayPick?.id;
+  React.useEffect(() => {
+    setMessages([]);
+    setDraft('');
+    setShowReacts(false);
+    setSide('all');
+  }, [gameId]);
+
   // List mode: no specific game picked → show live + upcoming as rows.
   if (!gamedayPick) {
     return <GamedayList tweaks={tweaks} onNav={onNav} games={games} me={me} onPick={setGamedayPick} />;
@@ -777,8 +795,40 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me }
   const home = game.homeTeam || TEAMS[game.home] || { code: game.home, name: game.home, primary: '#666', accent: '#999' };
   const away = game.awayTeam || TEAMS[game.away] || { code: game.away, name: game.away, primary: '#666', accent: '#999' };
   const isLive = game.state === 'live';
-  const filtered = side === 'all' ? CHAT_MESSAGES : CHAT_MESSAGES.filter(m => m.side === side || !m.side);
+  const filtered = side === 'all' ? messages : messages.filter(m => m.side === side || !m.side);
   const goBack = () => setGamedayPick?.(null);
+
+  const submit = () => {
+    const text = draft.trim();
+    if (!text) return;
+    const meUser = me || (typeof window !== 'undefined' && window.ME);
+    const msg = {
+      id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      user: meUser?.username || 'me',
+      // Attach the user's primary team to the message so the side filter
+      // can include it under "<team> only".
+      side: (meUser?.teams || []).map(t => String(t).split(':').pop()).find(c => c === home.code || c === away.code) || null,
+      text,
+      time: 'now',
+      mine: true,
+      meSnapshot: meUser ? {
+        username: meUser.username,
+        displayName: meUser.displayName,
+        avatar: meUser.avatar,
+        avatarHue: meUser.avatarHue,
+      } : null,
+    };
+    setMessages(prev => [...prev, msg]);
+    setDraft('');
+    setShowReacts(false);
+  };
+  const onKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      submit();
+    }
+  };
+
   return (
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
       {/* Sticky scoreboard */}
@@ -791,17 +841,17 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me }
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: isLive ? 'var(--cn-live)' : 'var(--cn-text-mute)', animation: isLive ? 'cn-pulse 1.5s ease-in-out infinite' : 'none' }} />
             <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: isLive ? 'var(--cn-live)' : 'var(--cn-text-mute)', fontWeight: 800, letterSpacing: 1 }}>{isLive ? 'GAMEDAY · LIVE' : 'GAMEDAY · UPCOMING'}</span>
           </div>
-          <button style={iconBtnStyle()}>
+          <button onClick={() => onNav?.('notifications')} style={iconBtnStyle()} title="Notifications">
             <Icon name="bell" size={18} stroke="var(--cn-text-dim)" />
           </button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px 12px' }}>
-          <SideTeam team={away} score={game.awayScore} />
+          <SideTeam team={away} score={game.awayScore} league={game.league} />
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1 }}>{game.period}</div>
             <div style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 800, fontSize: 18, fontVariantNumeric: 'tabular-nums' }}>{game.clock}</div>
           </div>
-          <SideTeam team={home} score={game.homeScore} reverse />
+          <SideTeam team={home} score={game.homeScore} league={game.league} reverse />
         </div>
         {/* side filter */}
         <div style={{ display: 'flex', padding: '0 12px 10px', gap: 6 }}>
@@ -832,41 +882,127 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me }
             <span style={{ fontSize: 10 }}>Live chat is wired client-side only for now — messages will sync when the realtime backend ships.</span>
           </div>
         ) : (
-          filtered.map(m => <ChatBubble key={m.id} m={m} />)
+          // Render newest-first with column-reverse so layout matches the
+          // surrounding flex direction. Iterate the messages in reverse so
+          // chronological order is preserved on screen.
+          [...filtered].reverse().map(m => <ChatBubble key={m.id} m={m} />)
         )}
       </div>
 
+      {/* quick-react popover */}
+      {showReacts && (
+        <div style={{
+          padding: '6px 12px',
+          borderTop: '0.5px solid var(--cn-border-s)',
+          background: 'var(--cn-bg-elev2)',
+          display: 'flex', flexWrap: 'wrap', gap: 4,
+        }}>
+          {CHAT_QUICK_REACTS.map(e => (
+            <button key={e} onClick={() => { setDraft(d => d + e); }} style={{
+              width: 36, height: 36, borderRadius: 8,
+              background: 'var(--cn-bg-elev)',
+              border: '0.5px solid var(--cn-border-s)',
+              fontSize: 18, cursor: 'pointer',
+            }} title={`Add ${e}`}>{e}</button>
+          ))}
+        </div>
+      )}
+
       {/* input */}
       <div style={{ padding: '10px 12px 28px', borderTop: '0.5px solid var(--cn-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--cn-bg-elev)', border: '0.5px solid var(--cn-border-s)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--cn-text-dim)', cursor: 'pointer' }}>
+        <button
+          onClick={() => setShowReacts(s => !s)}
+          title={showReacts ? 'Hide reactions' : 'Quick reactions'}
+          style={{
+            width: 36, height: 36, borderRadius: 10,
+            background: showReacts ? 'var(--cn-accent)' : 'var(--cn-bg-elev)',
+            color: showReacts ? 'var(--cn-on-accent)' : 'var(--cn-text-dim)',
+            border: '0.5px solid var(--cn-border-s)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}
+        >
           <Icon name="plus" size={18} />
         </button>
-        <input placeholder="Yell about it..." style={{
-          flex: 1, padding: '10px 14px', borderRadius: 10,
-          background: 'var(--cn-bg-elev)', border: '0.5px solid var(--cn-border-s)',
-          color: 'var(--cn-text)', fontSize: 13, outline: 'none',
-          fontFamily: 'var(--cn-font-body)',
-        }} />
-        <button style={{ padding: '8px 14px', borderRadius: 10, background: 'var(--cn-accent)', color: 'var(--cn-on-accent)', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'var(--cn-font-body)' }}>Send</button>
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder="Yell about it..."
+          style={{
+            flex: 1, padding: '10px 14px', borderRadius: 10,
+            background: 'var(--cn-bg-elev)', border: '0.5px solid var(--cn-border-s)',
+            color: 'var(--cn-text)', fontSize: 13, outline: 'none',
+            fontFamily: 'var(--cn-font-body)',
+          }}
+        />
+        <button
+          onClick={submit}
+          disabled={!draft.trim()}
+          style={{
+            padding: '8px 14px', borderRadius: 10,
+            background: draft.trim() ? 'var(--cn-accent)' : 'var(--cn-bg-elev2)',
+            color: draft.trim() ? 'var(--cn-on-accent)' : 'var(--cn-text-mute)',
+            border: 'none', fontWeight: 700, fontSize: 13,
+            cursor: draft.trim() ? 'pointer' : 'not-allowed',
+            fontFamily: 'var(--cn-font-body)',
+          }}
+        >Send</button>
       </div>
     </div>
   );
 }
 
-function SideTeam({ team, score, reverse }) {
+function SideTeam({ team, score, reverse, league }) {
+  const interactive = !!(team?.id && league);
+  const openSchedule = (e) => {
+    if (!interactive) return;
+    e.stopPropagation();
+    window.dispatchEvent(new CustomEvent('cntrd:open-team-schedule', {
+      detail: {
+        league, teamId: team.id, name: team.name,
+        primary: team.primary, code: team.code, logo: team.logo,
+      },
+    }));
+  };
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexDirection: reverse ? 'row-reverse' : 'row' }}>
-      <TeamLogo team={team} size={36} radius={8} />
+      <button
+        type="button"
+        onClick={openSchedule}
+        disabled={!interactive}
+        title={interactive ? `See ${team.name}'s schedule` : team?.name || ''}
+        style={{
+          background: 'transparent', border: 'none', padding: 0,
+          cursor: interactive ? 'pointer' : 'default',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        <TeamLogo team={team} size={36} radius={8} />
+      </button>
       <div style={{ textAlign: reverse ? 'right' : 'left' }}>
         <div style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 800, fontSize: 28, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{score}</div>
-        <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, color: 'var(--cn-text-mute)', letterSpacing: 0.5, textTransform: 'uppercase' }}>{team.name}</div>
+        <button
+          type="button"
+          onClick={openSchedule}
+          disabled={!interactive}
+          style={{
+            background: 'transparent', border: 'none', padding: 0,
+            cursor: interactive ? 'pointer' : 'default',
+            fontFamily: 'var(--cn-font-mono)', fontSize: 9,
+            color: 'var(--cn-text-mute)', letterSpacing: 0.5, textTransform: 'uppercase',
+          }}
+        >{team?.name || ''}</button>
       </div>
     </div>
   );
 }
 
 function ChatBubble({ m }) {
-  const u = USERS[m.user];
+  // Locally-created messages embed a snapshot of the author so we don't
+  // rely on the deprecated USERS mock. Server-fed messages still fall
+  // through to the legacy lookup until the chat backend ships.
+  const u = m.meSnapshot || USERS[m.user] || { username: m.user || 'me', displayName: m.user || 'Me' };
   const isMine = m.mine;
   const team = m.side ? TEAMS[m.side] : null;
   return (

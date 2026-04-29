@@ -227,12 +227,38 @@ function FanCard({ teams }) {
         {cleaned.map(code => {
           const t = resolveTeam(code);
           if (!t) return null;
+          // Whole-row tap routes to the team's schedule when we know the
+          // team's id (resolveTeam carries id when ESPN's roster has been
+          // hydrated). Falls back to a static row otherwise.
+          const interactive = !!(t.id && t.league);
+          const openSchedule = () => {
+            if (!interactive) return;
+            window.dispatchEvent(new CustomEvent('cntrd:open-team-schedule', {
+              detail: {
+                league: t.league, teamId: t.id, name: t.name,
+                primary: t.primary, code: t.code, logo: t.logo,
+              },
+            }));
+          };
           return (
-            <div key={code} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              key={code}
+              type="button"
+              onClick={openSchedule}
+              disabled={!interactive}
+              title={interactive ? `See ${t.name}'s schedule` : t.name}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                background: 'transparent', border: 'none', padding: 0,
+                color: 'inherit', textAlign: 'left',
+                cursor: interactive ? 'pointer' : 'default',
+                fontFamily: 'inherit',
+              }}
+            >
               <TeamLogo team={t} size={22} radius={4} />
               <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{t.name}</span>
               <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)' }}>{t.league} · ride or die</span>
-            </div>
+            </button>
           );
         })}
       </div>

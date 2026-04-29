@@ -268,6 +268,9 @@ async function fetchLeagueTeams(league) {
     for (const item of list) {
       const t = item.team || {};
       const code = (t.abbreviation || (t.shortDisplayName || t.displayName || '???').slice(0, 4)).toUpperCase();
+      // Try the most common logo paths. Light variant (`href`) is what
+      // ESPN ships first; if missing, fall back to the bare `logo` URL.
+      const logo = (Array.isArray(t.logos) && t.logos.find(l => l?.href)?.href) || t.logo || '';
       out.push({
         code,
         key: `${league.code}:${code}`,           // disambiguates across leagues (NFL:PHI vs NBA:PHI)
@@ -277,7 +280,9 @@ async function fetchLeagueTeams(league) {
         league: league.code,
         primary: colorHex(t.color),
         accent:  colorHex(t.alternateColor),
+        id: t.id ? String(t.id) : null,
         espnId: t.id,
+        logo,
       });
     }
     if (!list.length || list.length < 200) break;     // last page
