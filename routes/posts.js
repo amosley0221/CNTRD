@@ -4,7 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../database/db');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { isValidTeamCode } = require('../data/teams');
-const { rollupPostNotif } = require('../services/notifier');
+const { rollupPostNotif, notify } = require('../services/notifier');
 
 const VALID_TYPES = new Set(['take', 'photo', 'score', 'poll', 'clip', 'box', 'rumor']);
 
@@ -150,6 +150,36 @@ router.post('/', requireAuth, (req, res) => {
       }
     });
     fanOut(followers);
+  }
+
+  // Mention notifications. Scan the post body for @username tokens and
+  // notify each unique mentioned user (skip self-mentions, the author's
+  // followers — those already get the rolled-up post notif — would have
+  // a separate row, but for clarity we send mention notifs to every
+  // mentioned user regardless). Blocked relationships still drop them.
+  const mentionMatches = [...trimmed.matchAll(/(^|[^A-Za-z0-9_])@([A-Za-z0-9_]{3,20})\b/g)];
+  const mentionedHandles = [...new Set(mentionMatches.map(m => m[2].toLowerCase()))];
+  if (mentionedHandles.length) {
+    const placeholders = mentionedHandles.map(() => '?').join(',');
+    const targets = db.prepare(`
+      SELECT id, username FROM users
+      WHERE LOWER(username) IN (${placeholders}) AND banned = 0 AND id != ?
+        AND id NOT IN (SELECT blocked_id FROM blocks WHERE blocker_id = ?)
+        AND id NOT IN (SELECT blocker_id FROM blocks WHERE blocked_id = ?)
+    `).all(...mentionedHandles, req.user.id, req.user.id, req.user.id);
+    for (const t of targets) {
+      notify({
+        userId: t.id, type: 'mention', actorId: req.user.id,
+        data: {
+          post_id: id,
+          preview: trimmed.slice(0, 140),
+        },
+        // One mention notif per (recipient, post) — re-mentioning the
+        // same user in an edit doesn't double up.
+        dedupeKey: `mention:${id}:${t.id}`,
+        bumpOnDedupe: false,
+      });
+    }
   }
 
   const row = db.prepare(`${SELECT_POST} WHERE p.id = ?`).get(id);

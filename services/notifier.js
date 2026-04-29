@@ -16,7 +16,7 @@ function getEspn() {
 const KNOWN_TYPES = [
   'live_game', 'score', 'period_end', 'final',
   'follow', 'follow_request', 'follow_accept', 'message',
-  'post', 'event_alert',
+  'post', 'event_alert', 'mention',
 ];
 
 // Defaults: every type on. Users can opt out from Settings.

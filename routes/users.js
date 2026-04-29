@@ -143,18 +143,23 @@ router.post('/:username/follow', requireAuth, (req, res) => {
   if (!target) return res.status(404).json({ error: 'User not found' });
   if (target.id === req.user.id) return res.status(400).json({ error: 'Cannot follow yourself' });
 
+  const refreshedCount = () => {
+    const row = db.prepare('SELECT follower_count FROM users WHERE id = ?').get(target.id);
+    return row?.follower_count ?? 0;
+  };
+
   const existingFollow = db.prepare('SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?').get(req.user.id, target.id);
   if (existingFollow) {
     db.prepare('DELETE FROM follows WHERE follower_id = ? AND following_id = ?').run(req.user.id, target.id);
     db.prepare('UPDATE users SET follower_count  = MAX(0, follower_count  - 1) WHERE id = ?').run(target.id);
     db.prepare('UPDATE users SET following_count = MAX(0, following_count - 1) WHERE id = ?').run(req.user.id);
-    return res.json({ following: false, request_pending: false });
+    return res.json({ following: false, is_following: false, request_pending: false, follower_count: refreshedCount() });
   }
 
   const existingReq = db.prepare('SELECT 1 FROM follow_requests WHERE requester_id = ? AND target_id = ?').get(req.user.id, target.id);
   if (existingReq) {
     db.prepare('DELETE FROM follow_requests WHERE requester_id = ? AND target_id = ?').run(req.user.id, target.id);
-    return res.json({ following: false, request_pending: false });
+    return res.json({ following: false, is_following: false, request_pending: false, follower_count: refreshedCount() });
   }
 
   if (target.is_private) {
@@ -164,7 +169,7 @@ router.post('/:username/follow', requireAuth, (req, res) => {
       data: { username: req.user.username },
       dedupeKey: `follow_req:${req.user.id}`,
     });
-    return res.json({ following: false, request_pending: true });
+    return res.json({ following: false, is_following: false, request_pending: true, follower_count: refreshedCount() });
   }
 
   db.prepare('INSERT INTO follows (follower_id, following_id) VALUES (?, ?)').run(req.user.id, target.id);
@@ -174,7 +179,7 @@ router.post('/:username/follow', requireAuth, (req, res) => {
     userId: target.id, type: 'follow', actorId: req.user.id,
     data: { username: req.user.username },
   });
-  return res.json({ following: true, request_pending: false });
+  return res.json({ following: true, is_following: true, request_pending: false, follower_count: refreshedCount() });
 });
 
 // Incoming follow requests for me.

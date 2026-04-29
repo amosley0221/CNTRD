@@ -6,7 +6,7 @@
 //               we add a queueing concept)
 
 const SCORE_TYPES    = new Set(['live_game', 'score', 'period_end', 'final']);
-const ACTIVITY_TYPES = new Set(['follow', 'follow_accept', 'message', 'post', 'event_alert']);
+const ACTIVITY_TYPES = new Set(['follow', 'follow_accept', 'message', 'post', 'event_alert', 'mention']);
 
 function categorizeNotif(n) {
   if (SCORE_TYPES.has(n.type))    return 'scores';
@@ -127,6 +127,12 @@ function NotificationsScreen({ tweaks, onNav, me, setMessageContext, onUnreadNot
       return;
     }
     if (n.type === 'follow_request') { setTab('requests'); return; }
+    // New follower / accepted follow / @mention all carry an actor —
+    // route to that user's profile so the user can follow back, etc.
+    if ((n.type === 'follow' || n.type === 'follow_accept' || n.type === 'mention') && n.actor?.username) {
+      window.dispatchEvent(new CustomEvent('cntrd:open-user', { detail: { username: n.actor.username } }));
+      return;
+    }
     if (SCORE_TYPES.has(n.type) && n.data?.league && n.data?.game_id) {
       window.dispatchEvent(new CustomEvent('cntrd:open-game-from-notif',
         { detail: { id: n.data.game_id, league: n.data.league } }));
@@ -391,6 +397,8 @@ function renderNotifText(n) {
       return { headline: `${actor} accepted your follow request`, body: '' };
     case 'message':
       return { headline: `${actor} sent a message`, body: d.preview || '' };
+    case 'mention':
+      return { headline: `${actor} mentioned you`, body: d.preview || '' };
     case 'post': {
       const count = Number(d.count) || 1;
       const headline = count === 1

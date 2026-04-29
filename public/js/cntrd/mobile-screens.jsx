@@ -301,6 +301,130 @@ function FanCard({ teams }) {
 
 // Photo/clip preview slot for the composer. Renders a tap-to-pick state,
 // a uploading state, or the chosen media with a clear (×) button.
+// A textarea that watches for `@partial` tokens at the cursor and surfaces
+// a small dropdown of matching users. Selecting one replaces the partial
+// with `@username ` and closes the dropdown. Backed by /api/search so
+// suggestions reflect real registered users.
+function MentionTextarea({ value, onChange, placeholder }) {
+  const ref = React.useRef(null);
+  const [active, setActive] = React.useState(null);   // { start, query } or null
+  const [users, setUsers] = React.useState([]);
+  const [highlight, setHighlight] = React.useState(0);
+
+  // When the textarea changes, look at the token immediately to the left of
+  // the caret. If it starts with `@` and has no whitespace, we're in the
+  // middle of typing a mention.
+  const detectMention = (text, caret) => {
+    const upTo = text.slice(0, caret);
+    const m = upTo.match(/(^|[^A-Za-z0-9_])@([A-Za-z0-9_]{0,20})$/);
+    if (!m) return null;
+    const start = caret - m[2].length - 1;   // position of the @
+    return { start, query: m[2] };
+  };
+
+  // Debounced lookup whenever the active query changes.
+  React.useEffect(() => {
+    if (!active) { setUsers([]); return; }
+    let cancelled = false;
+    const id = setTimeout(async () => {
+      const q = active.query.trim();
+      if (q.length < 1) { setUsers([]); return; }
+      try {
+        const res = await window.API.searchUsers(q).catch(() => null)
+                 || (await window.API.search(q)).users;
+        if (!cancelled) setUsers((res || []).slice(0, 6));
+      } catch {
+        if (!cancelled) setUsers([]);
+      }
+    }, 150);
+    return () => { cancelled = true; clearTimeout(id); };
+  }, [active?.query]);
+
+  React.useEffect(() => { setHighlight(0); }, [users.length]);
+
+  const handleChange = (e) => {
+    const v = e.target.value;
+    onChange(v);
+    const caret = e.target.selectionStart || v.length;
+    setActive(detectMention(v, caret));
+  };
+
+  const handleSelect = (u) => {
+    if (!active || !ref.current) return;
+    const before = value.slice(0, active.start);
+    const afterCaret = value.slice(ref.current.selectionStart);
+    const inserted = `@${u.username} `;
+    const next = before + inserted + afterCaret;
+    onChange(next);
+    setActive(null);
+    // Restore caret right after the inserted handle.
+    requestAnimationFrame(() => {
+      const t = ref.current; if (!t) return;
+      const pos = before.length + inserted.length;
+      t.focus(); t.setSelectionRange(pos, pos);
+    });
+  };
+
+  const onKeyDown = (e) => {
+    if (!active || !users.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setHighlight(i => (i + 1) % users.length); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight(i => (i - 1 + users.length) % users.length); }
+    else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); handleSelect(users[highlight]); }
+    else if (e.key === 'Escape') { setActive(null); }
+  };
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <textarea
+        ref={ref}
+        value={value}
+        onChange={handleChange}
+        onKeyDown={onKeyDown}
+        onBlur={() => setTimeout(() => setActive(null), 120)}    // let click on suggestion register first
+        placeholder={placeholder}
+        style={{
+          width: '100%', minHeight: 120, padding: 0,
+          background: 'transparent', border: 'none', resize: 'none',
+          outline: 'none', color: 'var(--cn-text)',
+          fontFamily: 'var(--cn-font-body)', fontSize: 18, lineHeight: 1.4,
+        }}
+      />
+      {active && users.length > 0 && (
+        <div style={{
+          position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4,
+          background: 'var(--cn-bg-elev)',
+          border: '0.5px solid var(--cn-border)',
+          borderRadius: 10, overflow: 'hidden', zIndex: 20,
+          boxShadow: '0 12px 28px rgba(0,0,0,0.35)',
+        }}>
+          {users.map((u, i) => (
+            <button
+              key={u.id || u.username}
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); handleSelect(u); }}
+              onMouseEnter={() => setHighlight(i)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                padding: '8px 12px',
+                background: i === highlight ? 'var(--cn-bg-elev2)' : 'transparent',
+                border: 'none', cursor: 'pointer',
+                color: 'var(--cn-text)', textAlign: 'left',
+                fontFamily: 'inherit',
+              }}
+            >
+              <Avatar user={u} size={26} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{u.displayName || u.username}</div>
+                <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>@{u.username}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ComposerMediaSlot({ type, media, uploading, onPick, onClear }) {
   const ratio = type === 'clip' ? 16 / 9 : 4 / 5;
   const label = type === 'clip' ? 'Tap to choose a clip' : 'Tap to choose a photo';
@@ -498,16 +622,10 @@ function ComposerScreen({ tweaks, onNav, onPost, me, replyTo }) {
               })}
               <button style={{ background: 'transparent', border: '0.5px dashed var(--cn-border-s)', color: 'var(--cn-text-mute)', borderRadius: 999, padding: '3px 9px', fontSize: 11, cursor: 'pointer' }}>+ tag</button>
             </div>
-            <textarea
+            <MentionTextarea
               value={text}
-              onChange={e => setText(e.target.value.slice(0, max))}
+              onChange={(v) => setText(v.slice(0, max))}
               placeholder={(type === 'photo' || type === 'clip') ? "What's the take? (optional)" : "What's the take?"}
-              style={{
-                width: '100%', minHeight: 120, padding: 0,
-                background: 'transparent', border: 'none', resize: 'none',
-                outline: 'none', color: 'var(--cn-text)',
-                fontFamily: 'var(--cn-font-body)', fontSize: 18, lineHeight: 1.4,
-              }}
             />
             {(type === 'photo' || type === 'clip') && (
               <ComposerMediaSlot
