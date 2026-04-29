@@ -251,6 +251,108 @@ function Icon({ name, size = 20, stroke = 'currentColor', fill = 'none', sw = 1.
   }
 }
 
+// ESPN ships league logos at predictable CDN paths. Used as the icon in
+// notifications that are about a quarter/half/period boundary (where a
+// single team's logo doesn't quite fit) and as a fallback wherever a
+// generic league mark beats a free-standing text badge.
+const LEAGUE_LOGOS = {
+  NFL:        'https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png',
+  NBA:        'https://a.espncdn.com/i/teamlogos/leagues/500/nba.png',
+  WNBA:       'https://a.espncdn.com/i/teamlogos/leagues/500/wnba.png',
+  MLB:        'https://a.espncdn.com/i/teamlogos/leagues/500/mlb.png',
+  NHL:        'https://a.espncdn.com/i/teamlogos/leagues/500/nhl.png',
+  MLS:        'https://a.espncdn.com/i/teamlogos/leagues/500/mls.png',
+  NCAAF:      'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png',
+  NCAAM:      'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png',
+  EPL:        'https://a.espncdn.com/i/leaguelogos/soccer/500/23.png',
+  LaLiga:     'https://a.espncdn.com/i/leaguelogos/soccer/500/15.png',
+  Bundesliga: 'https://a.espncdn.com/i/leaguelogos/soccer/500/10.png',
+  SerieA:     'https://a.espncdn.com/i/leaguelogos/soccer/500/12.png',
+  UCL:        'https://a.espncdn.com/i/leaguelogos/soccer/500/2.png',
+  UFC:        'https://a.espncdn.com/i/teamlogos/leagues/500/ufc.png',
+};
+
+// Team logo with a colored-initial fallback. Use it anywhere we have a
+// team object — the size + radius scale together.
+function TeamLogo({ team, size = 24, radius = 5 }) {
+  if (!team) {
+    return (
+      <div style={{
+        width: size, height: size, borderRadius: radius,
+        background: 'var(--cn-bg-elev2)',
+      }} />
+    );
+  }
+  const initial = team.code || (team.abbreviation || '').toUpperCase() || '??';
+  const fontSize = Math.max(8, Math.round(size * 0.42));
+  if (team.logo) {
+    return (
+      <img
+        src={team.logo}
+        alt={team.name || initial}
+        loading="lazy"
+        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+        style={{
+          width: size, height: size, borderRadius: radius,
+          objectFit: 'contain', flexShrink: 0,
+          background: 'transparent',
+        }}
+      />
+    );
+  }
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: radius,
+      background: team.primary || '#666',
+      color: pickContrast(team.primary || '#666'),
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize, fontWeight: 800, letterSpacing: 0.3, flexShrink: 0,
+    }}>{initial}</div>
+  );
+}
+
+// Wraps a team's name in a button that opens its full-season schedule.
+// Falls back to a static span when there's no team id (so we don't hand
+// out broken links). Render-as-needed — pass the entire team object plus
+// the league code.
+function TeamName({ team, league, fontSize = 14, weight = 600, color }) {
+  const handleClick = (e) => {
+    if (!team?.id || !league) return;
+    e.stopPropagation();
+    window.dispatchEvent(new CustomEvent('cntrd:open-team-schedule', {
+      detail: {
+        league,
+        teamId: team.id,
+        name: team.name,
+        primary: team.primary,
+        code: team.code,
+        logo: team.logo,
+      },
+    }));
+  };
+  const interactive = !!(team?.id && league);
+  const style = {
+    background: 'transparent', border: 'none', padding: 0, margin: 0,
+    fontFamily: 'inherit', fontSize, fontWeight: weight,
+    color: color || 'inherit',
+    cursor: interactive ? 'pointer' : 'default',
+    textAlign: 'left',
+    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+    minWidth: 0,
+  };
+  if (!interactive) {
+    return <span style={{ ...style, cursor: 'default' }}>{team?.name || ''}</span>;
+  }
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      title={`See ${team.name}'s schedule`}
+      style={style}
+    >{team.name}</button>
+  );
+}
+
 // usePullToRefresh — touch-only pull-to-refresh for any vertical scroller.
 // Pass a ref to the scrollable element and a refresh callback. The hook
 // returns { distance, refreshing, complete } so the caller can render its
@@ -360,4 +462,5 @@ Object.assign(window, {
   THEMES, TYPE_PAIRS, DENSITY, applyTheme, pickContrast, resolveTeam,
   TeamPill, TeamTagsRow, Avatar, Icon,
   usePullToRefresh, PullIndicator,
+  LEAGUE_LOGOS, TeamLogo, TeamName,
 });

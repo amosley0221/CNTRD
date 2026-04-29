@@ -47,11 +47,19 @@ function colorHex(c) {
 
 function teamFromCompetitor(comp) {
   const t = comp?.team || {};
+  // Pick the largest non-default logo ESPN ships. The summary endpoint
+  // gives us a list of variants; the scoreboard ships either a `logo` URL
+  // or a `logos[]` array — handle both.
+  const logo = t.logo
+    || (Array.isArray(t.logos) && t.logos.find(l => l?.href)?.href)
+    || '';
   return {
+    id: t.id ? String(t.id) : null,
     code: t.abbreviation || (t.shortDisplayName || t.displayName || '???').slice(0, 4).toUpperCase(),
     name: t.shortDisplayName || t.name || t.displayName || '',
     primary: colorHex(t.color),
     accent:  colorHex(t.alternateColor),
+    logo,
   };
 }
 

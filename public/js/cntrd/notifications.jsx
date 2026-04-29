@@ -262,7 +262,76 @@ function NotifRow({ n, onClick, onDismiss }) {
 
 function NotifIcon({ n }) {
   if (n.actor) return <Avatar user={n.actor} size={36} />;
-  const code = n.data?.league || '🏆';
+  const d = n.data || {};
+
+  // Pick which team's logo to show. For per-play scoring, the scoring side
+  // is what matters. For finals, show the winner. live_game uses the
+  // matchup's home team as a default so the user sees something concrete.
+  const sideForType = (() => {
+    if (n.type === 'score' && d.scoring_side) return d.scoring_side;
+    if (n.type === 'final') {
+      const hs = Number(d.home_score), as = Number(d.away_score);
+      if (Number.isFinite(hs) && Number.isFinite(as)) {
+        if (hs > as) return 'home';
+        if (as > hs) return 'away';
+      }
+      return null;
+    }
+    if (n.type === 'live_game') return 'home';
+    return null;
+  })();
+
+  const teamLogo    = sideForType === 'home' ? d.home_logo    : sideForType === 'away' ? d.away_logo    : '';
+  const teamName    = sideForType === 'home' ? d.home_name    : sideForType === 'away' ? d.away_name    : '';
+  const teamCode    = sideForType === 'home' ? d.home         : sideForType === 'away' ? d.away         : '';
+  const teamPrimary = sideForType === 'home' ? d.home_primary : sideForType === 'away' ? d.away_primary : '';
+
+  // period_end → league logo (no single team owns the moment).
+  if (n.type === 'period_end') {
+    const leagueLogo = LEAGUE_LOGOS[d.league] || '';
+    if (leagueLogo) {
+      return (
+        <img
+          src={leagueLogo}
+          alt={d.league || ''}
+          loading="lazy"
+          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          style={{ width: 36, height: 36, borderRadius: 8, objectFit: 'contain', background: 'transparent' }}
+        />
+      );
+    }
+    return <LeagueBadge league={d.league} />;
+  }
+
+  // Per-team events (score / final / live_game) — render the team's logo.
+  if (sideForType && (teamLogo || teamCode)) {
+    return (
+      <TeamLogo
+        team={{ logo: teamLogo, code: teamCode, name: teamName, primary: teamPrimary }}
+        size={36}
+        radius={8}
+      />
+    );
+  }
+
+  // Generic fallback for any other game-related notification — the league
+  // mark beats a free-floating emoji.
+  const leagueLogo = LEAGUE_LOGOS[d.league] || '';
+  if (leagueLogo) {
+    return (
+      <img
+        src={leagueLogo}
+        alt={d.league || ''}
+        loading="lazy"
+        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+        style={{ width: 36, height: 36, borderRadius: 8, objectFit: 'contain', background: 'transparent' }}
+      />
+    );
+  }
+  return <LeagueBadge league={d.league} />;
+}
+
+function LeagueBadge({ league }) {
   return (
     <div style={{
       width: 36, height: 36, borderRadius: 10,
@@ -272,7 +341,7 @@ function NotifIcon({ n }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontSize: 11, fontWeight: 800, letterSpacing: 0.5,
       fontFamily: 'var(--cn-font-mono)',
-    }}>{code}</div>
+    }}>{league || '🏆'}</div>
   );
 }
 

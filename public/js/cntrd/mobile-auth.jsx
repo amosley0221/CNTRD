@@ -725,9 +725,9 @@ function GamedayRow({ game, live, favorite, onClick }) {
     }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)' }}>
-          <TeamMini team={away} record={game.awayRecord} />
+          <TeamMini team={away} record={game.awayRecord} league={game.league} />
           <span style={{ color: 'var(--cn-text-mute)', fontSize: 11, fontFamily: 'var(--cn-font-mono)' }}>@</span>
-          <TeamMini team={home} record={game.homeRecord} />
+          <TeamMini team={home} record={game.homeRecord} league={game.league} />
           {favorite && <span title="Your team" style={{ color: 'var(--cn-accent)', fontSize: 12, fontWeight: 800 }}>★</span>}
         </div>
         <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', marginTop: 4 }}>
@@ -752,16 +752,11 @@ function GamedayRow({ game, live, favorite, onClick }) {
   );
 }
 
-function TeamMini({ team, record }) {
+function TeamMini({ team, record, league }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-      <span style={{
-        width: 22, height: 22, borderRadius: 5,
-        background: team.primary, color: pickContrast(team.primary),
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 9, fontWeight: 800, letterSpacing: 0.4,
-      }}>{team.code}</span>
-      <span style={{ fontSize: 14 }}>{team.name}</span>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+      <TeamLogo team={team} size={22} radius={5} />
+      <TeamName team={team} league={league} fontSize={14} weight={600} color="var(--cn-text)" />
       {record && (
         <span style={{
           fontFamily: 'var(--cn-font-mono)', fontSize: 10,

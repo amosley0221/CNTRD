@@ -113,6 +113,9 @@ function gamePayload(g) {
     game_id: g.id,
     home: g.home, away: g.away,
     home_name: g.homeTeam?.name, away_name: g.awayTeam?.name,
+    home_logo: g.homeTeam?.logo || '', away_logo: g.awayTeam?.logo || '',
+    home_id:   g.homeTeam?.id   || null, away_id:  g.awayTeam?.id  || null,
+    home_primary: g.homeTeam?.primary || '', away_primary: g.awayTeam?.primary || '',
     home_score: g.homeScore, away_score: g.awayScore,
     period: g.period,
   };

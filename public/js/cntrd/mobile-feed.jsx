@@ -232,8 +232,8 @@ function LiveGameCard({ game, onClick, favorite }) {
           SERIES {game.series.summary || ''}{game.series.bestOf ? ` · BEST OF ${game.series.bestOf}` : ''}
         </div>
       )}
-      <CompactScoreRow team={away} score={game.awayScore} record={game.awayRecord} />
-      <CompactScoreRow team={home} score={game.homeScore} record={game.homeRecord} />
+      <CompactScoreRow team={away} score={game.awayScore} record={game.awayRecord} league={game.league} />
+      <CompactScoreRow team={home} score={game.homeScore} record={game.homeRecord} league={game.league} />
       {game.aggregate && (
         <div style={{
           marginTop: 6, paddingTop: 6,
@@ -252,16 +252,11 @@ function LiveGameCard({ game, onClick, favorite }) {
   );
 }
 
-function CompactScoreRow({ team, score, record }) {
+function CompactScoreRow({ team, score, record, league }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0' }}>
-      <div style={{
-        width: 16, height: 16, borderRadius: 3, flexShrink: 0,
-        background: team.primary, color: pickContrast(team.primary),
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 8, fontWeight: 800, letterSpacing: 0.3,
-      }}>{team.code}</div>
-      <span style={{ flex: 1, fontSize: 12, fontWeight: 600, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{team.name}</span>
+      <TeamLogo team={team} size={18} radius={4} />
+      <TeamName team={team} league={league} fontSize={12} weight={600} color="var(--cn-text)" />
       {record && (
         <span style={{
           fontFamily: 'var(--cn-font-mono)', fontSize: 9,
