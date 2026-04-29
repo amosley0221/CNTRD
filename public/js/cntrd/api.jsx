@@ -174,6 +174,9 @@ const API = {
   adminBan(id)             { return request('POST', `/api/admin/users/${id}/ban`); },
   adminUnban(id)           { return request('POST', `/api/admin/users/${id}/unban`); },
   adminDeletePost(id)      { return request('DELETE', `/api/admin/posts/${id}`); },
+  adminToggleAdmin(id)     { return request('POST', `/api/admin/users/${id}/admin`); },
+  adminToggleVerified(id)  { return request('POST', `/api/admin/users/${id}/verified`); },
+  adminToggleOfficial(id)  { return request('POST', `/api/admin/users/${id}/official`); },
 
   uploadAvatar(file) {
     const fd = new FormData();

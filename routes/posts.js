@@ -15,7 +15,9 @@ const SELECT_POST = `
   SELECT p.id, p.user_id, p.content, p.image, p.like_count, p.repost_count,
          p.reply_count, p.reply_to, p.created_at, p.edited_at,
          p.type, p.tags, p.extra,
-         u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
+         u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags,
+         u.is_admin AS author_is_admin, u.is_owner AS author_is_owner,
+         u.is_official AS author_is_official, u.is_verified AS author_is_verified
   FROM posts p
   JOIN users u ON u.id = p.user_id
 `;
@@ -66,6 +68,10 @@ function hydrate(p) {
       avatar: p.avatar,
       avatarHue: p.avatar_hue ?? 200,
       teams: userTeams,
+      is_admin:    !!p.author_is_admin || !!p.author_is_owner,
+      is_owner:    !!p.author_is_owner,
+      is_official: !!p.author_is_official,
+      is_verified: !!p.author_is_verified,
     },
   };
 }

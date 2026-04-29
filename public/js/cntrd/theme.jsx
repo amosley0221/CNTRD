@@ -382,6 +382,53 @@ function TeamName({ team, league, fontSize = 14, weight = 600, color }) {
   );
 }
 
+// Account-status badges. Render next to a user's display name to call
+// out role / verification at a glance:
+//   · Owner    — gold / star, single user, indicates platform owner
+//   · Admin    — outlined moderator badge
+//   · Official — blue check, organizational account (team / league)
+//   · Verified — accent check, identity-verified individual
+// Owner takes precedence over admin (owner is implicitly admin); only
+// the highest-tier badge renders.
+function RoleBadges({ user, size = 13, gap = 4 }) {
+  if (!user) return null;
+  const out = [];
+  if (user.is_owner) {
+    out.push(
+      <span key="owner" title="Platform owner" style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: size + 2, height: size + 2, borderRadius: '50%',
+        background: '#FFD15A', color: '#0A0A0B',
+        fontFamily: 'var(--cn-font-mono)', fontSize: Math.max(7, size - 5), fontWeight: 800,
+      }}>★</span>
+    );
+  } else if (user.is_admin) {
+    out.push(
+      <span key="admin" title="Admin" style={{
+        display: 'inline-flex', alignItems: 'center', padding: '0 5px',
+        height: size, borderRadius: 3,
+        background: 'transparent', color: 'var(--cn-text-mute)',
+        border: '0.5px solid var(--cn-border-s)',
+        fontFamily: 'var(--cn-font-mono)', fontSize: Math.max(7, size - 5), fontWeight: 800,
+        letterSpacing: 0.6, textTransform: 'uppercase',
+      }}>ADMIN</span>
+    );
+  }
+  if (user.is_official) {
+    out.push(
+      <Icon key="official" name="verified" size={size} stroke="#3B82F6" />
+    );
+  } else if (user.is_verified) {
+    out.push(
+      <Icon key="verified" name="verified" size={size} stroke="var(--cn-accent)" />
+    );
+  }
+  if (!out.length) return null;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap }}>{out}</span>
+  );
+}
+
 // Drop UCL entries that duplicate a club the user already follows in a
 // domestic league. Chelsea-EPL and Chelsea-UCL resolve to the same club —
 // list it once. Keeps original order. When every entry for a name is UCL
@@ -619,4 +666,5 @@ Object.assign(window, {
   LEAGUE_LOGOS, TeamLogo, TeamName,
   dedupeUclOverlap,
   confirmAction, ConfirmHost,
+  RoleBadges,
 });

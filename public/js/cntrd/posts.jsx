@@ -55,7 +55,7 @@ function PostHeader({ user, time, tags, edited, postId, isMine, canEdit, onEdit,
           <button onClick={openProfile} disabled={!clickable} style={{ ...linkBtnStyle, fontWeight: 700, fontSize: 14, color: 'var(--cn-text)' }}>
             {u.displayName}
           </button>
-          {u.verified && <Icon name="verified" size={13} stroke="var(--cn-accent)" />}
+          <RoleBadges user={u} size={12} />
           {tags && tags.length > 0 && (
             <span style={{ display: 'inline-flex', gap: 3, marginLeft: 2 }}>
               {tags.slice(0, 3).map(t => <TeamPill key={t} code={t} size="xs" />)}

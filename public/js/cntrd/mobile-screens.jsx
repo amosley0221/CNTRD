@@ -114,10 +114,14 @@ function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePl
             }}>Edit profile</button>
           </div>
           <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
             fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)',
             textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)',
             fontSize: 24, lineHeight: 1.05,
-          }}>{u.displayName}</div>
+          }}>
+            <span>{u.displayName}</span>
+            <RoleBadges user={u} size={14} />
+          </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
             <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 12, color: 'var(--cn-text-dim)' }}>@{u.username}</span>
             {(u.teams && u.teams.length > 0) && <span style={{ color: 'var(--cn-text-mute)' }}>·</span>}
@@ -1791,6 +1795,10 @@ function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0
     avatar: user.avatar,
     avatarHue: user.avatar_hue ?? 200,
     is_private: !!user.is_private,
+    is_admin:    !!user.is_admin || !!user.is_owner,
+    is_owner:    !!user.is_owner,
+    is_official: !!user.is_official,
+    is_verified: !!user.is_verified,
     is_following: !!user.is_following,
     request_pending: !!user.request_pending,
     locked: !!user.is_private && !user.is_following && !isMe,
@@ -1836,10 +1844,14 @@ function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0
                 )}
               </div>
               <div style={{
+                display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
                 fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)',
                 textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)',
                 fontSize: 24, lineHeight: 1.05,
-              }}>{view.displayName}</div>
+              }}>
+                <span>{view.displayName}</span>
+                <RoleBadges user={view} size={14} />
+              </div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
                 <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 12, color: 'var(--cn-text-dim)' }}>@{view.username}</span>
                 {view.teams.length > 0 && <span style={{ color: 'var(--cn-text-mute)' }}>·</span>}

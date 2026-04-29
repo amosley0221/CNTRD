@@ -4,13 +4,13 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../database/db');
-const { JWT_SECRET, requireAuth, isAdminEmail } = require('../middleware/auth');
+const { JWT_SECRET, requireAuth, isAdminEmail, isOwnerEmail } = require('../middleware/auth');
 const { isValidTeamCode } = require('../data/teams');
 const leaguesRouter = require('./leagues');
 
 const USER_COLUMNS =
   'id, username, email, display_name, bio, avatar, banner, team_tags, ' +
-  'followed_leagues, avatar_hue, pronouns, city, is_admin, banned, ' +
+  'followed_leagues, avatar_hue, pronouns, city, is_admin, is_owner, is_official, is_verified, banned, ' +
   'is_private, notification_prefs, tweaks, ' +
   'follower_count, following_count, post_count, created_at';
 
@@ -20,7 +20,10 @@ function hydrate(user) {
   if (!user) return user;
   user.team_tags        = JSON.parse(user.team_tags || '[]');
   user.followed_leagues = JSON.parse(user.followed_leagues || '[]');
-  user.is_admin         = !!user.is_admin;
+  user.is_admin         = !!user.is_admin || !!user.is_owner;   // owner is implicitly admin
+  user.is_owner         = !!user.is_owner;
+  user.is_official      = !!user.is_official;
+  user.is_verified      = !!user.is_verified;
   user.banned           = !!user.banned;
   user.is_private       = !!user.is_private;
   let prefs = {};
@@ -56,11 +59,17 @@ function passwordErrors(password) {
   return errs;
 }
 
-// If the user's email is in ADMIN_EMAILS, ensure their is_admin flag is set.
-// Idempotent — safe to call on every auth path.
+// If the user's email is in ADMIN_EMAILS, ensure their is_admin flag is
+// set. If it matches OWNER_EMAIL, mark them as the owner (which also
+// implies admin). Idempotent — safe to call on every auth path.
 function syncAdminFlag(user) {
   if (!user) return user;
-  if (isAdminEmail(user.email) && !user.is_admin) {
+  const owner = isOwnerEmail(user.email);
+  if (owner && !user.is_owner) {
+    db.prepare('UPDATE users SET is_owner = 1, is_admin = 1 WHERE id = ?').run(user.id);
+    user.is_owner = 1;
+    user.is_admin = 1;
+  } else if (isAdminEmail(user.email) && !user.is_admin) {
     db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run(user.id);
     user.is_admin = 1;
   }
@@ -108,12 +117,13 @@ router.post('/register', (req, res) => {
   );
   const leaguesJson = JSON.stringify(finalLeagues);
   const hue = Number.isFinite(+avatar_hue) ? Math.max(0, Math.min(360, +avatar_hue)) : 200;
-  const adminFlag = isAdminEmail(email) ? 1 : 0;
+  const ownerFlag = isOwnerEmail(email) ? 1 : 0;
+  const adminFlag = ownerFlag || (isAdminEmail(email) ? 1 : 0);
 
   db.prepare(`
-    INSERT INTO users (id, username, email, password, display_name, team_tags, followed_leagues, avatar_hue, pronouns, city, is_admin)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, username, email, hash, name, teamTagsJson, leaguesJson, hue, pronouns || '', city || '', adminFlag);
+    INSERT INTO users (id, username, email, password, display_name, team_tags, followed_leagues, avatar_hue, pronouns, city, is_admin, is_owner)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, username, email, hash, name, teamTagsJson, leaguesJson, hue, pronouns || '', city || '', adminFlag, ownerFlag);
 
   const token = jwt.sign({ id, username }, JWT_SECRET, { expiresIn: '30d' });
   const user = hydrate(db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`).get(id));

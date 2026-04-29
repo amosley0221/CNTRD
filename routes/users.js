@@ -8,7 +8,7 @@ const { notify } = require('../services/notifier');
 
 const PUBLIC_USER_COLS =
   'id, username, display_name, bio, avatar, banner, team_tags, followed_leagues, ' +
-  'avatar_hue, pronouns, city, is_private, notification_prefs, ' +
+  'avatar_hue, pronouns, city, is_private, is_admin, is_owner, is_official, is_verified, notification_prefs, ' +
   'follower_count, following_count, post_count, created_at';
 
 const { DEFAULT_PREFS: NOTIF_DEFAULTS } = require('../services/notifier');
@@ -18,6 +18,10 @@ function hydrate(u) {
   u.team_tags        = JSON.parse(u.team_tags || '[]');
   u.followed_leagues = JSON.parse(u.followed_leagues || '[]');
   u.is_private       = !!u.is_private;
+  u.is_admin         = !!u.is_admin || !!u.is_owner;
+  u.is_owner         = !!u.is_owner;
+  u.is_official      = !!u.is_official;
+  u.is_verified      = !!u.is_verified;
   let prefs = {};
   try { prefs = JSON.parse(u.notification_prefs || '{}'); } catch {}
   u.notification_prefs = { ...NOTIF_DEFAULTS, ...prefs };

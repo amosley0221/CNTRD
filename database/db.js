@@ -203,6 +203,13 @@ ensureColumn('users', 'notification_prefs', "TEXT DEFAULT '{}'");
 // JSON object: UI tweaks (accent, dark/light, density, etc.) so settings
 // follow the user across devices.
 ensureColumn('users', 'tweaks', "TEXT DEFAULT '{}'");
+// Role flags. is_owner is the platform owner (single user, set via
+// OWNER_EMAIL env var on signup/login). is_official = team /
+// organization account; is_verified = identity-verified individual.
+// Both badges are managed by admins through the admin console.
+ensureColumn('users', 'is_owner',    "INTEGER DEFAULT 0");
+ensureColumn('users', 'is_official', "INTEGER DEFAULT 0");
+ensureColumn('users', 'is_verified', "INTEGER DEFAULT 0");
 
 // post type: take | photo | score | poll | clip | box | rumor
 ensureColumn('posts', 'type',  "TEXT DEFAULT 'take'");

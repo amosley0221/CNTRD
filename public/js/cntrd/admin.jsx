@@ -33,6 +33,24 @@ function AdminScreen({ tweaks, onNav, me }) {
     try { await API.adminUnban(id); setUsers(prev => prev.map(u => u.id === id ? { ...u, banned: false } : u)); }
     catch (e) { alert(e.message || 'Unban failed'); }
   };
+  const toggleAdmin = async (id) => {
+    try {
+      const r = await API.adminToggleAdmin(id);
+      setUsers(prev => prev.map(u => u.id === id ? { ...u, is_admin: !!r.is_admin } : u));
+    } catch (e) { alert(e.message || 'Failed'); }
+  };
+  const toggleVerified = async (id) => {
+    try {
+      const r = await API.adminToggleVerified(id);
+      setUsers(prev => prev.map(u => u.id === id ? { ...u, is_verified: !!r.is_verified } : u));
+    } catch (e) { alert(e.message || 'Failed'); }
+  };
+  const toggleOfficial = async (id) => {
+    try {
+      const r = await API.adminToggleOfficial(id);
+      setUsers(prev => prev.map(u => u.id === id ? { ...u, is_official: !!r.is_official } : u));
+    } catch (e) { alert(e.message || 'Failed'); }
+  };
   const toggleExpand = async (id) => {
     if (expanded === id) { setExpanded(null); return; }
     setExpanded(id);
@@ -138,11 +156,15 @@ function AdminScreen({ tweaks, onNav, me }) {
               key={u.id}
               user={u}
               isMe={u.id === me?.id}
+              meIsOwner={!!me?.is_owner}
               expanded={expanded === u.id}
               posts={postsByUser[u.id]}
               onToggle={() => toggleExpand(u.id)}
               onBan={() => ban(u.id)}
               onUnban={() => unban(u.id)}
+              onToggleAdmin={() => toggleAdmin(u.id)}
+              onToggleVerified={() => toggleVerified(u.id)}
+              onToggleOfficial={() => toggleOfficial(u.id)}
               onDeletePost={(postId) => deletePost(u.id, postId)}
             />
           ))
@@ -169,7 +191,12 @@ function AdminStat({ label, value, sub }) {
   );
 }
 
-function AdminUserRow({ user, isMe, expanded, posts, onToggle, onBan, onUnban, onDeletePost }) {
+function AdminUserRow({
+  user, isMe, meIsOwner, expanded, posts,
+  onToggle, onBan, onUnban,
+  onToggleAdmin, onToggleVerified, onToggleOfficial,
+  onDeletePost,
+}) {
   const meUser = {
     username: user.username,
     displayName: user.display_name || user.username,
@@ -177,6 +204,13 @@ function AdminUserRow({ user, isMe, expanded, posts, onToggle, onBan, onUnban, o
     avatar: user.avatar,
   };
   const joined = user.created_at ? new Date(user.created_at.replace(' ', 'T') + 'Z').toLocaleDateString() : '';
+  // Permission rules for the row's actions:
+  //   · Nothing on yourself (isMe)
+  //   · The owner is fully protected — no one can act on them
+  //   · Admins can be acted on only by the owner
+  const isOwner = !!user.is_owner;
+  const canAct = !isMe && !isOwner && (!user.is_admin || meIsOwner);
+  const canToggleAdmin = !isMe && !isOwner && meIsOwner;
   return (
     <div style={{ borderBottom: '0.5px solid var(--cn-border)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px' }}>
@@ -184,7 +218,7 @@ function AdminUserRow({ user, isMe, expanded, posts, onToggle, onBan, onUnban, o
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{ fontWeight: 700, fontSize: 14 }}>{meUser.displayName}</span>
-            {user.is_admin && <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, fontWeight: 800, padding: '1px 5px', borderRadius: 3, background: 'var(--cn-accent)', color: 'var(--cn-on-accent)', letterSpacing: 0.5 }}>ADMIN</span>}
+            <RoleBadges user={user} size={12} />
             {user.banned && <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, fontWeight: 800, padding: '1px 5px', borderRadius: 3, background: 'var(--cn-danger)', color: '#fff', letterSpacing: 0.5 }}>BANNED</span>}
           </div>
           <div style={{ fontSize: 11, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -195,9 +229,26 @@ function AdminUserRow({ user, isMe, expanded, posts, onToggle, onBan, onUnban, o
               <TeamTagsRow codes={user.team_tags} size="xs" />
             </div>
           )}
+          {/* Role / badge toggles. Verified + Official: any admin. Admin
+              role: owner only. */}
+          {!isMe && !isOwner && (
+            <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              <button onClick={onToggleVerified} style={pillBtn(user.is_verified, 'var(--cn-accent)')}>
+                {user.is_verified ? '✓ Verified' : 'Verify'}
+              </button>
+              <button onClick={onToggleOfficial} style={pillBtn(user.is_official, '#3B82F6')}>
+                {user.is_official ? '✓ Official' : 'Mark official'}
+              </button>
+              {canToggleAdmin && (
+                <button onClick={onToggleAdmin} style={pillBtn(user.is_admin, '#FFD15A', '#0A0A0B')}>
+                  {user.is_admin ? '★ Admin' : 'Make admin'}
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {!isMe && !user.is_admin && (
+          {canAct && (
             user.banned
               ? <button onClick={onUnban} style={adminBtn('var(--cn-success)')}>Unban</button>
               : <button onClick={onBan}   style={adminBtn('var(--cn-danger)')}>Ban</button>
@@ -249,6 +300,16 @@ function adminBtn(color) {
     border: `1px solid ${color}`,
     color, fontSize: 11, fontWeight: 700, cursor: 'pointer',
     fontFamily: 'var(--cn-font-body)',
+  };
+}
+function pillBtn(active, color, fg) {
+  return {
+    padding: '4px 10px', borderRadius: 999,
+    background: active ? color : 'transparent',
+    color: active ? (fg || '#fff') : color,
+    border: `0.5px solid ${color}`,
+    fontSize: 10, fontWeight: 700, cursor: 'pointer',
+    fontFamily: 'var(--cn-font-mono)', letterSpacing: 0.4,
   };
 }
 
