@@ -1030,6 +1030,16 @@ function ChatBubble({ m }) {
           borderLeft: !isMine && team ? `2px solid ${team.primary}` : 'none',
           borderRadius: isMine ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
         }}>{m.text}</div>
+        {/* Own messages get a discreet timestamp below the bubble so the
+            sender has visual confirmation it was sent — username is
+            redundant on the user's own messages. */}
+        {isMine && m.time && (
+          <div style={{
+            fontFamily: 'var(--cn-font-mono)', fontSize: 9,
+            color: 'var(--cn-text-mute)',
+            marginTop: 3, textAlign: 'right',
+          }}>{m.time}</div>
+        )}
       </div>
     </div>
   );
