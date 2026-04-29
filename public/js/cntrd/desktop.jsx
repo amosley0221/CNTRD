@@ -339,24 +339,10 @@ function DesktopRail({ tweaks, onNav, games, me, onOpenGame, onOpenGameday, quer
         </div>
       )}
 
-      {/* Trending tags */}
-      <div>
-        <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Trending in your sports</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {[
-            { tag: '#TatumMVP', cat: 'NBA · Trending', count: '24.1k' },
-            { tag: '#LakersIn7', cat: 'NBA', count: '18.4k' },
-            { tag: '#ImolaGP', cat: 'F1 · Tomorrow', count: '12.9k' },
-            { tag: '#NorthLondonDerby', cat: 'EPL · Sunday', count: '9.2k' },
-          ].map(t => (
-            <div key={t.tag} style={{ padding: '8px 10px', borderRadius: 8, cursor: 'pointer' }}>
-              <div style={{ fontSize: 11, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)' }}>{t.cat}</div>
-              <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>{t.tag}</div>
-              <div style={{ fontSize: 11, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)' }}>{t.count} posts</div>
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* Trending — same data the Discover screen uses. Top tags from
+          posts in the last 24h plus any currently live games. Empty
+          response → "No trending topics right now." */}
+      <DesktopTrending onNav={onNav} onOpenGame={onOpenGame} />
 
       <div style={{ fontSize: 11, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', lineHeight: 1.6, paddingTop: 8, borderTop: '0.5px solid var(--cn-border)' }}>
         CNTRD · 2026 · Where the game gets loud.<br />
@@ -367,6 +353,91 @@ function DesktopRail({ tweaks, onNav, games, me, onOpenGame, onOpenGameday, quer
         <a onClick={() => onNav?.('about')}   style={footerLinkStyle}>About</a>
       </div>
     </aside>
+  );
+}
+
+function DesktopTrending({ onNav, onOpenGame }) {
+  const [items, setItems] = React.useState(null);  // null = loading
+  React.useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const data = await window.API.trending();
+        if (!cancelled) setItems(data?.trending || []);
+      } catch {
+        if (!cancelled) setItems([]);
+      }
+    };
+    load();
+    const id = setInterval(load, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  return (
+    <div>
+      <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>
+        Trending
+      </div>
+      {items === null ? (
+        <div style={{ padding: '8px 10px', fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>
+          Loading…
+        </div>
+      ) : items.length === 0 ? (
+        <div style={{
+          padding: '12px 14px', borderRadius: 10,
+          border: '0.5px solid var(--cn-border)',
+          background: 'var(--cn-bg-elev)',
+          fontFamily: 'var(--cn-font-mono)', fontSize: 11,
+          color: 'var(--cn-text-mute)', lineHeight: 1.5,
+        }}>
+          No trending topics right now.<br />
+          <span style={{ fontSize: 10 }}>When fans start posting and games kick off, we'll surface what people are talking about.</span>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {items.slice(0, 6).map((it, i) => {
+            const isGame = it.kind === 'game';
+            const onClick = () => {
+              if (isGame) onOpenGame?.({ id: it.game_id, league: it.league });
+              else if (it.kind === 'tag') {
+                window.dispatchEvent(new CustomEvent('cntrd:open-tag', { detail: it.tag }));
+              }
+            };
+            return (
+              <button
+                key={i}
+                onClick={onClick}
+                style={{
+                  padding: '8px 10px', borderRadius: 8,
+                  background: 'transparent', border: 'none',
+                  color: 'inherit', textAlign: 'left',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--cn-bg-elev)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <div style={{ fontSize: 11, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {isGame && <span style={{ padding: '0 5px', borderRadius: 3, background: 'var(--cn-live)', color: '#fff', fontSize: 8, fontWeight: 800, letterSpacing: 0.4 }}>LIVE</span>}
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.sublabel}</span>
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {it.label}
+                  {it.score && <span style={{ marginLeft: 8, fontFamily: 'var(--cn-font-mono)', fontSize: 12, color: 'var(--cn-text-dim)' }}>{it.score}</span>}
+                </div>
+              </button>
+            );
+          })}
+          <button onClick={() => onNav?.('discover')} style={{
+            marginTop: 4, padding: '6px 10px',
+            background: 'transparent', border: 'none',
+            color: 'var(--cn-accent)', cursor: 'pointer',
+            textAlign: 'left',
+            fontFamily: 'var(--cn-font-mono)', fontSize: 10, fontWeight: 700,
+            letterSpacing: 0.6, textTransform: 'uppercase',
+          }}>Open Discover →</button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -436,8 +507,42 @@ function RailGameCard({ game, favorite, teamFor, live, finals, onOpenGame, onJoi
         )}
       </div>
       <div style={{ padding: '8px 10px' }}>
-        <CompactScoreRow team={away} score={game.awayScore} />
-        <CompactScoreRow team={home} score={game.homeScore} />
+        <CompactScoreRow team={away} score={game.awayScore} record={game.awayRecord} league={game.league} />
+        <CompactScoreRow team={home} score={game.homeScore} record={game.homeRecord} league={game.league} />
+        {(() => {
+          // Series / aggregate footer matches the mobile rail cards.
+          // Single line so cards stay compact.
+          if (game.series && (game.series.summary || game.series.bestOf)) {
+            return (
+              <div style={{
+                marginTop: 6,
+                fontFamily: 'var(--cn-font-mono)', fontSize: 9,
+                color: 'var(--cn-accent)', letterSpacing: 0.5,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>
+                SERIES {game.series.summary || ''}{game.series.bestOf ? ` · BEST OF ${game.series.bestOf}` : ''}
+              </div>
+            );
+          }
+          if (game.aggregate) {
+            const a = Number(game.aggregate.away), h = Number(game.aggregate.home);
+            let label = '';
+            if (Number.isFinite(a) && Number.isFinite(h)) {
+              if (a === h) label = `LEVEL ON AGG ${a}–${h}`;
+              else if (a > h) label = `${(away.code || 'AWAY').toUpperCase()} LEAD AGG ${a}–${h}`;
+              else            label = `${(home.code || 'HOME').toUpperCase()} LEAD AGG ${h}–${a}`;
+            }
+            if (label) return (
+              <div style={{
+                marginTop: 6,
+                fontFamily: 'var(--cn-font-mono)', fontSize: 9,
+                color: 'var(--cn-accent)', letterSpacing: 0.5,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>{label}</div>
+            );
+          }
+          return null;
+        })()}
       </div>
       {live && onJoin && (
         <button onClick={e => { e.stopPropagation(); onJoin(game); }} style={{
