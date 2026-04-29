@@ -190,10 +190,11 @@ function CNTRDApp() {
 
       const user = serverMe ? normalizeMe(serverMe) : null;
       setMe(user);
-      try {
-        const stored = localStorage.getItem(STORAGE.screen);
-        setScreen(user ? (stored || 'home') : 'login');
-      } catch { setScreen(user ? 'home' : 'login'); }
+      // Always land on the feed when the app is reopened — last-screen
+      // restore felt like the app remembered "where I was inside" even
+      // after I'd closed it. Login screen still wins when unauthed.
+      setScreen(user ? 'home' : 'login');
+      try { localStorage.removeItem(STORAGE.screen); } catch {}
       setBootstrapped(true);
     }
     boot();
@@ -285,7 +286,6 @@ function CNTRDApp() {
       API.setToken(null);
       setMe(null);
       setScreen('login');
-      try { localStorage.setItem(STORAGE.screen, 'login'); } catch {}
       return;
     }
     const target = next === 'search' ? 'home' : next;
@@ -296,7 +296,6 @@ function CNTRDApp() {
     // target so the next session starts fresh.
     if (target !== 'compose') setReplyTo(null);
     setScreen(target);
-    try { localStorage.setItem(STORAGE.screen, target); } catch {}
   }, []);
 
   const handleLogin = React.useCallback(async ({ login, password, persist = true }) => {
@@ -373,7 +372,6 @@ function CNTRDApp() {
       if (!code) return;
       setSelectedTag(code);
       setScreen('tagFeed');
-      try { localStorage.setItem(STORAGE.screen, 'tagFeed'); } catch {}
     };
     window.addEventListener('cntrd:open-tag', handler);
     return () => window.removeEventListener('cntrd:open-tag', handler);
@@ -384,7 +382,6 @@ function CNTRDApp() {
     if (!game?.id || !game?.league) return;
     setSelectedGame({ id: game.id, league: game.league });
     setScreen('gameDetail');
-    try { localStorage.setItem(STORAGE.screen, 'gameDetail'); } catch {}
   }, []);
 
   // Pick a specific game's gameday chat (from a rail card's "Join the chat",
@@ -393,7 +390,6 @@ function CNTRDApp() {
     if (!game?.id || !game?.league) return;
     setGamedayPick(game);
     setScreen('chat');
-    try { localStorage.setItem(STORAGE.screen, 'chat'); } catch {}
   }, []);
 
   // Open a specific Play in the full-screen viewer (from PlayBubble or the
@@ -402,7 +398,6 @@ function CNTRDApp() {
     if (play && play.id) setSelectedPlay(play);
     else setSelectedPlay(null);
     setScreen('plays');
-    try { localStorage.setItem(STORAGE.screen, 'plays'); } catch {}
   }, []);
 
   const handleDeletePlay = React.useCallback(async (id) => {
@@ -440,7 +435,6 @@ function CNTRDApp() {
       if (!g?.id || !g?.league) return;
       setSelectedGame({ id: g.id, league: g.league });
       setScreen('gameDetail');
-      try { localStorage.setItem(STORAGE.screen, 'gameDetail'); } catch {}
     };
     window.addEventListener('cntrd:open-game-from-notif', handler);
     return () => window.removeEventListener('cntrd:open-game-from-notif', handler);
@@ -453,7 +447,6 @@ function CNTRDApp() {
       if (!t?.league || !t?.teamId) return;
       setScheduleTeam(t);
       setScreen('teamSchedule');
-      try { localStorage.setItem(STORAGE.screen, 'teamSchedule'); } catch {}
     };
     window.addEventListener('cntrd:open-team-schedule', handler);
     return () => window.removeEventListener('cntrd:open-team-schedule', handler);
@@ -467,12 +460,10 @@ function CNTRDApp() {
       // Tapping yourself routes to your own profile screen.
       if (me?.username && u === me.username) {
         setScreen('profile');
-        try { localStorage.setItem(STORAGE.screen, 'profile'); } catch {}
         return;
       }
       setViewUsername(u);
       setScreen('userProfile');
-      try { localStorage.setItem(STORAGE.screen, 'userProfile'); } catch {}
     };
     window.addEventListener('cntrd:open-user', handler);
     return () => window.removeEventListener('cntrd:open-user', handler);
@@ -487,7 +478,6 @@ function CNTRDApp() {
       const target = posts.find(p => p.id === id) || null;
       setReplyTo(target || { id });
       setScreen('compose');
-      try { localStorage.setItem(STORAGE.screen, 'compose'); } catch {}
     };
     window.addEventListener('cntrd:open-reply', handler);
     return () => window.removeEventListener('cntrd:open-reply', handler);
