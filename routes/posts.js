@@ -357,16 +357,35 @@ router.post('/:id/repost', requireAuth, (req, res) => {
   }
 });
 
-// Delete post
+// Delete post. Authors can always delete their own. Admins can delete
+// other users' posts via this endpoint too (the admin console hits it
+// directly), subject to the same protection ladder as
+// /api/admin/posts/:id — admins can't touch owner or fellow-admin
+// posts; only the owner can.
 router.delete('/:id', requireAuth, (req, res) => {
-  const post = db.prepare('SELECT id, user_id, reply_to FROM posts WHERE id = ?').get(req.params.id);
+  const post = db.prepare(`
+    SELECT p.id, p.user_id, p.reply_to,
+           u.is_admin AS author_is_admin, u.is_owner AS author_is_owner
+    FROM posts p JOIN users u ON u.id = p.user_id
+    WHERE p.id = ?
+  `).get(req.params.id);
   if (!post) return res.status(404).json({ error: 'Post not found' });
-  if (post.user_id !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
+
+  const isAuthor = post.user_id === req.user.id;
+  if (!isAuthor) {
+    if (!req.user.is_admin) return res.status(403).json({ error: 'Not authorized' });
+    if (post.author_is_owner && !req.user.is_owner) {
+      return res.status(403).json({ error: "Can't delete the owner's posts" });
+    }
+    if (post.author_is_admin && !req.user.is_owner) {
+      return res.status(403).json({ error: "Only the owner can delete another admin's posts" });
+    }
+  }
 
   db.prepare('DELETE FROM likes   WHERE post_id = ?').run(req.params.id);
   db.prepare('DELETE FROM reposts WHERE post_id = ?').run(req.params.id);
   db.prepare('DELETE FROM posts   WHERE id = ?').run(req.params.id);
-  db.prepare('UPDATE users SET post_count = MAX(0, post_count - 1) WHERE id = ?').run(req.user.id);
+  db.prepare('UPDATE users SET post_count = MAX(0, post_count - 1) WHERE id = ?').run(post.user_id);
   if (post.reply_to) {
     db.prepare('UPDATE posts SET reply_count = MAX(0, reply_count - 1) WHERE id = ?').run(post.reply_to);
   }
