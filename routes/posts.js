@@ -363,34 +363,64 @@ router.post('/:id/repost', requireAuth, (req, res) => {
 // /api/admin/posts/:id — admins can't touch owner or fellow-admin
 // posts; only the owner can.
 router.delete('/:id', requireAuth, (req, res) => {
-  const post = db.prepare(`
-    SELECT p.id, p.user_id, p.reply_to,
-           u.is_admin AS author_is_admin, u.is_owner AS author_is_owner
-    FROM posts p JOIN users u ON u.id = p.user_id
-    WHERE p.id = ?
-  `).get(req.params.id);
-  if (!post) return res.status(404).json({ error: 'Post not found' });
+  try {
+    const post = db.prepare(`
+      SELECT p.id, p.user_id, p.reply_to,
+             u.is_admin AS author_is_admin, u.is_owner AS author_is_owner
+      FROM posts p JOIN users u ON u.id = p.user_id
+      WHERE p.id = ?
+    `).get(req.params.id);
+    if (!post) return res.status(404).json({ error: 'Post not found' });
 
-  const isAuthor = post.user_id === req.user.id;
-  if (!isAuthor) {
-    if (!req.user.is_admin) return res.status(403).json({ error: 'Not authorized' });
-    if (post.author_is_owner && !req.user.is_owner) {
-      return res.status(403).json({ error: "Can't delete the owner's posts" });
+    const isAuthor = post.user_id === req.user.id;
+    if (!isAuthor) {
+      if (!req.user.is_admin) return res.status(403).json({ error: 'Not authorized' });
+      if (post.author_is_owner && !req.user.is_owner) {
+        return res.status(403).json({ error: "Can't delete the owner's posts" });
+      }
+      if (post.author_is_admin && !req.user.is_owner) {
+        return res.status(403).json({ error: "Only the owner can delete another admin's posts" });
+      }
     }
-    if (post.author_is_admin && !req.user.is_owner) {
-      return res.status(403).json({ error: "Only the owner can delete another admin's posts" });
-    }
-  }
 
-  db.prepare('DELETE FROM likes   WHERE post_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM reposts WHERE post_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM posts   WHERE id = ?').run(req.params.id);
-  db.prepare('UPDATE users SET post_count = MAX(0, post_count - 1) WHERE id = ?').run(post.user_id);
-  if (post.reply_to) {
-    db.prepare('UPDATE posts SET reply_count = MAX(0, reply_count - 1) WHERE id = ?').run(post.reply_to);
-  }
+    // Recursively delete the post + every reply hanging off it. The
+    // posts.reply_to FK has no ON DELETE clause, so a parent with
+    // replies fails to delete unless we walk the tree first. likes /
+    // reposts / bookmarks have to come down per-post since their FKs
+    // also lack cascade. Wrapping in a transaction keeps a partial
+    // failure from leaving the tree half-deleted.
+    const cascade = db.transaction((rootId) => {
+      const childPosts = (id) => db.prepare('SELECT id FROM posts WHERE reply_to = ?').all(id);
+      const removeOne = (id) => {
+        for (const c of childPosts(id)) removeOne(c.id);
+        const row = db.prepare('SELECT user_id, reply_to FROM posts WHERE id = ?').get(id);
+        if (!row) return;
+        db.prepare('DELETE FROM likes     WHERE post_id = ?').run(id);
+        db.prepare('DELETE FROM reposts   WHERE post_id = ?').run(id);
+        db.prepare('DELETE FROM bookmarks WHERE post_id = ?').run(id);
+        db.prepare('DELETE FROM posts     WHERE id = ?').run(id);
+        db.prepare('UPDATE users SET post_count = MAX(0, post_count - 1) WHERE id = ?').run(row.user_id);
+        // Only decrement the parent's reply_count if the parent is
+        // still around (i.e. we're removing a child mid-walk, not the
+        // parent itself which we'll delete after).
+        if (row.reply_to && row.reply_to !== rootId) {
+          db.prepare('UPDATE posts SET reply_count = MAX(0, reply_count - 1) WHERE id = ?').run(row.reply_to);
+        }
+      };
+      removeOne(rootId);
+      // If the deleted post was itself a reply, keep its parent's
+      // reply count honest.
+      if (post.reply_to) {
+        db.prepare('UPDATE posts SET reply_count = MAX(0, reply_count - 1) WHERE id = ?').run(post.reply_to);
+      }
+    });
+    cascade(req.params.id);
 
-  res.json({ success: true });
+    res.json({ success: true });
+  } catch (e) {
+    console.error('post delete error:', e?.message || e);
+    res.status(500).json({ error: e?.message || 'Delete failed' });
+  }
 });
 
 module.exports = router;

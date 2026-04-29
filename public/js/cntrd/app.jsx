@@ -106,6 +106,7 @@ function CNTRDApp() {
   const [scheduleTeam, setScheduleTeam] = React.useState(null);  // { league, teamId, name, primary, code, logo }
   const [viewUsername, setViewUsername] = React.useState(null);  // username being inspected on userProfile screen
   const [discoverQuery, setDiscoverQuery] = React.useState('');   // seeds the Discover screen's input
+  const [threadPostId, setThreadPostId] = React.useState(null);   // post being viewed in the thread screen
   const [selectedTag, setSelectedTag]   = React.useState(null);  // 'NFL:PHI' or 'PHI'
   const [selectedPlay, setSelectedPlay] = React.useState(null);  // play object when viewing a specific Play
   const [gamedayPick, setGamedayPick]   = React.useState(null);  // { id, league, ... } when entering chat for a specific game
@@ -500,6 +501,18 @@ function CNTRDApp() {
     return () => window.removeEventListener('cntrd:open-user', handler);
   }, [me?.username]);
 
+  // Tap a post body anywhere → open the thread (post + replies).
+  React.useEffect(() => {
+    const handler = (e) => {
+      const id = e.detail?.postId;
+      if (!id) return;
+      setThreadPostId(id);
+      setScreen('postThread');
+    };
+    window.addEventListener('cntrd:open-post-thread', handler);
+    return () => window.removeEventListener('cntrd:open-post-thread', handler);
+  }, []);
+
   // Inline rail search → "See all results" / Enter routes to the
   // Discover screen with the query pre-filled.
   React.useEffect(() => {
@@ -562,6 +575,7 @@ function CNTRDApp() {
     teamSchedule: TeamScheduleScreen,
     userProfile:  UserProfileScreen,
     discover:     DiscoverScreen,
+    postThread:   PostThreadScreen,
     tagFeed:      TagFeedScreen,
     messages:     MessagesRoot,
     notifications: NotificationsScreen,
@@ -581,6 +595,7 @@ function CNTRDApp() {
     scheduleTeam,
     viewUsername,
     discoverQuery,
+    threadPostId,
     gamedayPick, setGamedayPick,
     onOpenGameday: handleOpenGameday,
     onOpenPlay: handleOpenPlay,

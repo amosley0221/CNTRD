@@ -114,6 +114,7 @@ const API = {
   feed()                   { return request('GET',  '/api/posts/feed'); },
   explore()                { return request('GET',  '/api/posts/explore'); },
   postsByTag(code)         { return request('GET',  `/api/posts/by-tag/${encodeURIComponent(code)}`); },
+  post(id)                 { return request('GET',  `/api/posts/${encodeURIComponent(id)}`); },
   createPost(payload)      { return request('POST', '/api/posts', payload); },
   editPost(id, content)    { return request('PATCH',`/api/posts/${id}`, { content }); },
   deletePost(id)           { return request('DELETE',`/api/posts/${id}`); },

@@ -162,9 +162,10 @@ function PostFooter({ likes, replies, reposts, postId, initiallyLiked, initially
 
   const onReply = (e) => {
     e?.stopPropagation();
-    // Trigger an app-level event so the composer screen opens with the
-    // post pre-filled as a reply target.
-    window.dispatchEvent(new CustomEvent('cntrd:open-reply', { detail: { postId } }));
+    // Open the post's thread view — replies render inline beneath the
+    // original post, with a sticky reply composer at the bottom. That
+    // gives the reply context the standalone composer never had.
+    window.dispatchEvent(new CustomEvent('cntrd:open-post-thread', { detail: { postId } }));
   };
   const onRepost = async (e) => {
     e?.stopPropagation();
@@ -308,10 +309,21 @@ function PostShell({ children, post }) {
     } catch (e) { alert(e.message || 'Block failed'); }
   };
 
+  // Tap anywhere on the post body (but not on a button / link / form
+  // control) opens the thread view with replies. Skip if we're in the
+  // middle of editing inline.
+  const onArticleClick = (e) => {
+    if (editing) return;
+    if (e.target.closest && e.target.closest('button, a, input, textarea, select')) return;
+    if (window.getSelection && String(window.getSelection() || '').length > 0) return;  // user is selecting text
+    window.dispatchEvent(new CustomEvent('cntrd:open-post-thread', { detail: { postId: post.id } }));
+  };
+
   return (
-    <article style={{
+    <article onClick={onArticleClick} style={{
       padding: 'var(--cn-post-pad-v) var(--cn-post-pad-h)',
       background: 'var(--cn-bg)',
+      cursor: editing ? 'default' : 'pointer',
       borderBottom: '0.5px solid var(--cn-border)',
       color: 'var(--cn-text)',
       fontFamily: 'var(--cn-font-body)',
