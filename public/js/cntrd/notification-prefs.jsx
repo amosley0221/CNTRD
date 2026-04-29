@@ -15,6 +15,7 @@ const NOTIF_PREF_GROUPS = [
   {
     title: 'Social',
     items: [
+      { key: 'post',            label: 'Posts from people you follow', sub: 'Rolled up to one notification per person per day' },
       { key: 'follow',          label: 'New followers',       sub: 'Someone followed you' },
       { key: 'follow_request',  label: 'Follow requests',     sub: 'Someone wants to follow your private account' },
       { key: 'follow_accept',   label: 'Follow accepted',     sub: 'Someone accepted your request' },

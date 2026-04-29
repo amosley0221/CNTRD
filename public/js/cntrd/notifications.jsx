@@ -6,7 +6,7 @@
 //               we add a queueing concept)
 
 const SCORE_TYPES    = new Set(['live_game', 'score', 'period_end', 'final']);
-const ACTIVITY_TYPES = new Set(['follow', 'follow_accept', 'message']);
+const ACTIVITY_TYPES = new Set(['follow', 'follow_accept', 'message', 'post']);
 
 function categorizeNotif(n) {
   if (SCORE_TYPES.has(n.type))    return 'scores';
@@ -253,6 +253,13 @@ function renderNotifText(n) {
       return { headline: `${actor} accepted your follow request`, body: '' };
     case 'message':
       return { headline: `${actor} sent a message`, body: d.preview || '' };
+    case 'post': {
+      const count = Number(d.count) || 1;
+      const headline = count === 1
+        ? `${actor} posted`
+        : `${actor} posted ${count} times today`;
+      return { headline, body: d.preview || '' };
+    }
     case 'live_game':
       return { headline: `${matchup} just tipped off`, body: `${d.league || ''} · ${d.period || 'Live'}` };
     case 'score': {

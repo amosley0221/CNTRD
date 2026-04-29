@@ -16,6 +16,7 @@ function getEspn() {
 const KNOWN_TYPES = [
   'live_game', 'score', 'period_end', 'final',
   'follow', 'follow_request', 'follow_accept', 'message',
+  'post',
 ];
 
 // Defaults: every type on. Users can opt out from Settings.
@@ -222,8 +223,58 @@ function startLiveGameTicker(intervalMs = 60 * 1000) {
   tickerInterval = setInterval(liveGameTick, intervalMs);
 }
 
+// Roll up posts from a single author into one notification per follower
+// per UTC day. The first post of the day creates the row with count=1; each
+// later post bumps count, refreshes the preview, and clears read_at so the
+// row reappears as unread. Skipped if the follower has post notifications
+// turned off.
+function rollupPostNotif({ followerId, author, post }) {
+  if (!followerId || !author?.id || !post?.id) return null;
+  if (!userWantsType(followerId, 'post')) return null;
+
+  // YYYY-MM-DD in UTC — straightforward and timezone-independent on the server.
+  const today = new Date().toISOString().slice(0, 10);
+  const dedupeKey = `post:${author.id}:${today}`;
+  const preview = String(post.content || '').slice(0, 140);
+
+  const existing = db.prepare(
+    'SELECT id, data FROM notifications WHERE user_id = ? AND dedupe_key = ?'
+  ).get(followerId, dedupeKey);
+
+  if (existing) {
+    let data = {};
+    try { data = JSON.parse(existing.data || '{}'); } catch {}
+    data.count          = (Number(data.count) || 1) + 1;
+    data.preview        = preview;
+    data.last_post_id   = post.id;
+    data.last_post_type = post.type || 'take';
+    db.prepare(`
+      UPDATE notifications
+      SET data = ?, actor_id = ?, read_at = NULL, created_at = datetime('now')
+      WHERE id = ?
+    `).run(JSON.stringify(data), author.id, existing.id);
+    return existing.id;
+  }
+
+  const id = uuidv4();
+  const data = {
+    count: 1,
+    preview,
+    last_post_id: post.id,
+    last_post_type: post.type || 'take',
+    author_username: author.username,
+    author_displayName: author.displayName,
+  };
+  db.prepare(`
+    INSERT INTO notifications (id, user_id, type, actor_id, data, dedupe_key)
+    VALUES (?, ?, 'post', ?, ?, ?)
+  `).run(id, followerId, author.id, JSON.stringify(data), dedupeKey);
+  return id;
+}
+
 module.exports = {
   notify,
+  rollupPostNotif,
   startLiveGameTicker,
   liveGameTick,
   KNOWN_TYPES,

@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../database/db');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { isValidTeamCode } = require('../data/teams');
+const { rollupPostNotif } = require('../services/notifier');
 
 const VALID_TYPES = new Set(['take', 'photo', 'score', 'poll', 'clip', 'box', 'rumor']);
 
@@ -122,6 +123,31 @@ router.post('/', requireAuth, (req, res) => {
   db.prepare('UPDATE users SET post_count = post_count + 1 WHERE id = ?').run(req.user.id);
   if (reply_to) {
     db.prepare('UPDATE posts SET reply_count = reply_count + 1 WHERE id = ?').run(reply_to);
+  }
+
+  // Fan out a roll-up "@author posted" notification to every follower (only
+  // for top-level posts, not replies). Each recipient gets one row per
+  // author per UTC day; further posts the same day bump count + preview
+  // on the existing row. Blocked relationships exclude both directions.
+  if (!reply_to) {
+    const author = db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(req.user.id);
+    const followers = db.prepare(`
+      SELECT f.follower_id AS id
+      FROM follows f
+      WHERE f.following_id = ?
+        AND f.follower_id NOT IN (SELECT blocked_id FROM blocks WHERE blocker_id = ?)
+        AND f.follower_id NOT IN (SELECT blocker_id FROM blocks WHERE blocked_id = ?)
+    `).all(author.id, author.id, author.id);
+    const fanOut = db.transaction((rows) => {
+      for (const r of rows) {
+        rollupPostNotif({
+          followerId: r.id,
+          author: { id: author.id, username: author.username, displayName: author.display_name },
+          post: { id, content: trimmed || '', type: postType },
+        });
+      }
+    });
+    fanOut(followers);
   }
 
   const row = db.prepare(`${SELECT_POST} WHERE p.id = ?`).get(id);
