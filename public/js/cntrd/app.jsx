@@ -32,7 +32,17 @@ function useTweaks(defaults) {
       return next;
     });
   }, []);
-  return [t, setTweak];
+  // Replace the whole object at once (used when hydrating from the server
+  // on login). Skips network/storage churn — caller writes back if needed.
+  const replaceTweaks = React.useCallback((incoming) => {
+    if (!incoming || typeof incoming !== 'object') return;
+    setT(prev => {
+      const next = { ...prev, ...incoming };
+      try { localStorage.setItem(STORAGE.tweaks, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+  return [t, setTweak, replaceTweaks];
 }
 
 function useMediaQuery(query) {
@@ -78,11 +88,12 @@ function normalizeMe(u) {
     is_admin: !!u.is_admin,
     banned: !!u.banned,
     notificationPrefs: u.notification_prefs || {},
+    tweaks: u.tweaks || {},
   };
 }
 
 function CNTRDApp() {
-  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const [tweaks, setTweak, replaceTweaks] = useTweaks(TWEAK_DEFAULTS);
   const [me, setMe] = React.useState(null);
   const [bootstrapped, setBootstrapped] = React.useState(false);
   const [posts, setPosts] = React.useState([]);
@@ -95,6 +106,7 @@ function CNTRDApp() {
   const [messageContext, setMessageContext] = React.useState({ mode: 'list' });
   const [unreadMessages, setUnreadMessages] = React.useState(0);
   const [unreadNotifs, setUnreadNotifs]     = React.useState(0);
+  const [pendingFeed, setPendingFeed] = React.useState([]);   // staged new posts; user taps to merge
   const [replyTo, setReplyTo] = React.useState(null);   // post being replied to in composer
   const [screen, setScreen] = React.useState('login');
 
@@ -113,6 +125,33 @@ function CNTRDApp() {
 
   // Reflect ME globally so design components that read window.ME pick it up.
   React.useEffect(() => { window.ME = me || (window.__originalME ||= window.ME); }, [me]);
+
+  // When the user signs in (or /me lands on bootstrap), pull their saved
+  // tweaks from the server so accent + dark/light follow them across
+  // devices. Only runs when there's something to merge — first-time signups
+  // start with the local defaults.
+  const hydratedFromServerRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!me || hydratedFromServerRef.current) return;
+    if (me.tweaks && Object.keys(me.tweaks).length) {
+      replaceTweaks(me.tweaks);
+    }
+    hydratedFromServerRef.current = true;
+  }, [me, replaceTweaks]);
+  // Reset the hydration flag so the next sign-in re-syncs.
+  React.useEffect(() => {
+    if (!me) hydratedFromServerRef.current = false;
+  }, [me]);
+
+  // Push tweak changes back to the server (debounced) once we've hydrated.
+  // This is best-effort — if the request fails, the local copy still wins.
+  React.useEffect(() => {
+    if (!me || !hydratedFromServerRef.current) return;
+    const id = setTimeout(() => {
+      window.API?.saveTweaks?.(tweaks).catch(() => {});
+    }, 600);
+    return () => clearTimeout(id);
+  }, [tweaks, me]);
 
   // Bootstrap: try existing token → /me; pick a sensible initial screen.
   // Also fetch the full league/team registry once and merge it into globals
@@ -172,6 +211,7 @@ function CNTRDApp() {
         if (cancelled) return;
         setPosts((serverPosts || []).map(normalizePost));
         setPlays((serverPlays || []).map(normalizePlay));
+        setPendingFeed([]);
       } catch (e) {
         // Network/server hiccup — fall back to mock data already in window.POSTS/PLAYS.
         if (!cancelled) { setPosts([]); setPlays([]); }
@@ -179,6 +219,37 @@ function CNTRDApp() {
     })();
     return () => { cancelled = true; };
   }, [authed, bootstrapped]);
+
+  // Poll for new posts in the background. We don't merge them into `posts`
+  // automatically — the user opts in by tapping the "X new posts" pill, so
+  // they don't lose their scroll position.
+  React.useEffect(() => {
+    if (!bootstrapped) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const fresh = await (authed ? API.feed() : API.explore());
+        if (cancelled) return;
+        const knownIds = new Set(posts.map(p => p.id));
+        const additions = (fresh || [])
+          .filter(p => p && p.id && !knownIds.has(p.id))
+          .map(normalizePost);
+        if (additions.length) setPendingFeed(additions);
+      } catch { /* ignore */ }
+    };
+    const id = setInterval(tick, 60 * 1000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [authed, bootstrapped, posts]);
+
+  const handleRefreshFeed = React.useCallback(() => {
+    if (!pendingFeed.length) return;
+    setPosts(prev => {
+      const seen = new Set(prev.map(p => p.id));
+      const merge = pendingFeed.filter(p => !seen.has(p.id));
+      return [...merge, ...prev];
+    });
+    setPendingFeed([]);
+  }, [pendingFeed]);
 
   // Poll live + recent games every 60s.
   React.useEffect(() => {
@@ -420,6 +491,8 @@ function CNTRDApp() {
     onDeletePlay: handleDeletePlay,
     messageContext, setMessageContext,
     replyTo,
+    feedPending: pendingFeed.length,
+    onRefreshFeed: handleRefreshFeed,
     unreadMessages, unreadNotifs,
     onUnread: setUnreadMessages,
     onUnreadNotifs: setUnreadNotifs,

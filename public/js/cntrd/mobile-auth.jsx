@@ -573,8 +573,26 @@ function SettingsScreen({ tweaks, setTweak, onNav, me, onMeUpdated, unreadNotifs
 // game. Tap a row → opens that game's chat. Favorite-team games (matched
 // league-aware) float to a "YOUR TEAMS" group at the top.
 function GamedayList({ tweaks, onNav, games, me, onPick }) {
-  const live     = games?.live     || [];
-  const upcoming = games?.upcoming || [];
+  const allLive     = games?.live     || [];
+  const allUpcoming = games?.upcoming || [];
+
+  // League filter — derived from whatever leagues actually have games today.
+  const [leagueFilter, setLeagueFilter] = React.useState('all');
+  const availableLeagues = React.useMemo(() => {
+    const seen = new Set();
+    for (const g of [...allLive, ...allUpcoming]) if (g?.league) seen.add(g.league);
+    return Array.from(seen).sort();
+  }, [allLive, allUpcoming]);
+  // Drop a stale filter if the league no longer has games today.
+  React.useEffect(() => {
+    if (leagueFilter !== 'all' && !availableLeagues.includes(leagueFilter)) {
+      setLeagueFilter('all');
+    }
+  }, [leagueFilter, availableLeagues]);
+
+  const inLeague = (g) => leagueFilter === 'all' || g.league === leagueFilter;
+  const live     = allLive.filter(inLeague);
+  const upcoming = allUpcoming.filter(inLeague);
 
   const favSet = React.useMemo(() => new Set(me?.teams || []), [me]);
   const matches = (g) => {
@@ -605,6 +623,29 @@ function GamedayList({ tweaks, onNav, games, me, onPick }) {
         <span style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 14 }}>GAMEDAY</span>
         <span style={{ width: 32 }} />
       </div>
+      {availableLeagues.length > 1 && (
+        <div style={{
+          display: 'flex', gap: 6, padding: '8px 14px',
+          overflowX: 'auto',
+          borderBottom: '0.5px solid var(--cn-border)',
+          background: 'var(--cn-bg-elev2)',
+        }}>
+          {[{ id: 'all', label: 'All' }, ...availableLeagues.map(l => ({ id: l, label: l }))].map(o => {
+            const active = leagueFilter === o.id;
+            return (
+              <button key={o.id} onClick={() => setLeagueFilter(o.id)} style={{
+                padding: '5px 12px', borderRadius: 999,
+                background: active ? 'var(--cn-accent)' : 'transparent',
+                color: active ? 'var(--cn-on-accent)' : 'var(--cn-text-dim)',
+                border: `0.5px solid ${active ? 'transparent' : 'var(--cn-border-s)'}`,
+                fontFamily: 'var(--cn-font-body)',
+                fontSize: 11, fontWeight: 700,
+                cursor: 'pointer', whiteSpace: 'nowrap',
+              }}>{o.label}</button>
+            );
+          })}
+        </div>
+      )}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {empty ? (
           <div style={{ padding: 32, textAlign: 'center' }}>

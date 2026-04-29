@@ -20,10 +20,13 @@ function NotificationsScreen({ tweaks, onNav, me, setMessageContext, onUnreadNot
   const [tab, setTab] = React.useState('scores');
   const [notifs, setNotifs] = React.useState([]);
   const [requests, setRequests] = React.useState([]);
+  const [pendingCount, setPendingCount] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState(null);
+  const scrollerRef = React.useRef(null);
 
-  const load = React.useCallback(async () => {
+  // Manual refresh — replaces the visible list with the latest server data.
+  const refresh = React.useCallback(async () => {
     setErr(null);
     try {
       const [list, reqs] = await Promise.all([
@@ -32,6 +35,8 @@ function NotificationsScreen({ tweaks, onNav, me, setMessageContext, onUnreadNot
       ]);
       setNotifs(list || []);
       setRequests(reqs || []);
+      setPendingCount(0);
+      if (scrollerRef.current) scrollerRef.current.scrollTop = 0;
     } catch (e) {
       setErr(e.message || 'Failed to load');
     } finally {
@@ -39,11 +44,29 @@ function NotificationsScreen({ tweaks, onNav, me, setMessageContext, onUnreadNot
     }
   }, []);
 
+  // Background poll — compares server IDs against what's on screen and
+  // stages a "X new" pill instead of mutating the visible list, so the
+  // user keeps their position.
   React.useEffect(() => {
-    load();
-    const id = setInterval(load, 15000);
+    refresh();
+  }, [refresh]);
+
+  React.useEffect(() => {
+    const tick = async () => {
+      try {
+        const [list, reqs] = await Promise.all([
+          API.notifications(),
+          API.followRequests(),
+        ]);
+        const knownIds = new Set(notifs.map(n => n.id));
+        const newOnes = (list || []).filter(n => n && n.id && !knownIds.has(n.id));
+        setRequests(reqs || []);
+        setPendingCount(newOnes.length);
+      } catch { /* ignore */ }
+    };
+    const id = setInterval(tick, 15000);
     return () => clearInterval(id);
-  }, [load]);
+  }, [notifs]);
 
   // Counts per tab — show on the tab pill if there's anything unread.
   const counts = React.useMemo(() => {
@@ -165,7 +188,23 @@ function NotificationsScreen({ tweaks, onNav, me, setMessageContext, onUnreadNot
         ))}
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div ref={scrollerRef} style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
+        {pendingCount > 0 && (
+          <button onClick={refresh} style={{
+            position: 'sticky', top: 8, left: 0, right: 0, margin: '8px auto',
+            zIndex: 5, display: 'flex',
+            padding: '7px 16px', borderRadius: 999,
+            background: 'var(--cn-accent)', color: 'var(--cn-on-accent)',
+            border: 'none', cursor: 'pointer',
+            fontFamily: 'var(--cn-font-body)', fontWeight: 700, fontSize: 12,
+            boxShadow: '0 6px 18px rgba(0,0,0,0.35)',
+            alignItems: 'center', gap: 6,
+            width: 'fit-content',
+          }}>
+            <span aria-hidden style={{ fontSize: 13, lineHeight: 1 }}>↑</span>
+            {pendingCount} new {pendingCount === 1 ? 'notification' : 'notifications'}
+          </button>
+        )}
         {loading ? <NotifEmpty>Loading…</NotifEmpty>
           : err ? <NotifEmpty danger>{err}</NotifEmpty>
           : tab === 'requests' ? (

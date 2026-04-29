@@ -11,7 +11,7 @@ const leaguesRouter = require('./leagues');
 const USER_COLUMNS =
   'id, username, email, display_name, bio, avatar, banner, team_tags, ' +
   'followed_leagues, avatar_hue, pronouns, city, is_admin, banned, ' +
-  'is_private, notification_prefs, ' +
+  'is_private, notification_prefs, tweaks, ' +
   'follower_count, following_count, post_count, created_at';
 
 const { DEFAULT_PREFS, KNOWN_TYPES } = require('../services/notifier');
@@ -26,6 +26,9 @@ function hydrate(user) {
   let prefs = {};
   try { prefs = JSON.parse(user.notification_prefs || '{}'); } catch {}
   user.notification_prefs = { ...DEFAULT_PREFS, ...prefs };
+  let tweaks = {};
+  try { tweaks = JSON.parse(user.tweaks || '{}'); } catch {}
+  user.tweaks = tweaks;
   return user;
 }
 
@@ -204,6 +207,19 @@ router.patch('/account', requireAuth, (req, res) => {
 
   const updated = hydrate(db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`).get(me.id));
   res.json(updated);
+});
+
+// Save UI tweaks (accent color, dark/light, density, etc.) so settings
+// follow the user across devices. Body is the entire tweaks object — small
+// enough that overwriting is fine.
+router.put('/tweaks', requireAuth, (req, res) => {
+  const incoming = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : null;
+  if (!incoming) return res.status(400).json({ error: 'Body must be a JSON object' });
+  // Cap the serialized size so a misuse can't bloat the row.
+  const json = JSON.stringify(incoming);
+  if (json.length > 4000) return res.status(413).json({ error: 'Tweaks too large' });
+  db.prepare('UPDATE users SET tweaks = ? WHERE id = ?').run(json, req.user.id);
+  res.json({ tweaks: incoming });
 });
 
 module.exports = router;

@@ -185,6 +185,9 @@ ensureColumn('users', 'followed_leagues', "TEXT DEFAULT '[]'");
 ensureColumn('users', 'is_private',       "INTEGER DEFAULT 0");
 // JSON object: per-type opt-out flags for notifications. Missing key = on.
 ensureColumn('users', 'notification_prefs', "TEXT DEFAULT '{}'");
+// JSON object: UI tweaks (accent, dark/light, density, etc.) so settings
+// follow the user across devices.
+ensureColumn('users', 'tweaks', "TEXT DEFAULT '{}'");
 
 // post type: take | photo | score | poll | clip | box | rumor
 ensureColumn('posts', 'type',  "TEXT DEFAULT 'take'");

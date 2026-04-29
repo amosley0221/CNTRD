@@ -379,9 +379,14 @@ function BottomNav({ active = 'home', onChange }) {
 }
 
 // ─── FEED SCREEN ──────────────────────────────────────────────
-function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame, onOpenGameday, onOpenPlay, unreadNotifs }) {
+function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame, onOpenGameday, onOpenPlay, unreadNotifs, feedPending = 0, onRefreshFeed }) {
   const editorial = tweaks.homeStyle === 'editorial';
   const items = (posts && posts.length ? posts : POSTS);
+  const scrollerRef = React.useRef(null);
+  const refresh = () => {
+    onRefreshFeed?.();
+    if (scrollerRef.current) scrollerRef.current.scrollTop = 0;
+  };
   return (
     <div style={{
       width: '100%', height: '100%',
@@ -389,9 +394,25 @@ function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame, onOpen
       color: 'var(--cn-text)',
       fontFamily: 'var(--cn-font-body)',
       display: 'flex', flexDirection: 'column',
+      position: 'relative',
     }}>
       {editorial ? <EditorialHeader /> : <FeedHeader onNav={onNav} unreadNotifs={unreadNotifs} />}
-      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 96 }}>
+      {feedPending > 0 && (
+        <button onClick={refresh} style={{
+          position: 'absolute', top: 56, left: '50%', transform: 'translateX(-50%)',
+          zIndex: 5,
+          padding: '7px 16px', borderRadius: 999,
+          background: 'var(--cn-accent)', color: 'var(--cn-on-accent)',
+          border: 'none', cursor: 'pointer',
+          fontFamily: 'var(--cn-font-body)', fontWeight: 700, fontSize: 12,
+          boxShadow: '0 6px 18px rgba(0,0,0,0.35)',
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <span aria-hidden style={{ fontSize: 13, lineHeight: 1 }}>↑</span>
+          {feedPending} new {feedPending === 1 ? 'post' : 'posts'}
+        </button>
+      )}
+      <div ref={scrollerRef} style={{ flex: 1, overflowY: 'auto', paddingBottom: 96 }}>
         <PlaysRail
           playsLabel={tweaks.playsLabel || 'PLAYS'}
           plays={plays}
