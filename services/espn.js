@@ -45,6 +45,33 @@ function colorHex(c) {
   return /^[0-9a-fA-F]{6}$/.test(v) ? '#' + v : '#666';
 }
 
+// ESPN's `/teams` list endpoint sometimes omits the logos array. Build a
+// deterministic fallback URL so the fan card / pickers don't fall back to
+// initial badges. ESPN's CDN serves US sports logos by abbreviation and
+// soccer logos by team id.
+const LOGO_SLUG_BY_LEAGUE = {
+  NFL:        'nfl',
+  NBA:        'nba',
+  WNBA:       'wnba',
+  MLB:        'mlb',
+  NHL:        'nhl',
+  NCAAF:      'ncaa',
+  NCAAM:      'ncaa',
+};
+const SOCCER_LEAGUES = new Set(['MLS', 'EPL', 'LaLiga', 'Bundesliga', 'SerieA', 'UCL']);
+function fallbackTeamLogoUrl(leagueCode, espnId, abbreviation) {
+  const code = String(leagueCode || '');
+  if (SOCCER_LEAGUES.has(code) && espnId) {
+    return `https://a.espncdn.com/i/teamlogos/soccer/500/${espnId}.png`;
+  }
+  const slug = LOGO_SLUG_BY_LEAGUE[code];
+  const abbr = String(abbreviation || '').toLowerCase();
+  if (slug && abbr) {
+    return `https://a.espncdn.com/i/teamlogos/${slug}/500/${abbr}.png`;
+  }
+  return '';
+}
+
 function teamFromCompetitor(comp) {
   const t = comp?.team || {};
   // Pick the largest non-default logo ESPN ships. The summary endpoint
@@ -269,8 +296,11 @@ async function fetchLeagueTeams(league) {
       const t = item.team || {};
       const code = (t.abbreviation || (t.shortDisplayName || t.displayName || '???').slice(0, 4)).toUpperCase();
       // Try the most common logo paths. Light variant (`href`) is what
-      // ESPN ships first; if missing, fall back to the bare `logo` URL.
-      const logo = (Array.isArray(t.logos) && t.logos.find(l => l?.href)?.href) || t.logo || '';
+      // ESPN ships first; if missing, fall back to the bare `logo` URL,
+      // and finally synthesize the canonical ESPN CDN path so the UI
+      // never has to fall back to a colored initial badge.
+      const direct = (Array.isArray(t.logos) && t.logos.find(l => l?.href)?.href) || t.logo || '';
+      const logo = direct || fallbackTeamLogoUrl(league.code, t.id, t.abbreviation);
       out.push({
         code,
         key: `${league.code}:${code}`,           // disambiguates across leagues (NFL:PHI vs NBA:PHI)
@@ -486,7 +516,15 @@ async function getGameDetail(leagueCode, eventId) {
 
 async function getAllTeams() {
   const now = Date.now();
-  if (teamsCache && now - teamsCachedAt < TEAMS_TTL_MS) return teamsCache;
+  if (teamsCache && now - teamsCachedAt < TEAMS_TTL_MS) {
+    // Self-heal: if the cached payload was built before we added logo /
+    // id fields, invalidate it so the next call picks up a fresh shape.
+    const sample = Object.values(teamsCache).find(list => list && list.length)?.[0];
+    if (sample && Object.prototype.hasOwnProperty.call(sample, 'logo')) {
+      return teamsCache;
+    }
+    teamsCache = null;
+  }
   if (teamsInflight) return teamsInflight;
 
   teamsInflight = (async () => {

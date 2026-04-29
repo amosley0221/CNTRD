@@ -273,8 +273,14 @@ const LEAGUE_LOGOS = {
 };
 
 // Team logo with a colored-initial fallback. Use it anywhere we have a
-// team object — the size + radius scale together.
+// team object — the size + radius scale together. If the image URL we're
+// given fails to load, we re-render as the colored initial badge instead
+// of leaving a broken-image gap.
 function TeamLogo({ team, size = 24, radius = 5 }) {
+  const [failed, setFailed] = React.useState(false);
+  // Reset the failure flag when the logo URL itself changes.
+  React.useEffect(() => { setFailed(false); }, [team?.logo]);
+
   if (!team) {
     return (
       <div style={{
@@ -285,13 +291,13 @@ function TeamLogo({ team, size = 24, radius = 5 }) {
   }
   const initial = team.code || (team.abbreviation || '').toUpperCase() || '??';
   const fontSize = Math.max(8, Math.round(size * 0.42));
-  if (team.logo) {
+  if (team.logo && !failed) {
     return (
       <img
         src={team.logo}
         alt={team.name || initial}
         loading="lazy"
-        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+        onError={() => setFailed(true)}
         style={{
           width: size, height: size, borderRadius: radius,
           objectFit: 'contain', flexShrink: 0,
