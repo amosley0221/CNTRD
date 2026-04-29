@@ -2,28 +2,65 @@
 // Exposes a global `API` object plus auth helpers and a relative-time formatter.
 
 const TOKEN_KEY = 'cntrd:token';
+const COOKIE_DAYS = 30;
+
+// iOS standalone mode (Add to Home Screen → "Open as web app", especially
+// from Chrome on iOS) sometimes wipes localStorage between launches.
+// Mirror the token into a long-lived cookie so we can recover the
+// session even when storage gets cleared. Cookie is JS-readable on
+// purpose — we still send the JWT via the Authorization header, the
+// cookie just acts as a persistence backup.
+function _writeCookie(name, value, days) {
+  try {
+    const expires = new Date(Date.now() + days * 86400 * 1000).toUTCString();
+    const secure = (typeof location !== 'undefined' && location.protocol === 'https:') ? '; Secure' : '';
+    document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax${secure}`;
+  } catch {}
+}
+function _deleteCookie(name) {
+  try {
+    document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:01 GMT; path=/; SameSite=Lax`;
+  } catch {}
+}
+function _readCookie(name) {
+  try {
+    const re = new RegExp('(?:^|; )' + name + '=([^;]*)');
+    const m = document.cookie.match(re);
+    return m ? decodeURIComponent(m[1]) : null;
+  } catch { return null; }
+}
 
 // Token can be persisted in either localStorage (sticky across sessions —
 // the "Stay signed in" checkbox) or sessionStorage (cleared when the user
-// closes the tab). getToken consults both; setToken writes to whichever the
-// caller picks and clears the other so the two never disagree.
+// closes the tab). getToken consults both, plus a cookie fallback for
+// installed iOS web apps that wipe localStorage.
 function getToken() {
-  try { return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY); }
-  catch { return null; }
+  let t = null;
+  try { t = localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY); } catch {}
+  if (!t) t = _readCookie(TOKEN_KEY);
+  // If the cookie had a token but storage didn't, replant it in
+  // localStorage so subsequent reads are fast and the "logged in" flag
+  // survives even if the cookie expires next.
+  if (t) {
+    try { if (!localStorage.getItem(TOKEN_KEY)) localStorage.setItem(TOKEN_KEY, t); } catch {}
+  }
+  return t;
 }
 function setToken(t, { persist = true } = {}) {
   try {
     if (!t) {
-      localStorage.removeItem(TOKEN_KEY);
-      sessionStorage.removeItem(TOKEN_KEY);
+      try { localStorage.removeItem(TOKEN_KEY); } catch {}
+      try { sessionStorage.removeItem(TOKEN_KEY); } catch {}
+      _deleteCookie(TOKEN_KEY);
       return;
     }
     if (persist) {
-      localStorage.setItem(TOKEN_KEY, t);
-      sessionStorage.removeItem(TOKEN_KEY);
+      try { localStorage.setItem(TOKEN_KEY, t); sessionStorage.removeItem(TOKEN_KEY); } catch {}
+      _writeCookie(TOKEN_KEY, t, COOKIE_DAYS);
     } else {
-      sessionStorage.setItem(TOKEN_KEY, t);
-      localStorage.removeItem(TOKEN_KEY);
+      try { sessionStorage.setItem(TOKEN_KEY, t); localStorage.removeItem(TOKEN_KEY); } catch {}
+      // Session-only login → no cookie. Clear any prior persistent cookie.
+      _deleteCookie(TOKEN_KEY);
     }
   } catch {}
 }

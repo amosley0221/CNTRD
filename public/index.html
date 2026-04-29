@@ -48,7 +48,18 @@
       color: var(--cn-text);
       font-family: var(--cn-font-body);
     }
-    #root { width: 100vw; height: 100vh; height: 100dvh; overflow: hidden; }
+    #root {
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+      /* In iOS standalone mode (Add to Home Screen → "open as app"), the
+         status bar / Dynamic Island overlays the page. Pad the root by
+         the system safe-area inset so the header buttons clear the
+         clock and signal icons. In normal browser tabs these env values
+         are 0, so this is a no-op outside of installed mode. */
+      padding-top: env(safe-area-inset-top);
+    }
     a { color: inherit; text-decoration: none; }
     button { font-family: inherit; }
     input, textarea { font-family: inherit; }
