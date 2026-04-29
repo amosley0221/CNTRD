@@ -205,6 +205,29 @@ function RecentGamesStrip({ games, me, onOpenGame }) {
 function LiveGameCard({ game, onClick, favorite }) {
   const home = game.homeTeam || TEAMS[game.home] || { code: game.home, name: game.home, primary: '#666', accent: '#999' };
   const away = game.awayTeam || TEAMS[game.away] || { code: game.away, name: game.away, primary: '#666', accent: '#999' };
+
+  // Build a one-line series / aggregate footer that lives BELOW the score
+  // rows, so cards with this metadata stay the same shape as cards
+  // without. For soccer two-leg ties we name the team that's ahead on
+  // aggregate (or "level" when tied) instead of just printing both
+  // numbers.
+  let footer = null;
+  if (game.series && (game.series.summary || game.series.bestOf)) {
+    footer = `SERIES ${game.series.summary || ''}${game.series.bestOf ? ` · BEST OF ${game.series.bestOf}` : ''}`.trim();
+  } else if (game.aggregate) {
+    const a = Number(game.aggregate.away);
+    const h = Number(game.aggregate.home);
+    if (Number.isFinite(a) && Number.isFinite(h)) {
+      if (a === h) {
+        footer = `LEVEL ON AGG ${a}–${h}`;
+      } else if (a > h) {
+        footer = `${(away.code || away.name || 'AWAY').toUpperCase()} LEAD AGG ${a}–${h}`;
+      } else {
+        footer = `${(home.code || home.name || 'HOME').toUpperCase()} LEAD AGG ${h}–${a}`;
+      }
+    }
+  }
+
   return (
     <div onClick={onClick} style={{
       flexShrink: 0,
@@ -223,30 +246,15 @@ function LiveGameCard({ game, onClick, favorite }) {
           <span title="Your team" style={{ color: 'var(--cn-accent)', fontSize: 11, lineHeight: 1, fontWeight: 800 }}>★</span>
         )}
       </div>
-      {game.series && (game.series.summary || game.series.bestOf) && (
-        <div style={{
-          fontFamily: 'var(--cn-font-mono)', fontSize: 9,
-          color: 'var(--cn-accent)', letterSpacing: 0.5,
-          marginBottom: 4,
-        }}>
-          SERIES {game.series.summary || ''}{game.series.bestOf ? ` · BEST OF ${game.series.bestOf}` : ''}
-        </div>
-      )}
       <CompactScoreRow team={away} score={game.awayScore} record={game.awayRecord} league={game.league} />
       <CompactScoreRow team={home} score={game.homeScore} record={game.homeRecord} league={game.league} />
-      {game.aggregate && (
+      {footer && (
         <div style={{
-          marginTop: 6, paddingTop: 6,
-          borderTop: '0.5px solid var(--cn-border-s)',
-          fontFamily: 'var(--cn-font-mono)', fontSize: 10,
-          color: 'var(--cn-text-dim)', letterSpacing: 0.4,
-          display: 'flex', justifyContent: 'space-between',
-        }}>
-          <span>AGG</span>
-          <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-            {game.aggregate.away}–{game.aggregate.home}
-          </span>
-        </div>
+          marginTop: 6,
+          fontFamily: 'var(--cn-font-mono)', fontSize: 9,
+          color: 'var(--cn-accent)', letterSpacing: 0.5,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>{footer}</div>
       )}
     </div>
   );
