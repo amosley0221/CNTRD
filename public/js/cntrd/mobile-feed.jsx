@@ -384,7 +384,7 @@ function BottomNav({ active = 'home', onChange, unreadMessages = 0 }) {
       // the bar reads flush with the bottom edge in standalone mode.
       // Falls back to a small comfort gap in regular browser tabs.
       paddingBottom: 'env(safe-area-inset-bottom, 8px)',
-      background: 'color-mix(in srgb, var(--cn-bg) 80%, transparent)',
+      background: 'color-mix(in srgb, var(--cn-bg-elev2) 90%, transparent)',
       backdropFilter: 'blur(24px) saturate(180%)',
       WebkitBackdropFilter: 'blur(24px) saturate(180%)',
       borderTop: '0.5px solid var(--cn-border)',

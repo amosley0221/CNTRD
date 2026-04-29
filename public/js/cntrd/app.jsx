@@ -120,10 +120,18 @@ function CNTRDApp() {
   React.useLayoutEffect(() => {
     if (rootRef.current) applyTheme(rootRef.current, tweaks);
     applyTheme(document.documentElement, tweaks);
-    document.body.style.background = 'var(--cn-bg)';
+    // Body background fills the iOS safe areas (above the status bar /
+    // Dynamic Island and below the home indicator in standalone mode).
+    // We match the header / bottom-nav tone (elev2) instead of the
+    // deeper page background, so the chrome reads as a continuous bar
+    // edge-to-edge instead of a strip floating in a darker letterbox.
+    document.body.style.background = 'var(--cn-bg-elev2)';
     document.body.style.color = 'var(--cn-text)';
+    // Match theme-color to the body's elev2 tone so the iOS Safari /
+    // Chrome URL bar in regular browser tabs blends with the app
+    // chrome instead of the deeper page background.
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', tweaks.dark ? '#0A0A0B' : '#F4F1EA');
+    if (meta) meta.setAttribute('content', tweaks.dark ? '#1B1B20' : '#FAF8F2');
   }, [tweaks]);
 
   // Reflect ME globally so design components that read window.ME pick it up.
