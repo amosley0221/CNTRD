@@ -272,14 +272,37 @@ const LEAGUE_LOGOS = {
   UFC:        'https://a.espncdn.com/i/teamlogos/leagues/500/ufc.png',
 };
 
+// Same logo-URL synthesizer the server uses, mirrored on the client so a
+// stale TEAMS cache (no `logo` field) doesn't leave the fan card on
+// colored initial badges. Returns an empty string when we can't construct
+// anything useful.
+const _LOGO_SLUG_BY_LEAGUE = {
+  NFL:'nfl', NBA:'nba', WNBA:'wnba', MLB:'mlb', NHL:'nhl',
+  NCAAF:'ncaa', NCAAM:'ncaa',
+  MLS:'soccer', EPL:'soccer', LaLiga:'soccer', Bundesliga:'soccer', SerieA:'soccer', UCL:'soccer',
+};
+function fallbackLogoUrl(team) {
+  if (!team) return '';
+  const slug = _LOGO_SLUG_BY_LEAGUE[team.league];
+  if (!slug) return '';
+  const id = team.id || team.espnId;
+  if (id) return `https://a.espncdn.com/i/teamlogos/${slug}/500/${id}.png`;
+  if (slug !== 'soccer' && slug !== 'ncaa' && team.code) {
+    return `https://a.espncdn.com/i/teamlogos/${slug}/500/${String(team.code).toLowerCase()}.png`;
+  }
+  return '';
+}
+
 // Team logo with a colored-initial fallback. Use it anywhere we have a
 // team object — the size + radius scale together. If the image URL we're
 // given fails to load, we re-render as the colored initial badge instead
 // of leaving a broken-image gap.
 function TeamLogo({ team, size = 24, radius = 5 }) {
   const [failed, setFailed] = React.useState(false);
-  // Reset the failure flag when the logo URL itself changes.
-  React.useEffect(() => { setFailed(false); }, [team?.logo]);
+  // Either ship the URL we already have, or synthesize one from team metadata.
+  const src = (team?.logo) || fallbackLogoUrl(team);
+  // Reset the failure flag when the source URL changes.
+  React.useEffect(() => { setFailed(false); }, [src]);
 
   if (!team) {
     return (
@@ -291,10 +314,10 @@ function TeamLogo({ team, size = 24, radius = 5 }) {
   }
   const initial = team.code || (team.abbreviation || '').toUpperCase() || '??';
   const fontSize = Math.max(8, Math.round(size * 0.42));
-  if (team.logo && !failed) {
+  if (src && !failed) {
     return (
       <img
-        src={team.logo}
+        src={src}
         alt={team.name || initial}
         loading="lazy"
         onError={() => setFailed(true)}

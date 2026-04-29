@@ -47,8 +47,9 @@ function colorHex(c) {
 
 // ESPN's `/teams` list endpoint sometimes omits the logos array. Build a
 // deterministic fallback URL so the fan card / pickers don't fall back to
-// initial badges. ESPN's CDN serves US sports logos by abbreviation and
-// soccer logos by team id.
+// initial badges. The team-id pattern is the most reliable across leagues
+// (it works for NCAA where abbreviations collide). We try id first, then
+// abbreviation for soccer and US pro leagues that accept both.
 const LOGO_SLUG_BY_LEAGUE = {
   NFL:        'nfl',
   NBA:        'nba',
@@ -57,17 +58,27 @@ const LOGO_SLUG_BY_LEAGUE = {
   NHL:        'nhl',
   NCAAF:      'ncaa',
   NCAAM:      'ncaa',
+  MLS:        'soccer',
+  EPL:        'soccer',
+  LaLiga:     'soccer',
+  Bundesliga: 'soccer',
+  SerieA:     'soccer',
+  UCL:        'soccer',
 };
 const SOCCER_LEAGUES = new Set(['MLS', 'EPL', 'LaLiga', 'Bundesliga', 'SerieA', 'UCL']);
 function fallbackTeamLogoUrl(leagueCode, espnId, abbreviation) {
   const code = String(leagueCode || '');
-  if (SOCCER_LEAGUES.has(code) && espnId) {
-    return `https://a.espncdn.com/i/teamlogos/soccer/500/${espnId}.png`;
-  }
   const slug = LOGO_SLUG_BY_LEAGUE[code];
-  const abbr = String(abbreviation || '').toLowerCase();
-  if (slug && abbr) {
-    return `https://a.espncdn.com/i/teamlogos/${slug}/500/${abbr}.png`;
+  if (!slug) return '';
+  // ESPN's CDN reliably serves logos by team id under the sport slug
+  // (e.g. /i/teamlogos/nba/500/13.png is the Lakers). Soccer team logos
+  // also follow the same pattern under /soccer/500/{teamId}.png.
+  if (espnId) return `https://a.espncdn.com/i/teamlogos/${slug}/500/${espnId}.png`;
+  // Without an id, fall back to abbreviation for US pro leagues. Soccer
+  // and NCAA basically always need an id, so we give up there.
+  if (slug !== 'soccer' && slug !== 'ncaa') {
+    const abbr = String(abbreviation || '').toLowerCase();
+    if (abbr) return `https://a.espncdn.com/i/teamlogos/${slug}/500/${abbr}.png`;
   }
   return '';
 }

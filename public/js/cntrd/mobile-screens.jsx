@@ -211,57 +211,84 @@ function Stat({ label, value }) {
 
 function FanCard({ teams }) {
   const cleaned = dedupeUclOverlap(teams);
+  // Collapse by default when a user follows a long list — keeps the
+  // profile compact and lets visitors expand if they're curious.
+  const [open, setOpen] = React.useState(cleaned.length <= 4);
+  if (cleaned.length === 0) return null;
   return (
     <div style={{
-      marginTop: 14, padding: 14,
+      marginTop: 14,
       border: '0.5px solid var(--cn-border)',
       background: 'var(--cn-bg-elev)',
       borderRadius: 12,
+      overflow: 'hidden',
     }}>
-      <div style={{ marginBottom: 8 }}>
-        <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1, textTransform: 'uppercase' }}>
-          Fan card · {new Date().getFullYear()}
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        style={{
+          width: '100%', padding: '12px 14px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: 'transparent', border: 'none',
+          color: 'inherit', cursor: 'pointer',
+          fontFamily: 'inherit',
+        }}
+      >
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1, textTransform: 'uppercase' }}>
+            Fan card · {new Date().getFullYear()}
+          </span>
+          <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)' }}>· {cleaned.length}</span>
         </span>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {cleaned.map(code => {
-          const t = resolveTeam(code);
-          if (!t) return null;
-          // Whole-row tap routes to the team's schedule when we know the
-          // team's id (resolveTeam carries id when ESPN's roster has been
-          // hydrated). Falls back to a static row otherwise.
-          const interactive = !!(t.id && t.league);
-          const openSchedule = () => {
-            if (!interactive) return;
-            window.dispatchEvent(new CustomEvent('cntrd:open-team-schedule', {
-              detail: {
-                league: t.league, teamId: t.id, name: t.name,
-                primary: t.primary, code: t.code, logo: t.logo,
-              },
-            }));
-          };
-          return (
-            <button
-              key={code}
-              type="button"
-              onClick={openSchedule}
-              disabled={!interactive}
-              title={interactive ? `See ${t.name}'s schedule` : t.name}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                background: 'transparent', border: 'none', padding: 0,
-                color: 'inherit', textAlign: 'left',
-                cursor: interactive ? 'pointer' : 'default',
-                fontFamily: 'inherit',
-              }}
-            >
-              <TeamLogo team={t} size={22} radius={4} />
-              <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{t.name}</span>
-              <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)' }}>{t.league} · ride or die</span>
-            </button>
-          );
-        })}
-      </div>
+        <span style={{
+          display: 'inline-flex', transition: 'transform 180ms',
+          transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
+        }}>
+          <Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />
+        </span>
+      </button>
+      {open && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '0 14px 14px' }}>
+          {cleaned.map(code => {
+            const t = resolveTeam(code);
+            if (!t) return null;
+            // Whole-row tap routes to the team's schedule when we know the
+            // team's id (resolveTeam carries id when ESPN's roster has been
+            // hydrated). Falls back to a static row otherwise.
+            const interactive = !!(t.id && t.league);
+            const openSchedule = () => {
+              if (!interactive) return;
+              window.dispatchEvent(new CustomEvent('cntrd:open-team-schedule', {
+                detail: {
+                  league: t.league, teamId: t.id, name: t.name,
+                  primary: t.primary, code: t.code, logo: t.logo,
+                },
+              }));
+            };
+            return (
+              <button
+                key={code}
+                type="button"
+                onClick={openSchedule}
+                disabled={!interactive}
+                title={interactive ? `See ${t.name}'s schedule` : t.name}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  background: 'transparent', border: 'none', padding: 0,
+                  color: 'inherit', textAlign: 'left',
+                  cursor: interactive ? 'pointer' : 'default',
+                  fontFamily: 'inherit',
+                }}
+              >
+                <TeamLogo team={t} size={22} radius={4} />
+                <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{t.name}</span>
+                <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)' }}>{t.league}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
