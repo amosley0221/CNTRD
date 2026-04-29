@@ -577,26 +577,93 @@ async function getVideoDuration(file) {
   });
 }
 
-function PlaysCreatorScreen({ tweaks, onNav, onCreate, me }) {
+function PlaysCreatorScreen({ tweaks, onNav, onCreate, me, games }) {
   const meUser = me || ME;
   const meTeams = dedupeUclOverlap(
-    (meUser.teams && meUser.teams.length) ? meUser.teams : ['LAL']
+    (meUser.teams && meUser.teams.length) ? meUser.teams : []
   );
-  const [overlay, setOverlay] = React.useState(meTeams[0]);
-  const [stickerKind, setStickerKind] = React.useState('score');
+  const [overlay, setOverlay] = React.useState(meTeams[0] || null);
+  // Sticker state — null = no sticker; 'tag' / 'score' / 'text' attach
+  // a real overlay only when the user picks one. No more hardcoded
+  // LAL/BOS placeholder.
+  const [stickerKind, setStickerKind] = React.useState(null);
+  const [stickerGame, setStickerGame] = React.useState(null);
+  const [picker, setPicker] = React.useState(null);   // 'score' opens the live-game picker
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState(null);
-  const fileInputRef = React.useRef(null);
-  const overlayTeam = resolveTeam(overlay);
 
-  const onFile = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
+  // Camera state — null = haven't asked; 'pending' while requesting;
+  // 'ok' once the stream is live; 'denied' / 'unavailable' otherwise.
+  const [camState, setCamState] = React.useState('pending');
+  const [camErr, setCamErr] = React.useState(null);
+  const videoRef = React.useRef(null);
+  const streamRef = React.useRef(null);
+  const fileInputRef = React.useRef(null);
+  const captureCanvasRef = React.useRef(null);
+
+  // Limit picks to live games whose league is followed or whose
+  // home/away matches a favorite team — same rule as the gameday list.
+  const liveForUser = React.useMemo(() => {
+    const followed = new Set(meUser.leagues || []);
+    const favs = new Set(meTeams);
+    return (games?.live || []).filter(g => {
+      if (followed.has(g.league)) return true;
+      if (favs.has(`${g.league}:${g.home}`)) return true;
+      if (favs.has(`${g.league}:${g.away}`)) return true;
+      for (const f of favs) {
+        if (!String(f).includes(':') && (f === g.home || f === g.away)) return true;
+      }
+      return false;
+    });
+  }, [games?.live, meUser.leagues, meTeams]);
+
+  // Start the camera once on mount. We try the rear camera first (the
+  // typical phone use case for capturing a clip) and fall back to any
+  // camera. Anything else lands on the "no camera" empty state.
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const md = navigator.mediaDevices;
+      if (!md || !md.getUserMedia) {
+        setCamState('unavailable');
+        setCamErr('Your browser does not expose a camera.');
+        return;
+      }
+      try {
+        const stream = await md.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false,
+        }).catch(() => md.getUserMedia({ video: true, audio: false }));
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+        }
+        setCamState('ok');
+      } catch (e) {
+        const msg = (e && e.name === 'NotAllowedError')
+          ? 'Camera permission denied.'
+          : (e && e.name === 'NotFoundError')
+            ? 'No camera detected on this device.'
+            : (e?.message || 'Camera unavailable.');
+        setCamState(e?.name === 'NotAllowedError' ? 'denied' : 'unavailable');
+        setCamErr(msg);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      const s = streamRef.current;
+      if (s) s.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    };
+  }, []);
+
+  const overlayTeam = overlay ? resolveTeam(overlay) : null;
+
+  const upload = async (file) => {
     if (!file) return;
     setErr(null);
-
-    // Enforce ≤30s on videos client-side. (File-size cap on the server is
-    // 25 MB; that already implies short clips, but check duration too.)
     if (file.type.startsWith('video/')) {
       const dur = await getVideoDuration(file);
       if (Number.isFinite(dur) && dur > PLAY_VIDEO_MAX_SEC + 0.5) {
@@ -604,14 +671,13 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me }) {
         return;
       }
     }
-
     setBusy(true);
     try {
       const { url, kind } = await window.API.uploadMedia(file);
       if (onCreate) {
         await onCreate({
-          team_code: overlayTeam?.code || overlay,
-          label: 'My ' + (overlayTeam?.name || 'play'),
+          team_code: overlayTeam?.code || overlay || null,
+          label: overlayTeam ? `My ${overlayTeam.name}` : 'My play',
           hue: meUser.avatarHue ?? 200,
           media_url: url,
           media_kind: kind,
@@ -625,27 +691,69 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me }) {
     }
   };
 
-  const capture = () => {
-    if (busy) return;
-    fileInputRef.current?.click();
+  const onFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    upload(file);
   };
+
+  const captureFromCamera = async () => {
+    if (camState !== 'ok' || busy) return;
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+    const canvas = captureCanvasRef.current || document.createElement('canvas');
+    captureCanvasRef.current = canvas;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+    if (!blob) { setErr('Capture failed.'); return; }
+    const file = new File([blob], `play-${Date.now()}.jpg`, { type: 'image/jpeg' });
+    upload(file);
+  };
+
+  const pickFile = () => fileInputRef.current?.click();
+
   return (
     <div style={{ width: '100%', height: '100%', background: '#000', color: '#fff', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-      {/* fake camera viewport */}
-      <div style={{
-        position: 'absolute', inset: 0,
-        background: 'radial-gradient(circle at 50% 40%, #1a2a3a 0%, #050810 70%)',
-      }}>
-        {/* fake "court" */}
+      {/* Camera preview — fills the viewport when granted; "no camera"
+          state otherwise. Either way, file upload remains available. */}
+      {camState === 'ok' ? (
+        <video
+          ref={videoRef}
+          autoPlay muted playsInline
+          style={{
+            position: 'absolute', inset: 0, width: '100%', height: '100%',
+            objectFit: 'cover', background: '#000',
+          }}
+        />
+      ) : (
         <div style={{
-          position: 'absolute', left: '5%', right: '5%', top: '30%', bottom: '20%',
-          background: 'linear-gradient(180deg, rgba(180,140,90,0.2) 0%, rgba(120,80,40,0.4) 100%)',
-          border: '1px solid rgba(255,255,255,0.06)',
-          transform: 'perspective(800px) rotateX(45deg)',
-          transformOrigin: 'bottom',
-        }} />
-        <div style={{ position: 'absolute', inset: 0, opacity: 0.3, background: 'radial-gradient(circle at 50% 30%, transparent 30%, rgba(0,0,0,0.6) 80%)' }} />
-      </div>
+          position: 'absolute', inset: 0,
+          background: 'radial-gradient(circle at 50% 40%, #1a2a3a 0%, #050810 70%)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 24, textAlign: 'center',
+        }}>
+          <div style={{ maxWidth: 320 }}>
+            <div style={{
+              fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)',
+              textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)',
+              fontSize: 22, color: '#fff', marginBottom: 10,
+            }}>
+              {camState === 'pending' ? 'Connecting to camera…'
+                : camState === 'denied' ? 'Camera permission denied'
+                : 'No camera detected'}
+            </div>
+            <div style={{ fontFamily: 'var(--cn-font-body)', fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 1.5 }}>
+              {camState === 'denied'
+                ? 'Allow camera access in your browser settings, or pick a photo / clip from your library below.'
+                : camState === 'unavailable'
+                  ? `${camErr || 'No camera detected on this device.'} You can still upload a photo or short clip from your library.`
+                  : 'Hold tight — asking your browser for camera permission.'}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* top bar */}
       <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', zIndex: 2 }}>
@@ -653,77 +761,103 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me }) {
           <Icon name="x" size={20} stroke="#fff" />
         </button>
         <div style={{ display: 'flex', gap: 6, padding: 4, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', borderRadius: 999 }}>
-          {['Photo', tweaks.playsLabel || 'Play', 'Live'].map((m, i) => (
-            <span key={m} style={{ padding: '5px 12px', borderRadius: 999, background: i === 1 ? '#fff' : 'transparent', color: i === 1 ? '#000' : '#fff', fontWeight: 700, fontSize: 11, fontFamily: 'var(--cn-font-mono)', letterSpacing: 0.5 }}>{m.toUpperCase()}</span>
+          {[tweaks.playsLabel || 'Play'].map((m) => (
+            <span key={m} style={{ padding: '5px 12px', borderRadius: 999, background: '#fff', color: '#000', fontWeight: 700, fontSize: 11, fontFamily: 'var(--cn-font-mono)', letterSpacing: 0.5 }}>{m.toUpperCase()}</span>
           ))}
         </div>
-        <button style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', border: 'none', borderRadius: '50%', width: 36, height: 36, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name="flash" size={18} stroke="#fff" />
-        </button>
+        <span style={{ width: 36 }} />
       </div>
 
-      {/* live overlay sticker placed on the "court" */}
-      {stickerKind === 'score' && (
-        <div style={{
-          position: 'absolute', top: '38%', left: 24,
-          padding: '8px 12px',
-          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(14px)',
-          border: '0.5px solid rgba(255,255,255,0.18)',
-          borderRadius: 10, zIndex: 3,
-        }}>
-          <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, color: '#FF3B30', letterSpacing: 1, marginBottom: 4 }}>● LIVE · Q4 4:21</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 16, height: 16, borderRadius: 3, background: TEAMS.LAL.primary, color: '#fff', fontSize: 8, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>LAL</div>
-                <span style={{ fontFamily: 'var(--cn-font-display)', fontSize: 22, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>88</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 16, height: 16, borderRadius: 3, background: TEAMS.BOS.primary, color: '#fff', fontSize: 8, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>BOS</div>
-                <span style={{ fontFamily: 'var(--cn-font-display)', fontSize: 22, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>91</span>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* live overlay sticker placed on top of the camera preview */}
+      {stickerKind === 'score' && stickerGame && (
+        <ScoreStickerOverlay game={stickerGame} onClear={() => { setStickerKind(null); setStickerGame(null); }} />
       )}
       {stickerKind === 'tag' && overlayTeam && (
-        <div style={{ position: 'absolute', top: '40%', left: 30, transform: 'rotate(-8deg)', padding: '6px 12px', background: overlayTeam.primary, color: pickContrast(overlayTeam.primary), fontFamily: 'var(--cn-font-display)', fontWeight: 800, fontSize: 28, letterSpacing: 0.5, zIndex: 3, boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>GO {overlayTeam.code}</div>
+        <button
+          onClick={() => setStickerKind(null)}
+          title="Remove tag"
+          style={{
+            position: 'absolute', top: '40%', left: 30, transform: 'rotate(-8deg)',
+            padding: '6px 12px', background: overlayTeam.primary,
+            color: pickContrast(overlayTeam.primary),
+            fontFamily: 'var(--cn-font-display)', fontWeight: 800, fontSize: 28,
+            letterSpacing: 0.5, zIndex: 3, border: 'none',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+            cursor: 'pointer',
+          }}
+        >GO {overlayTeam.code}</button>
       )}
 
       {/* sticker tray */}
       <div style={{ position: 'absolute', top: '50%', right: 8, transform: 'translateY(-50%)', display: 'flex', flexDirection: 'column', gap: 12, zIndex: 3 }}>
         {[
-          { id: 'score', icon: 'whistle', label: 'Score' },
-          { id: 'tag', icon: 'flame', label: 'Tag' },
-          { id: 'text', icon: 'text', label: 'Text' },
-          { id: 'sticker', icon: 'sticker', label: 'Sticker' },
+          { id: 'score', icon: 'whistle', label: 'Score', enabled: liveForUser.length > 0 },
+          { id: 'tag', icon: 'flame', label: 'Tag', enabled: !!overlayTeam },
+          { id: 'text', icon: 'text', label: 'Text', enabled: false },
+          { id: 'sticker', icon: 'sticker', label: 'Sticker', enabled: false },
         ].map(s => (
-          <button key={s.id} onClick={() => setStickerKind(s.id)} style={{
-            width: 44, height: 44, borderRadius: '50%',
-            background: stickerKind === s.id ? '#fff' : 'rgba(0,0,0,0.5)',
-            backdropFilter: 'blur(10px)',
-            border: '0.5px solid rgba(255,255,255,0.18)',
-            color: stickerKind === s.id ? '#000' : '#fff',
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
+          <button
+            key={s.id}
+            disabled={!s.enabled}
+            onClick={() => {
+              if (!s.enabled) return;
+              if (s.id === 'score') { setPicker('score'); return; }
+              setStickerKind(prev => prev === s.id ? null : s.id);
+            }}
+            title={!s.enabled
+              ? (s.id === 'score'
+                  ? 'No live games from leagues you follow'
+                  : s.id === 'tag'
+                    ? 'Pick a team in your profile first'
+                    : 'Coming soon')
+              : s.label}
+            style={{
+              width: 44, height: 44, borderRadius: '50%',
+              background: stickerKind === s.id ? '#fff' : 'rgba(0,0,0,0.5)',
+              backdropFilter: 'blur(10px)',
+              border: '0.5px solid rgba(255,255,255,0.18)',
+              color: stickerKind === s.id ? '#000' : '#fff',
+              opacity: s.enabled ? 1 : 0.35,
+              cursor: s.enabled ? 'pointer' : 'not-allowed',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
             <Icon name={s.icon} size={18} stroke={stickerKind === s.id ? '#000' : '#fff'} />
           </button>
         ))}
       </div>
 
-      {/* bottom: shutter + filmstrip */}
+      {/* bottom: shutter + library */}
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: 28, padding: '0 24px', zIndex: 3 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <button style={{ width: 44, height: 44, borderRadius: 8, background: 'rgba(255,255,255,0.15)', border: 'none', backdropFilter: 'blur(10px)', cursor: 'pointer' }} />
-          <button onClick={capture} disabled={busy} style={{ width: 72, height: 72, borderRadius: '50%', background: 'transparent', border: '4px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}>
+          {/* Library button — accepts both photo + clip from device. */}
+          <button onClick={pickFile} title="Pick from library" style={{
+            width: 44, height: 44, borderRadius: 8,
+            background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(10px)',
+            border: '0.5px solid rgba(255,255,255,0.2)',
+            color: '#fff', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Icon name="image" size={18} stroke="#fff" />
+          </button>
+          <button
+            onClick={camState === 'ok' ? captureFromCamera : pickFile}
+            disabled={busy}
+            style={{
+              width: 72, height: 72, borderRadius: '50%',
+              background: 'transparent', border: '4px solid #fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1,
+            }}
+          >
             <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#fff' }} />
           </button>
-          <button style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(10px)', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="repost" size={18} stroke="#fff" />
-          </button>
+          <span style={{ width: 44 }} />
         </div>
         <div style={{ textAlign: 'center', fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'rgba(255,255,255,0.6)', marginTop: 10, letterSpacing: 1 }}>
-          {busy ? 'UPLOADING…' : `TAP TO PICK A PHOTO OR ≤${PLAY_VIDEO_MAX_SEC}s CLIP`}
+          {busy ? 'UPLOADING…'
+            : camState === 'ok' ? 'TAP SHUTTER FOR PHOTO · LIBRARY FOR CLIP'
+            : `TAP TO PICK A PHOTO OR ≤${PLAY_VIDEO_MAX_SEC}s CLIP`}
         </div>
         {err && (
           <div style={{ marginTop: 6, textAlign: 'center', fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: '#FF6F61' }}>
@@ -731,12 +865,124 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me }) {
           </div>
         )}
       </div>
+
+      {picker === 'score' && (
+        <ScoreStickerPicker
+          games={liveForUser}
+          onClose={() => setPicker(null)}
+          onPick={(g) => { setStickerGame(g); setStickerKind('score'); setPicker(null); }}
+        />
+      )}
+
       <input
         ref={fileInputRef} type="file"
         accept="image/*,video/mp4,video/quicktime,video/webm"
         onChange={onFile}
         style={{ display: 'none' }}
       />
+    </div>
+  );
+}
+
+// Live overlay sticker — uses real game data instead of fake LAL / BOS.
+function ScoreStickerOverlay({ game, onClear }) {
+  const home = game.homeTeam || { code: game.home, primary: '#666' };
+  const away = game.awayTeam || { code: game.away, primary: '#666' };
+  return (
+    <button
+      onClick={onClear}
+      title="Remove score sticker"
+      style={{
+        position: 'absolute', top: '38%', left: 24,
+        padding: '8px 12px',
+        background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(14px)',
+        border: '0.5px solid rgba(255,255,255,0.18)',
+        borderRadius: 10, zIndex: 3,
+        cursor: 'pointer', textAlign: 'left', color: '#fff',
+        fontFamily: 'inherit',
+      }}
+    >
+      <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, color: '#FF3B30', letterSpacing: 1, marginBottom: 4 }}>
+        ● {(game.period || 'LIVE').toUpperCase()}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <ScoreStickerRow team={away} score={game.awayScore} />
+        <ScoreStickerRow team={home} score={game.homeScore} />
+      </div>
+    </button>
+  );
+}
+function ScoreStickerRow({ team, score }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{
+        width: 16, height: 16, borderRadius: 3,
+        background: team.primary, color: pickContrast(team.primary),
+        fontSize: 8, fontWeight: 800,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>{team.code}</div>
+      <span style={{ fontFamily: 'var(--cn-font-display)', fontSize: 22, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{score}</span>
+    </div>
+  );
+}
+
+// Sheet for picking which live game's score to overlay. Only games from
+// the user's followed leagues / favorite teams appear (same rule as
+// Gameday). Empty list = "no live games right now".
+function ScoreStickerPicker({ games, onClose, onPick }) {
+  return (
+    <div onClick={onClose} style={{
+      position: 'absolute', inset: 0, zIndex: 10,
+      background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)',
+      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        width: '100%', maxHeight: '70%', overflowY: 'auto',
+        background: '#11141a',
+        borderTopLeftRadius: 20, borderTopRightRadius: 20,
+        padding: '14px 0',
+        color: '#fff',
+      }}>
+        <div style={{
+          padding: '0 18px 10px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          borderBottom: '0.5px solid rgba(255,255,255,0.08)',
+          marginBottom: 6,
+        }}>
+          <span style={{
+            fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)',
+            textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)',
+            fontSize: 14,
+          }}>PICK A SCORE</span>
+          <button onClick={onClose} style={{
+            background: 'transparent', border: 'none',
+            color: '#fff', cursor: 'pointer', padding: 0, display: 'flex',
+          }}>
+            <Icon name="x" size={16} stroke="#fff" />
+          </button>
+        </div>
+        {games.length === 0 ? (
+          <div style={{ padding: '40px 20px', textAlign: 'center', fontFamily: 'var(--cn-font-mono)', fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
+            No live games right now from leagues you follow.
+          </div>
+        ) : games.map(g => (
+          <button key={g.id} onClick={() => onPick(g)} style={{
+            width: '100%', padding: '12px 18px',
+            background: 'transparent', border: 'none',
+            display: 'flex', alignItems: 'center', gap: 10,
+            color: '#fff', cursor: 'pointer', textAlign: 'left',
+            fontFamily: 'inherit',
+          }}>
+            <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, color: '#FF3B30', letterSpacing: 1 }}>● LIVE</span>
+            <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>
+              {(g.awayTeam?.name || g.away)} @ {(g.homeTeam?.name || g.home)}
+            </span>
+            <span style={{ fontFamily: 'var(--cn-font-display)', fontSize: 16, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>
+              {g.awayScore}–{g.homeScore}
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -912,34 +1158,64 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
         zIndex: 3, pointerEvents: 'none',
       }}>{play.label}.</div>
 
-      {/* reactions */}
-      <div style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', display: 'flex', flexDirection: 'column', gap: 14, zIndex: 5 }}>
-        {[
-          { e: '🔥', n: '4.2k' },
-          { e: '🏀', n: '1.8k' },
-          { e: '😤', n: '912' },
-          { e: '👀', n: '438' },
-        ].map((r, i) => (
-          <button key={i} style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', border: '0.5px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: 18, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <span>{r.e}</span>
-            <span style={{ fontSize: 8, fontFamily: 'var(--cn-font-mono)' }}>{r.n}</span>
-          </button>
-        ))}
-      </div>
+      {/* reactions — local only for now; counts start at 0 and bump
+          when this viewer taps. (Server-backed reactions need a play
+          reactions table; UI is ready for that.) */}
+      <PlayReactions playId={play.id} />
 
-      {/* reply bar */}
-      <div style={{ position: 'absolute', bottom: 28, left: 16, right: 16, display: 'flex', alignItems: 'center', gap: 8, zIndex: 5 }}>
-        <input placeholder={`Reply to ${u.username}...`} style={{
-          flex: 1, padding: '11px 16px', borderRadius: 999,
-          background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)',
-          border: '0.5px solid rgba(255,255,255,0.2)',
-          color: '#fff', fontSize: 13, outline: 'none',
-          fontFamily: 'var(--cn-font-body)',
-        }} />
-        <button style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', border: '0.5px solid rgba(255,255,255,0.2)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name="send" size={16} stroke="#fff" />
-        </button>
-      </div>
+      {/* No reply bar — Plays don't have a comment system yet. Reactions
+          above are how viewers respond. */}
+    </div>
+  );
+}
+
+// Per-viewer local reaction tally. Tapping toggles the user's reaction
+// for this play; counts go up/down with each tap. Persists across plays
+// in this session via a local Map keyed by play id.
+const _PLAY_REACTION_STATE = new Map();
+function PlayReactions({ playId }) {
+  const REACTS = ['🔥', '🏀', '😤', '👀', '🤝'];
+  const [, force] = React.useState(0);
+  const state = (() => {
+    let s = _PLAY_REACTION_STATE.get(playId);
+    if (!s) {
+      s = { counts: Object.fromEntries(REACTS.map(e => [e, 0])), mine: new Set() };
+      _PLAY_REACTION_STATE.set(playId, s);
+    }
+    return s;
+  })();
+  const toggle = (e) => {
+    if (state.mine.has(e)) {
+      state.mine.delete(e);
+      state.counts[e] = Math.max(0, state.counts[e] - 1);
+    } else {
+      state.mine.add(e);
+      state.counts[e] = (state.counts[e] || 0) + 1;
+    }
+    force(x => x + 1);
+  };
+  return (
+    <div style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', display: 'flex', flexDirection: 'column', gap: 14, zIndex: 5 }}>
+      {REACTS.map(e => {
+        const picked = state.mine.has(e);
+        const count = state.counts[e] || 0;
+        return (
+          <button key={e} onClick={() => toggle(e)} style={{
+            width: 44, height: 44, borderRadius: '50%',
+            background: picked ? 'var(--cn-accent)' : 'rgba(0,0,0,0.4)',
+            backdropFilter: 'blur(10px)',
+            border: '0.5px solid rgba(255,255,255,0.15)',
+            color: picked ? 'var(--cn-on-accent)' : '#fff',
+            fontSize: 18, cursor: 'pointer',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          }} title={picked ? 'Remove your reaction' : 'React'}>
+            <span>{e}</span>
+            {count > 0 && (
+              <span style={{ fontSize: 8, fontFamily: 'var(--cn-font-mono)', marginTop: -1 }}>{count}</span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }
