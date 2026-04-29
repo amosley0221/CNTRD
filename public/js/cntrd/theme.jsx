@@ -353,6 +353,31 @@ function TeamName({ team, league, fontSize = 14, weight = 600, color }) {
   );
 }
 
+// Drop UCL entries that duplicate a club the user already follows in a
+// domestic league. Chelsea-EPL and Chelsea-UCL resolve to the same club —
+// list it once. Keeps original order. When every entry for a name is UCL
+// (e.g. user only follows them in UCL), nothing is dropped.
+function dedupeUclOverlap(teamCodes) {
+  if (!Array.isArray(teamCodes) || teamCodes.length < 2) return teamCodes || [];
+  const resolved = teamCodes.map(c => ({ code: c, team: resolveTeam(c) }));
+  const byName = new Map();
+  for (const r of resolved) {
+    const name = (r.team?.name || r.code || '').toLowerCase();
+    if (!byName.has(name)) byName.set(name, []);
+    byName.get(name).push(r);
+  }
+  const drop = new Set();
+  for (const rows of byName.values()) {
+    if (rows.length < 2) continue;
+    const hasNonUcl = rows.some(r => r.team?.league && r.team.league !== 'UCL');
+    if (!hasNonUcl) continue;
+    for (const r of rows) {
+      if (r.team?.league === 'UCL') drop.add(r.code);
+    }
+  }
+  return teamCodes.filter(c => !drop.has(c));
+}
+
 // usePullToRefresh — touch-only pull-to-refresh for any vertical scroller.
 // Pass a ref to the scrollable element and a refresh callback. The hook
 // returns { distance, refreshing, complete } so the caller can render its
@@ -463,4 +488,5 @@ Object.assign(window, {
   TeamPill, TeamTagsRow, Avatar, Icon,
   usePullToRefresh, PullIndicator,
   LEAGUE_LOGOS, TeamLogo, TeamName,
+  dedupeUclOverlap,
 });

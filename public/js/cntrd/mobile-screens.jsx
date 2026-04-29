@@ -115,7 +115,7 @@ function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePl
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
             <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 12, color: 'var(--cn-text-dim)' }}>@{u.username}</span>
             {(u.teams && u.teams.length > 0) && <span style={{ color: 'var(--cn-text-mute)' }}>·</span>}
-            {(u.teams || []).map(t => <TeamPill key={t} code={t} size="sm" />)}
+            {dedupeUclOverlap(u.teams || []).map(t => <TeamPill key={t} code={t} size="sm" />)}
           </div>
           {u.bio && (
             <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.45, color: 'var(--cn-text)', textWrap: 'pretty' }}>
@@ -210,6 +210,7 @@ function Stat({ label, value }) {
 }
 
 function FanCard({ teams }) {
+  const cleaned = dedupeUclOverlap(teams);
   return (
     <div style={{
       marginTop: 14, padding: 14,
@@ -217,17 +218,18 @@ function FanCard({ teams }) {
       background: 'var(--cn-bg-elev)',
       borderRadius: 12,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1, textTransform: 'uppercase' }}>Fan card · 2026</span>
-        <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-accent)', letterSpacing: 1 }}>#0427</span>
+      <div style={{ marginBottom: 8 }}>
+        <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1, textTransform: 'uppercase' }}>
+          Fan card · {new Date().getFullYear()}
+        </span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {teams.map(code => {
+        {cleaned.map(code => {
           const t = resolveTeam(code);
           if (!t) return null;
           return (
             <div key={code} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 22, height: 22, borderRadius: 4, background: t.primary, color: pickContrast(t.primary), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800 }}>{t.code}</div>
+              <TeamLogo team={t} size={22} radius={4} />
               <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{t.name}</span>
               <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)' }}>{t.league} · ride or die</span>
             </div>
@@ -303,7 +305,12 @@ function ComposerMediaSlot({ type, media, uploading, onPick, onClear }) {
 // ─── COMPOSER ─────────────────────────────────────────────────
 function ComposerScreen({ tweaks, onNav, onPost, me, replyTo }) {
   const meUser = me || ME;
-  const meTeams = (meUser.teams && meUser.teams.length) ? meUser.teams : ['LAL', 'NYG', 'ARS'];
+  // Hide UCL duplicates (e.g. Chelsea-EPL + Chelsea-UCL) so the user has
+  // one obvious tag per club instead of two side-by-side that would
+  // resolve to the same name.
+  const meTeams = dedupeUclOverlap(
+    (meUser.teams && meUser.teams.length) ? meUser.teams : ['LAL', 'NYG', 'ARS']
+  );
   const isReply = !!replyTo?.id;
   const [text, setText] = React.useState('');
   const [type, setType] = React.useState('take');
@@ -519,7 +526,9 @@ async function getVideoDuration(file) {
 
 function PlaysCreatorScreen({ tweaks, onNav, onCreate, me }) {
   const meUser = me || ME;
-  const meTeams = (meUser.teams && meUser.teams.length) ? meUser.teams : ['LAL'];
+  const meTeams = dedupeUclOverlap(
+    (meUser.teams && meUser.teams.length) ? meUser.teams : ['LAL']
+  );
   const [overlay, setOverlay] = React.useState(meTeams[0]);
   const [stickerKind, setStickerKind] = React.useState('score');
   const [busy, setBusy] = React.useState(false);
