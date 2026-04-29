@@ -502,10 +502,31 @@ function SettingsScreen({ tweaks, setTweak, onNav, me, onMeUpdated, unreadNotifs
 
 // ─── GAMEDAY CHAT ─────────────────────────────────────────────
 // List view shown when the user opens Gameday without picking a specific
-// game. Tap a row → opens that game's chat.
-function GamedayList({ tweaks, onNav, games, onPick }) {
+// game. Tap a row → opens that game's chat. Favorite-team games (matched
+// league-aware) float to a "YOUR TEAMS" group at the top.
+function GamedayList({ tweaks, onNav, games, me, onPick }) {
   const live     = games?.live     || [];
   const upcoming = games?.upcoming || [];
+
+  const favSet = React.useMemo(() => new Set(me?.teams || []), [me]);
+  const matches = (g) => {
+    if (!favSet.size) return false;
+    if (favSet.has(`${g.league}:${g.home}`) || favSet.has(`${g.league}:${g.away}`)) return true;
+    // Legacy bare-code support: only fires when the saved pick has no colon.
+    for (const f of favSet) {
+      if (!String(f).includes(':') && (f === g.home || f === g.away)) return true;
+    }
+    return false;
+  };
+
+  // Partition each group; "your teams" combines live+upcoming favorites,
+  // live ones rendered first.
+  const yourLive     = live.filter(matches);
+  const yourUpcoming = upcoming.filter(matches);
+  const yours        = [...yourLive, ...yourUpcoming];
+  const otherLive    = live.filter(g => !matches(g));
+  const otherUpcoming = upcoming.filter(g => !matches(g));
+
   const empty = !live.length && !upcoming.length;
   return (
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
@@ -526,8 +547,17 @@ function GamedayList({ tweaks, onNav, games, onPick }) {
           </div>
         ) : (
           <>
-            {live.length > 0 && <GamedayGroup label="LIVE NOW" live items={live} onPick={onPick} />}
-            {upcoming.length > 0 && <GamedayGroup label="UP NEXT" items={upcoming} onPick={onPick} />}
+            {yours.length > 0 && (
+              <GamedayGroup
+                label="YOUR TEAMS"
+                accent
+                items={yours}
+                liveFlags={yours.map(g => yourLive.includes(g))}
+                onPick={onPick}
+              />
+            )}
+            {otherLive.length > 0    && <GamedayGroup label={yours.length ? 'OTHER LIVE NOW' : 'LIVE NOW'} live items={otherLive} onPick={onPick} />}
+            {otherUpcoming.length > 0 && <GamedayGroup label={yours.length ? 'OTHER UP NEXT' : 'UP NEXT'} items={otherUpcoming} onPick={onPick} />}
           </>
         )}
       </div>
@@ -535,27 +565,40 @@ function GamedayList({ tweaks, onNav, games, onPick }) {
   );
 }
 
-function GamedayGroup({ label, live, items, onPick }) {
+function GamedayGroup({ label, live, accent, items, liveFlags, onPick }) {
+  const dotColor = accent ? 'var(--cn-accent)' : (live ? 'var(--cn-live)' : null);
+  const labelColor = accent ? 'var(--cn-accent)' : (live ? 'var(--cn-live)' : 'var(--cn-text-mute)');
   return (
     <div>
       <div style={{
         padding: '12px 16px 6px',
         fontFamily: 'var(--cn-font-mono)', fontSize: 10, letterSpacing: 1,
-        color: live ? 'var(--cn-live)' : 'var(--cn-text-mute)',
+        color: labelColor,
         fontWeight: 800,
         display: 'flex', alignItems: 'center', gap: 6,
       }}>
-        {live && <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--cn-live)', animation: 'cn-pulse 1.5s ease-in-out infinite' }} />}
+        {dotColor && <span style={{
+          width: 6, height: 6, borderRadius: '50%', background: dotColor,
+          animation: live ? 'cn-pulse 1.5s ease-in-out infinite' : 'none',
+        }} />}
         {label}
       </div>
       <div>
-        {items.map(g => <GamedayRow key={g.id} game={g} live={!!live} onClick={() => onPick?.(g)} />)}
+        {items.map((g, i) => (
+          <GamedayRow
+            key={g.id}
+            game={g}
+            live={liveFlags ? !!liveFlags[i] : !!live}
+            favorite={accent}
+            onClick={() => onPick?.(g)}
+          />
+        ))}
       </div>
     </div>
   );
 }
 
-function GamedayRow({ game, live, onClick }) {
+function GamedayRow({ game, live, favorite, onClick }) {
   const home = game.homeTeam || TEAMS[game.home] || { code: game.home, name: game.home, primary: '#666', accent: '#999' };
   const away = game.awayTeam || TEAMS[game.away] || { code: game.away, name: game.away, primary: '#666', accent: '#999' };
   return (
@@ -570,6 +613,7 @@ function GamedayRow({ game, live, onClick }) {
           <TeamMini team={away} />
           <span style={{ color: 'var(--cn-text-mute)', fontSize: 11, fontFamily: 'var(--cn-font-mono)' }}>@</span>
           <TeamMini team={home} />
+          {favorite && <span title="Your team" style={{ color: 'var(--cn-accent)', fontSize: 12, fontWeight: 800 }}>★</span>}
         </div>
         <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', marginTop: 4 }}>
           {game.league} · {game.period || (live ? 'LIVE' : 'Scheduled')}
@@ -605,11 +649,11 @@ function TeamMini({ team }) {
   );
 }
 
-function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick }) {
+function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me }) {
   const [side, setSide] = React.useState('all');
   // List mode: no specific game picked → show live + upcoming as rows.
   if (!gamedayPick) {
-    return <GamedayList tweaks={tweaks} onNav={onNav} games={games} onPick={setGamedayPick} />;
+    return <GamedayList tweaks={tweaks} onNav={onNav} games={games} me={me} onPick={setGamedayPick} />;
   }
   const game = gamedayPick;
   const home = game.homeTeam || TEAMS[game.home] || { code: game.home, name: game.home, primary: '#666', accent: '#999' };
