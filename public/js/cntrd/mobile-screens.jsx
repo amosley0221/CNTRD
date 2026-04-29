@@ -37,7 +37,7 @@ function ProfilePlayTile({ play, onOpen, onDelete }) {
 }
 
 // ─── PROFILE ──────────────────────────────────────────────────
-function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePlay, onPullRefreshFeed }) {
+function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePlay, onPullRefreshFeed, unreadMessages = 0 }) {
   const u = me || ME;
   const teams = (u.teams && u.teams.length) ? u.teams : ['LAL'];
   const coverFrom = resolveTeam(teams[0]) || resolveTeam('LAL') || { primary: '#552583', accent: '#FDB927' };
@@ -190,7 +190,7 @@ function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePl
           {tab === 'likes' && <div style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>Likes are private to you.</div>}
         </div>
       </div>
-      <BottomNav active="profile" onChange={onNav} />
+      <BottomNav active="profile" onChange={onNav} unreadMessages={unreadMessages} />
     </div>
   );
 }
@@ -921,7 +921,7 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
 // Reachable by tapping any user's avatar/name in the feed or in chat
 // bubbles. Private accounts return a locked view; we render a placeholder
 // with a Follow / Request to follow button.
-function UserProfileScreen({ tweaks, onNav, me, viewUsername }) {
+function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0 }) {
   const [user, setUser] = React.useState(null);
   const [posts, setPosts] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -1096,7 +1096,7 @@ function UserProfileScreen({ tweaks, onNav, me, viewUsername }) {
           </>
         )}
       </div>
-      <BottomNav active={null} onChange={onNav} />
+      <BottomNav active={null} onChange={onNav} unreadMessages={unreadMessages} />
     </div>
   );
 }

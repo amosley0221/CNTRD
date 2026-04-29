@@ -346,13 +346,15 @@ function EditorialHeader() {
 }
 
 // ─── BOTTOM NAV ───────────────────────────────────────────────
-function BottomNav({ active = 'home', onChange }) {
+function BottomNav({ active = 'home', onChange, unreadMessages = 0 }) {
   const tabs = [
-    { id: 'home',   icon: 'home',     label: 'Feed' },
-    { id: 'search', icon: 'search',   label: 'Discover' },
-    { id: 'compose',icon: 'plus',     label: '' },
-    { id: 'chat',   icon: 'whistle',  label: 'Gameday' },
-    { id: 'profile',icon: 'profile',  label: 'You' },
+    { id: 'home',     icon: 'home',     label: 'Feed' },
+    // Replaces the old "Discover" tab — that was a stub. Messages opens
+    // DMs + group chats and shows an accent dot when there's unread.
+    { id: 'messages', icon: 'chat',     label: 'Messages', badge: unreadMessages },
+    { id: 'compose',  icon: 'plus',     label: '' },
+    { id: 'chat',     icon: 'whistle',  label: 'Gameday' },
+    { id: 'profile',  icon: 'profile',  label: 'You' },
   ];
   return (
     <div style={{
@@ -370,12 +372,14 @@ function BottomNav({ active = 'home', onChange }) {
       {tabs.map(t => {
         const isCompose = t.id === 'compose';
         const isActive = t.id === active;
+        const showBadge = !!t.badge && t.badge > 0;
         return (
           <button key={t.id} onClick={() => onChange?.(t.id)} style={{
             background: 'transparent', border: 'none', cursor: 'pointer',
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
             color: isActive ? 'var(--cn-text)' : 'var(--cn-text-mute)',
             padding: '4px 10px',
+            position: 'relative',
           }}>
             {isCompose ? (
               <div style={{
@@ -387,7 +391,21 @@ function BottomNav({ active = 'home', onChange }) {
                 <Icon name="plus" size={20} stroke="var(--cn-on-accent)" sw={2.4} />
               </div>
             ) : (
-              <Icon name={t.icon} size={22} sw={1.7} />
+              <span style={{ position: 'relative', display: 'inline-flex' }}>
+                <Icon name={t.icon} size={22} sw={1.7} />
+                {showBadge && (
+                  <span style={{
+                    position: 'absolute', top: -2, right: -4,
+                    minWidth: 14, height: 14, padding: '0 4px',
+                    borderRadius: 999,
+                    background: 'var(--cn-accent)',
+                    color: 'var(--cn-on-accent)',
+                    fontFamily: 'var(--cn-font-mono)', fontSize: 9, fontWeight: 800,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 0 0 1.5px var(--cn-bg)',
+                  }}>{t.badge > 99 ? '99+' : t.badge}</span>
+                )}
+              </span>
             )}
             {t.label && (
               <span style={{
@@ -403,7 +421,7 @@ function BottomNav({ active = 'home', onChange }) {
 }
 
 // ─── FEED SCREEN ──────────────────────────────────────────────
-function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame, onOpenGameday, onOpenPlay, unreadNotifs, feedPending = 0, onRefreshFeed, onPullRefreshFeed }) {
+function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame, onOpenGameday, onOpenPlay, unreadNotifs, unreadMessages = 0, feedPending = 0, onRefreshFeed, onPullRefreshFeed }) {
   const editorial = tweaks.homeStyle === 'editorial';
   const items = (posts && posts.length ? posts : POSTS);
   const scrollerRef = React.useRef(null);
@@ -459,7 +477,7 @@ function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame, onOpen
           {items.map(p => <Post key={p.id} post={p} />)}
         </div>
       </div>
-      <BottomNav active="home" onChange={onNav} />
+      <BottomNav active="home" onChange={onNav} unreadMessages={unreadMessages} />
     </div>
   );
 }
