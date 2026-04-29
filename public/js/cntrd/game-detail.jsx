@@ -613,20 +613,7 @@ function TeamScheduleScreen({ tweaks, onNav, scheduleTeam, onOpenGame }) {
           ) : games.length === 0 ? (
             <Empty>No games for this season yet.</Empty>
           ) : (
-            <div style={{
-              borderRadius: 12, overflow: 'hidden',
-              border: '0.5px solid var(--cn-border)',
-              background: 'var(--cn-bg-elev)',
-            }}>
-              {games.map((g, i) => (
-                <ScheduleRow
-                  key={g.id || i}
-                  g={g}
-                  first={i === 0}
-                  onClick={() => onOpenGame?.(g)}
-                />
-              ))}
-            </div>
+            <ScheduleSections games={games} onOpenGame={onOpenGame} />
           )}
         </div>
       </div>
@@ -634,7 +621,7 @@ function TeamScheduleScreen({ tweaks, onNav, scheduleTeam, onOpenGame }) {
   );
 }
 
-function ScheduleRow({ g, first, onClick }) {
+function ScheduleRow({ g, first, onClick, showRound }) {
   const opp = g.isHome ? g.awayTeam : g.homeTeam;
   const oppName = opp?.name || (g.isHome ? g.away : g.home) || '—';
   const date = g.date ? new Date(g.date) : null;
@@ -643,6 +630,7 @@ function ScheduleRow({ g, first, onClick }) {
     : '';
   const isFinal = g.state === 'final';
   const isLive = g.state === 'live';
+  const round = showRound && g.round ? g.round : '';
   const resultColor = g.result === 'W' ? 'var(--cn-success)'
                     : g.result === 'L' ? 'var(--cn-danger)'
                     : 'var(--cn-text-mute)';
@@ -669,8 +657,9 @@ function ScheduleRow({ g, first, onClick }) {
         <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {g.isHome ? 'vs ' : '@ '}{oppName}
         </div>
-        <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', marginTop: 2 }}>
+        <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {isLive ? 'LIVE' : (isFinal ? 'FINAL' : (g.period || 'Scheduled'))}
+          {round && <span style={{ color: 'var(--cn-accent)' }}> · {round}</span>}
         </div>
       </div>
       {isFinal ? (
@@ -691,6 +680,70 @@ function ScheduleRow({ g, first, onClick }) {
           {scoreText}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+// Splits a flat schedule into Preseason / Regular Season / Playoffs (and
+// any leftover bucket ESPN sometimes ships, like "All-Star"). Each
+// section renders its own card; playoff rows surface the round label
+// (Wild Card, Sweet 16, Cotton Bowl, etc.) under the matchup line.
+const _SEASON_TYPE_LABELS = {
+  1: 'Preseason',
+  2: 'Regular Season',
+  3: 'Playoffs',
+  4: 'Off-season',
+};
+function ScheduleSections({ games, onOpenGame }) {
+  // Group preserving original order. Anything without a season_type or
+  // with an unknown id falls into "Other" so we don't drop games.
+  const groups = React.useMemo(() => {
+    const map = new Map();
+    const order = [];
+    for (const g of games) {
+      const id = Number(g.season_type) || 0;
+      const key = _SEASON_TYPE_LABELS[id]
+        || g.season_type_name
+        || (id === 0 ? 'Schedule' : `Season type ${id}`);
+      if (!map.has(key)) { map.set(key, []); order.push(key); }
+      map.get(key).push(g);
+    }
+    // Show in chronological-life order: Preseason → Regular Season →
+    // Playoffs → Other. Sort the keys we know; preserve unknown order.
+    const known = ['Preseason', 'Regular Season', 'Playoffs', 'Off-season'];
+    const sorted = [
+      ...known.filter(k => map.has(k)),
+      ...order.filter(k => !known.includes(k)),
+    ];
+    return sorted.map(label => ({ label, items: map.get(label) }));
+  }, [games]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {groups.map(g => (
+        <div key={g.label}>
+          <div style={{
+            padding: '0 4px 6px',
+            fontFamily: 'var(--cn-font-mono)', fontSize: 10, letterSpacing: 1,
+            color: 'var(--cn-text-mute)', fontWeight: 800, textTransform: 'uppercase',
+          }}>{g.label}</div>
+          <div style={{
+            borderRadius: 12, overflow: 'hidden',
+            border: '0.5px solid var(--cn-border)',
+            background: 'var(--cn-bg-elev)',
+          }}>
+            {g.items.map((row, i) => (
+              <ScheduleRow
+                key={row.id || i}
+                g={row}
+                first={i === 0}
+                showRound={g.label === 'Playoffs' || !!row.round}
+                onClick={() => onOpenGame?.(row)}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

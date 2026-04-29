@@ -640,6 +640,21 @@ async function getTeamSchedule(leagueCode, teamId, season) {
     // as "0–0" which is misleading.
     const homeScore = state === 'scheduled' ? null : readScore(home);
     const awayScore = state === 'scheduled' ? null : readScore(away);
+
+    // Season type — 1 preseason, 2 regular, 3 postseason, 4 offseason.
+    // ESPN exposes this on the event itself or via the season block.
+    const stRaw = ev.seasonType || ev.season?.type || comp.seasonType || null;
+    const seasonTypeId = Number(stRaw?.id ?? stRaw?.type ?? stRaw) || null;
+    const seasonTypeName = stRaw?.name || stRaw?.description || '';
+    // Round / bowl / matchup label — ESPN drops this on `notes[]` for
+    // playoff or bowl games. Pick the most descriptive headline.
+    const rawNotes = (Array.isArray(comp.notes) && comp.notes.length)
+      ? comp.notes
+      : (Array.isArray(ev.notes) ? ev.notes : []);
+    const round = rawNotes
+      .map(n => String(n?.headline || n?.text || '').trim())
+      .find(s => s) || '';
+
     return {
       id: String(ev.id),
       league: league.code,
@@ -655,6 +670,9 @@ async function getTeamSchedule(leagueCode, teamId, season) {
       result: home?.team?.id === id ? home?.winner ? 'W' : (state === 'final' ? 'L' : '')
                                     : away?.winner ? 'W' : (state === 'final' ? 'L' : ''),
       venue: comp.venue?.fullName || '',
+      season_type: seasonTypeId,           // 1|2|3|4
+      season_type_name: seasonTypeName,    // "Regular Season" / "Postseason" / etc.
+      round,                                // e.g. "NFC Wild Card", "Sweet 16", "Cotton Bowl"
     };
   });
   // ESPN's team schedule endpoint typically ships a single `season` field
