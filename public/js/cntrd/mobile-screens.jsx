@@ -1772,36 +1772,64 @@ function EditProfileField({ label, help, value, onChange, maxLength, multiline, 
 // Reachable by tapping any user's avatar/name in the feed or in chat
 // bubbles. Private accounts return a locked view; we render a placeholder
 // with a Follow / Request to follow button.
-function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0 }) {
+function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0, setMessageContext }) {
   const [user, setUser] = React.useState(null);
   const [posts, setPosts] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState(null);
   const [tab, setTab] = React.useState('posts');
   const [busyFollow, setBusyFollow] = React.useState(false);
+  const [busyMessage, setBusyMessage] = React.useState(false);
+  const scrollerRef = React.useRef(null);
 
   const username = viewUsername;
   const isMe = !!(me?.username && username && me.username === username);
 
+  // Re-fetch the profile + their posts. Used by the initial load and by
+  // pull-to-refresh so the viewer always sees fresh bio, post, and
+  // private/public state without forcing them to re-navigate.
+  const load = React.useCallback(async () => {
+    if (!username) return;
+    setErr(null);
+    try {
+      const [u, list] = await Promise.all([
+        window.API.user(username),
+        window.API.userPosts(username).catch(() => []),
+      ]);
+      setUser(u);
+      setPosts((list || []).map(window.normalizePost));
+    } catch (e) {
+      setErr(e.message || 'Failed to load');
+    }
+  }, [username]);
+
   React.useEffect(() => {
     if (!username) { setLoading(false); return; }
     let cancelled = false;
-    setLoading(true); setErr(null);
-    Promise.all([
-      window.API.user(username).catch(e => { throw e; }),
-      window.API.userPosts(username).catch(() => []),
-    ]).then(([u, list]) => {
-      if (cancelled) return;
-      setUser(u);
-      setPosts((list || []).map(window.normalizePost));
-      setLoading(false);
-    }).catch(e => {
-      if (cancelled) return;
-      setErr(e.message || 'Failed to load');
-      setLoading(false);
-    });
+    setLoading(true);
+    load().finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [username]);
+  }, [username, load]);
+
+  const { distance: pullDistance, refreshing: pullRefreshing } =
+    usePullToRefresh(scrollerRef, load);
+
+  // Open (or create + dedupe to) a 1:1 DM with this user. Server returns
+  // the existing conversation when one already exists, so tapping Message
+  // twice never spawns a duplicate thread.
+  const openDM = async () => {
+    if (!user || busyMessage) return;
+    setBusyMessage(true);
+    try {
+      const conv = await window.API.createConversation({ user_ids: [user.id] });
+      setMessageContext?.({ mode: 'thread', selectedId: conv.id });
+      onNav?.('messages');
+    } catch (e) {
+      alert(e.message || 'Could not start a message');
+    } finally {
+      setBusyMessage(false);
+    }
+  };
 
   const followToggle = async () => {
     if (!user || busyFollow) return;
@@ -1867,7 +1895,8 @@ function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0
         <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 12, color: 'var(--cn-text-dim)' }}>{view ? (displayHandle(view) || view.displayName) : (username ? '@' + username : '')}</span>
         <span style={{ width: 32 }} />
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 96 }}>
+      <div ref={scrollerRef} style={{ flex: 1, overflowY: 'auto', paddingBottom: 96, overscrollBehaviorY: 'contain' }}>
+        <PullIndicator distance={pullDistance} refreshing={pullRefreshing} />
         {loading ? (
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>Loading…</div>
         ) : err ? (
@@ -1877,23 +1906,41 @@ function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0
         ) : (
           <>
             <div style={{ padding: '20px 16px 0' }}>
-              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 12, gap: 8 }}>
                 <Avatar user={view} size={88} ring />
                 {!isMe && (
-                  <button
-                    onClick={followToggle}
-                    disabled={busyFollow}
-                    style={{
-                      padding: '8px 16px', borderRadius: 999,
-                      background: view.is_following ? 'var(--cn-bg-elev2)' : view.request_pending ? 'var(--cn-bg-elev2)' : 'var(--cn-accent)',
-                      color:      view.is_following ? 'var(--cn-text)'    : view.request_pending ? 'var(--cn-text-dim)' : 'var(--cn-on-accent)',
-                      border: view.is_following || view.request_pending ? '0.5px solid var(--cn-border)' : 'none',
-                      fontWeight: 700, fontSize: 13, fontFamily: 'var(--cn-font-body)',
-                      cursor: busyFollow ? 'wait' : 'pointer',
-                    }}
-                  >
-                    {view.is_following ? 'Following' : view.request_pending ? 'Requested' : 'Follow'}
-                  </button>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button
+                      onClick={openDM}
+                      disabled={busyMessage}
+                      title="Send message"
+                      style={{
+                        padding: '8px 14px', borderRadius: 999,
+                        background: 'var(--cn-bg-elev2)', color: 'var(--cn-text)',
+                        border: '0.5px solid var(--cn-border)',
+                        fontWeight: 700, fontSize: 13, fontFamily: 'var(--cn-font-body)',
+                        cursor: busyMessage ? 'wait' : 'pointer',
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                      }}
+                    >
+                      <Icon name="chat" size={14} stroke="var(--cn-text)" />
+                      Message
+                    </button>
+                    <button
+                      onClick={followToggle}
+                      disabled={busyFollow}
+                      style={{
+                        padding: '8px 16px', borderRadius: 999,
+                        background: view.is_following ? 'var(--cn-bg-elev2)' : view.request_pending ? 'var(--cn-bg-elev2)' : 'var(--cn-accent)',
+                        color:      view.is_following ? 'var(--cn-text)'    : view.request_pending ? 'var(--cn-text-dim)' : 'var(--cn-on-accent)',
+                        border: view.is_following || view.request_pending ? '0.5px solid var(--cn-border)' : 'none',
+                        fontWeight: 700, fontSize: 13, fontFamily: 'var(--cn-font-body)',
+                        cursor: busyFollow ? 'wait' : 'pointer',
+                      }}
+                    >
+                      {view.is_following ? 'Following' : view.request_pending ? 'Requested' : 'Follow'}
+                    </button>
+                  </div>
                 )}
               </div>
               <div style={{
