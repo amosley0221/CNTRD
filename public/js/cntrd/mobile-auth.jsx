@@ -836,19 +836,92 @@ function TeamMini({ team, record, league }) {
 // reaction or pair an emoji with text.
 const CHAT_QUICK_REACTS = ['🔥', '🙌', '👏', '💯', '😱', '🤯', '🤝', '😤', '🏀', '⚽', '🏈', '⚾', '🏒', '🥶'];
 
+function mapGameMsg(m, me, homeCode, awayCode) {
+  const userTeams = (m.user?.teams || []).map(t => String(t).split(':').pop());
+  return {
+    id: m.id,
+    user: m.user?.username || 'unknown',
+    text: m.content,
+    time: relTime(m.created_at),
+    mine: !!me && !!m.user && m.user.id === me.id,
+    side: userTeams.find(c => c === homeCode || c === awayCode) || null,
+    meSnapshot: m.user ? {
+      username: m.user.username,
+      displayName: m.user.displayName,
+      avatar: m.user.avatar,
+      avatarHue: m.user.avatarHue,
+    } : null,
+  };
+}
+
 function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, unreadMessages = 0 }) {
   const [side, setSide] = React.useState('all');
   const [messages, setMessages] = React.useState([]);
   const [draft, setDraft] = React.useState('');
   const [showReacts, setShowReacts] = React.useState(false);
+  const [convId, setConvId] = React.useState(null);
+  const [chatLoading, setChatLoading] = React.useState(false);
+  const lastMsgAt = React.useRef(null);
+  const pollRef = React.useRef(null);
+  const homeCodeRef = React.useRef(null);
+  const awayCodeRef = React.useRef(null);
 
-  // Reset chat state when the user switches to a different game.
   const gameId = gamedayPick?.id;
+
+  // Load shared chat room when game changes; poll for new messages.
   React.useEffect(() => {
     setMessages([]);
     setDraft('');
     setShowReacts(false);
     setSide('all');
+    setConvId(null);
+    lastMsgAt.current = null;
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+
+    if (!gameId) return;
+
+    const game = gamedayPick;
+    const home = game.homeTeam || TEAMS[game.home] || { code: game.home };
+    const away = game.awayTeam || TEAMS[game.away] || { code: game.away };
+    homeCodeRef.current = home.code;
+    awayCodeRef.current = away.code;
+
+    let active = true;
+    setChatLoading(true);
+    window.API.gamedayConversation(gameId)
+      .then(({ convId: cid, messages: msgs }) => {
+        if (!active) return;
+        setConvId(cid);
+        const mapped = msgs.map(m => mapGameMsg(m, me, home.code, away.code));
+        setMessages(mapped);
+        if (msgs.length > 0) lastMsgAt.current = msgs[msgs.length - 1].created_at;
+
+        pollRef.current = setInterval(async () => {
+          if (!active) return;
+          try {
+            const cursor = lastMsgAt.current;
+            const fresh = cursor
+              ? await window.API.conversationMessagesAfter(cid, cursor)
+              : [];
+            if (!active || !fresh.length) return;
+            lastMsgAt.current = fresh[fresh.length - 1].created_at;
+            setMessages(prev => {
+              const seen = new Set(prev.map(m => m.id));
+              const added = fresh
+                .filter(m => !seen.has(m.id))
+                .map(m => mapGameMsg(m, me, homeCodeRef.current, awayCodeRef.current));
+              return added.length ? [...prev, ...added] : prev;
+            });
+          } catch {}
+        }, 5000);
+      })
+      .catch(() => {})
+      .finally(() => { if (active) setChatLoading(false); });
+
+    return () => {
+      active = false;
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    };
   }, [gameId]);
 
   // List mode: no specific game picked → show live + upcoming as rows.
@@ -862,15 +935,14 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
   const filtered = side === 'all' ? messages : messages.filter(m => m.side === side || !m.side);
   const goBack = () => setGamedayPick?.(null);
 
-  const submit = () => {
+  const submit = async () => {
     const text = draft.trim();
-    if (!text) return;
+    if (!text || !convId) return;
     const meUser = me || (typeof window !== 'undefined' && window.ME);
-    const msg = {
-      id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    const optimisticId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const optimistic = {
+      id: optimisticId,
       user: meUser?.username || 'me',
-      // Attach the user's primary team to the message so the side filter
-      // can include it under "<team> only".
       side: (meUser?.teams || []).map(t => String(t).split(':').pop()).find(c => c === home.code || c === away.code) || null,
       text,
       time: 'now',
@@ -882,9 +954,20 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
         avatarHue: meUser.avatarHue,
       } : null,
     };
-    setMessages(prev => [...prev, msg]);
+    setMessages(prev => [...prev, optimistic]);
     setDraft('');
     setShowReacts(false);
+    try {
+      const sent = await window.API.sendMessage(convId, text);
+      lastMsgAt.current = sent.created_at;
+      setMessages(prev => prev.map(m =>
+        m.id === optimisticId
+          ? mapGameMsg(sent, meUser, home.code, away.code)
+          : m
+      ));
+    } catch {
+      setMessages(prev => prev.filter(m => m.id !== optimisticId));
+    }
   };
   const onKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -940,15 +1023,15 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
 
       {/* messages */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 0', display: 'flex', flexDirection: filtered.length ? 'column-reverse' : 'column', gap: 8, alignItems: filtered.length ? 'stretch' : 'center', justifyContent: filtered.length ? 'flex-end' : 'center' }}>
-        {filtered.length === 0 ? (
+        {chatLoading ? (
+          <div style={{ textAlign: 'center', color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 11, padding: '20px 16px' }}>
+            Loading chat…
+          </div>
+        ) : filtered.length === 0 ? (
           <div style={{ textAlign: 'center', color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 11, padding: '20px 16px', lineHeight: 1.6 }}>
-            Be the first to chat.<br />
-            <span style={{ fontSize: 10 }}>Live chat is wired client-side only for now — messages will sync when the realtime backend ships.</span>
+            Be the first to chat.
           </div>
         ) : (
-          // Render newest-first with column-reverse so layout matches the
-          // surrounding flex direction. Iterate the messages in reverse so
-          // chronological order is preserved on screen.
           [...filtered].reverse().map(m => <ChatBubble key={m.id} m={m} />)
         )}
       </div>
@@ -1002,13 +1085,13 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
         />
         <button
           onClick={submit}
-          disabled={!draft.trim()}
+          disabled={!draft.trim() || !convId}
           style={{
             padding: '8px 14px', borderRadius: 10,
-            background: draft.trim() ? 'var(--cn-accent)' : 'var(--cn-bg-elev2)',
-            color: draft.trim() ? 'var(--cn-on-accent)' : 'var(--cn-text-mute)',
+            background: draft.trim() && convId ? 'var(--cn-accent)' : 'var(--cn-bg-elev2)',
+            color: draft.trim() && convId ? 'var(--cn-on-accent)' : 'var(--cn-text-mute)',
             border: 'none', fontWeight: 700, fontSize: 13,
-            cursor: draft.trim() ? 'pointer' : 'not-allowed',
+            cursor: draft.trim() && convId ? 'pointer' : 'not-allowed',
             fontFamily: 'var(--cn-font-body)',
           }}
         >Send</button>
@@ -1063,10 +1146,7 @@ function SideTeam({ team, score, reverse, league }) {
 }
 
 function ChatBubble({ m }) {
-  // Locally-created messages embed a snapshot of the author so we don't
-  // rely on the deprecated USERS mock. Server-fed messages still fall
-  // through to the legacy lookup until the chat backend ships.
-  const u = m.meSnapshot || USERS[m.user] || { username: m.user || 'me', displayName: m.user || 'Me' };
+  const u = m.meSnapshot || { username: m.user || 'me', displayName: m.user || 'Me' };
   const isMine = m.mine;
   const team = m.side ? TEAMS[m.side] : null;
   const openProfile = (e) => {

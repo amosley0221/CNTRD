@@ -163,6 +163,8 @@ const API = {
   unreadCount()                         { return request('GET',  '/api/messages/unread'); },
   conversation(id)                      { return request('GET',  `/api/messages/${id}`); },
   conversationMessages(id, before)      { return request('GET',  `/api/messages/${id}/messages${before ? '?before=' + encodeURIComponent(before) : ''}`); },
+  conversationMessagesAfter(id, after)  { return request('GET',  `/api/messages/${id}/messages?after=${encodeURIComponent(after)}`); },
+  gamedayConversation(gameId)           { return request('GET',  `/api/messages/gameday/${encodeURIComponent(gameId)}`); },
   sendMessage(id, content)              { return request('POST', `/api/messages/${id}/messages`, { content }); },
   createConversation(payload)           { return request('POST', '/api/messages', payload); },
   renameConversation(id, name)          { return request('PATCH',`/api/messages/${id}`, { name }); },

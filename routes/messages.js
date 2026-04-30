@@ -216,18 +216,68 @@ router.delete('/:id/members/me', (req, res) => {
   res.json({ left: true });
 });
 
-// List messages (most recent first, paginated by `before` cursor).
+// Find-or-create the shared gameday chat room for a game. Auto-joins caller.
+// Must be defined before GET /:id so Express doesn't treat "gameday" as an id.
+router.get('/gameday/:gameId', (req, res) => {
+  const gameId = String(req.params.gameId || '').trim().slice(0, 80);
+  if (!gameId) return res.status(400).json({ error: 'Invalid game ID' });
+
+  const convId = db.transaction(() => {
+    let conv = db.prepare('SELECT id FROM conversations WHERE game_id = ?').get(gameId);
+    if (!conv) {
+      const newId = uuidv4();
+      db.prepare(`INSERT INTO conversations (id, name, is_group, created_by, game_id) VALUES (?, ?, 1, ?, ?)`)
+        .run(newId, `gameday:${gameId}`, req.user.id, gameId);
+      conv = { id: newId };
+    }
+    // Auto-join caller as member (idempotent).
+    db.prepare(`INSERT OR IGNORE INTO conversation_members (conversation_id, user_id, last_read_at)
+                VALUES (?, ?, datetime('now'))`).run(conv.id, req.user.id);
+    db.prepare(`UPDATE conversation_members SET last_read_at = datetime('now')
+                WHERE conversation_id = ? AND user_id = ?`).run(conv.id, req.user.id);
+    return conv.id;
+  })();
+
+  const rows = db.prepare(`
+    SELECT m.id, m.user_id, m.content, m.created_at,
+           u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
+    FROM messages m JOIN users u ON u.id = m.user_id
+    WHERE m.conversation_id = ?
+    ORDER BY m.created_at DESC LIMIT 50
+  `).all(convId);
+
+  res.json({
+    convId,
+    messages: rows.reverse().map(r => ({
+      id: r.id,
+      content: r.content,
+      created_at: r.created_at,
+      user: {
+        id: r.user_id,
+        username: r.username,
+        displayName: r.display_name || r.username,
+        avatar: r.avatar,
+        avatarHue: r.avatar_hue ?? 200,
+        teams: JSON.parse(r.team_tags || '[]'),
+      },
+    })),
+  });
+});
+
+// List messages (most recent first, paginated by `before` cursor or `after` for polling).
 router.get('/:id/messages', (req, res) => {
   const member = db.prepare('SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!member) return res.status(404).json({ error: 'Conversation not found' });
 
   const before = req.query.before;
+  const after  = req.query.after;
   const params = [req.params.id];
   let q = `SELECT m.id, m.user_id, m.content, m.created_at,
-                  u.username, u.display_name, u.avatar, u.avatar_hue
+                  u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
            FROM messages m JOIN users u ON u.id = m.user_id
            WHERE m.conversation_id = ?`;
   if (before) { q += ' AND m.created_at < ?'; params.push(before); }
+  if (after)  { q += ' AND m.created_at > ?'; params.push(after); }
   q += ' ORDER BY m.created_at DESC LIMIT 50';
   const rows = db.prepare(q).all(...params);
 
@@ -247,6 +297,7 @@ router.get('/:id/messages', (req, res) => {
       displayName: r.display_name || r.username,
       avatar: r.avatar,
       avatarHue: r.avatar_hue ?? 200,
+      teams: JSON.parse(r.team_tags || '[]'),
     },
   })).reverse());   // chronological for display
 });
@@ -268,22 +319,24 @@ router.post('/:id/messages', (req, res) => {
   db.prepare(`UPDATE conversation_members SET last_read_at = datetime('now')
               WHERE conversation_id = ? AND user_id = ?`).run(req.params.id, req.user.id);
 
-  // Notify other members. Dedupe per (recipient, conversation) so a flurry
-  // of messages collapses into one notification row.
-  const others = db.prepare(`
-    SELECT user_id FROM conversation_members WHERE conversation_id = ? AND user_id != ?
-  `).all(req.params.id, req.user.id);
-  for (const o of others) {
-    notify({
-      userId: o.user_id, type: 'message', actorId: req.user.id,
-      data: { conversation_id: req.params.id, preview: content.slice(0, 140) },
-      dedupeKey: `msg:${req.params.id}`,
-    });
+  // Skip per-member notifications for gameday rooms to avoid inbox spam.
+  const isGameday = !!db.prepare('SELECT game_id FROM conversations WHERE id = ? AND game_id IS NOT NULL').get(req.params.id);
+  if (!isGameday) {
+    const others = db.prepare(`
+      SELECT user_id FROM conversation_members WHERE conversation_id = ? AND user_id != ?
+    `).all(req.params.id, req.user.id);
+    for (const o of others) {
+      notify({
+        userId: o.user_id, type: 'message', actorId: req.user.id,
+        data: { conversation_id: req.params.id, preview: content.slice(0, 140) },
+        dedupeKey: `msg:${req.params.id}`,
+      });
+    }
   }
 
   const row = db.prepare(`
     SELECT m.id, m.user_id, m.content, m.created_at,
-           u.username, u.display_name, u.avatar, u.avatar_hue
+           u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
     FROM messages m JOIN users u ON u.id = m.user_id
     WHERE m.id = ?
   `).get(id);
@@ -295,6 +348,7 @@ router.post('/:id/messages', (req, res) => {
     user: {
       id: row.user_id, username: row.username, displayName: row.display_name || row.username,
       avatar: row.avatar, avatarHue: row.avatar_hue ?? 200,
+      teams: JSON.parse(row.team_tags || '[]'),
     },
   });
 });

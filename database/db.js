@@ -225,6 +225,14 @@ ensureColumn('users', 'is_verified', "INTEGER DEFAULT 0");
 // internally; this only affects what other users see.
 ensureColumn('users', 'hide_username', "INTEGER DEFAULT 0");
 
+// Gameday group chats: each live game gets one shared conversation.
+// game_id stores the external game identifier so we can find-or-create
+// the room without scanning by name.
+ensureColumn('conversations', 'game_id', "TEXT DEFAULT NULL");
+try {
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_game_id ON conversations(game_id) WHERE game_id IS NOT NULL`);
+} catch {}
+
 // post type: take | photo | score | poll | clip | box | rumor
 ensureColumn('posts', 'type',  "TEXT DEFAULT 'take'");
 ensureColumn('posts', 'tags',  "TEXT DEFAULT '[]'");      // JSON array of team codes
