@@ -737,6 +737,8 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
           conv={conv}
           me={me}
           onClose={() => setGroupInfoOpen(false)}
+          onConvUpdated={(updated) => setConv(updated)}
+          onGroupDeleted={() => { setGroupInfoOpen(false); onBack?.(); }}
         />
       )}
     </div>
@@ -1106,11 +1108,19 @@ function MessageBubble({ m, mine, showAuthor, showSeen, onTap, onReply }) {
   );
 }
 
-function GroupInfoSheet({ conv, me, onClose }) {
+function GroupInfoSheet({ conv, me, onClose, onConvUpdated, onGroupDeleted }) {
   const members = conv?.members || [];
+  const isCreator = !!(me?.id && conv?.created_by && conv.created_by === me.id);
+  const [showAdd, setShowAdd] = React.useState(false);
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const [busy, setBusy] = React.useState(null); // user id being kicked, or 'group' / 'add'
+  const [err, setErr] = React.useState(null);
+
   const sorted = [...members].sort((a, b) => {
     if (a.id === me?.id) return -1;
     if (b.id === me?.id) return 1;
+    if (a.id === conv?.created_by) return -1;
+    if (b.id === conv?.created_by) return 1;
     return (a.displayName || '').localeCompare(b.displayName || '');
   });
   const openProfile = (u) => {
@@ -1118,6 +1128,29 @@ function GroupInfoSheet({ conv, me, onClose }) {
     window.dispatchEvent(new CustomEvent('cntrd:open-user', { detail: { username: u.username } }));
     onClose?.();
   };
+  const kickMember = async (u) => {
+    if (!isCreator || u.id === me?.id) return;
+    setBusy(u.id); setErr(null);
+    try {
+      const updated = await API.kickGroupMember(conv.id, u.id);
+      onConvUpdated?.(updated);
+    } catch (e) {
+      setErr(e.message || 'Could not remove');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const deleteGroup = async () => {
+    setBusy('group'); setErr(null);
+    try {
+      await API.deleteGroup(conv.id);
+      onGroupDeleted?.();
+    } catch (e) {
+      setErr(e.message || 'Could not delete');
+      setBusy(null);
+    }
+  };
+
   return (
     <div onClick={onClose} style={{
       position: 'absolute', inset: 0, zIndex: 50,
@@ -1125,7 +1158,7 @@ function GroupInfoSheet({ conv, me, onClose }) {
       display: 'flex', alignItems: 'flex-end',
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
-        width: '100%', maxHeight: '80%', overflowY: 'auto',
+        width: '100%', maxHeight: '85%', overflowY: 'auto',
         background: 'var(--cn-bg-elev2)',
         borderTopLeftRadius: 18, borderTopRightRadius: 18,
         padding: '14px 0 calc(20px + env(safe-area-inset-bottom, 0px))',
@@ -1151,37 +1184,215 @@ function GroupInfoSheet({ conv, me, onClose }) {
             <Icon name="x" size={18} stroke="var(--cn-text-dim)" />
           </button>
         </div>
+
+        {err && (
+          <div style={{ padding: '8px 18px', fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-danger)' }}>
+            {err}
+          </div>
+        )}
+
+        {isCreator && !showAdd && !confirmDelete && (
+          <button onClick={() => setShowAdd(true)} style={{
+            width: '100%', padding: '14px 18px',
+            display: 'flex', alignItems: 'center', gap: 12,
+            background: 'transparent', border: 'none',
+            borderBottom: '0.5px solid var(--cn-border-s)',
+            cursor: 'pointer', color: 'var(--cn-accent)',
+            fontFamily: 'var(--cn-font-body)', fontWeight: 700, fontSize: 13,
+            textAlign: 'left',
+          }}>
+            <Icon name="plus" size={18} stroke="var(--cn-accent)" />
+            Add member
+          </button>
+        )}
+
+        {isCreator && showAdd && (
+          <AddMemberPanel
+            conv={conv}
+            existingIds={new Set(members.map(m => m.id))}
+            onCancel={() => setShowAdd(false)}
+            onAdded={(updated) => { onConvUpdated?.(updated); setShowAdd(false); }}
+          />
+        )}
+
         <div>
           {sorted.map(u => {
             const isMe = u.id === me?.id;
+            const isOwnerOfGroup = u.id === conv.created_by;
+            const canKick = isCreator && !isMe;
             return (
-              <button
+              <div
                 key={u.id}
-                onClick={() => openProfile(u)}
-                disabled={isMe || !u.username}
                 style={{
                   width: '100%', padding: '12px 18px',
                   display: 'flex', alignItems: 'center', gap: 12,
-                  background: 'transparent', border: 'none',
                   borderBottom: '0.5px solid var(--cn-border-s)',
-                  cursor: (isMe || !u.username) ? 'default' : 'pointer',
-                  color: 'var(--cn-text)', textAlign: 'left',
-                  fontFamily: 'var(--cn-font-body)',
+                  color: 'var(--cn-text)',
                 }}
               >
-                <Avatar user={u} size={36} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>
-                    {u.displayName || u.username}
-                    {isMe && <span style={{ color: 'var(--cn-text-mute)', fontWeight: 400, fontSize: 12, marginLeft: 6 }}>· you</span>}
+                <button
+                  onClick={() => openProfile(u)}
+                  disabled={isMe || !u.username}
+                  style={{
+                    flex: 1, minWidth: 0,
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    background: 'transparent', border: 'none', padding: 0,
+                    cursor: (isMe || !u.username) ? 'default' : 'pointer',
+                    color: 'inherit', textAlign: 'left',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  <Avatar user={u} size={36} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>
+                      {u.displayName || u.username}
+                      {isMe && <span style={{ color: 'var(--cn-text-mute)', fontWeight: 400, fontSize: 12, marginLeft: 6 }}>· you</span>}
+                      {isOwnerOfGroup && !isMe && <span style={{ color: 'var(--cn-accent)', fontWeight: 700, fontSize: 10, marginLeft: 6, letterSpacing: 1 }}>· CREATOR</span>}
+                    </div>
+                    <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>@{u.username}</div>
                   </div>
-                  <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>@{u.username}</div>
-                </div>
-                {!isMe && u.username && <Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />}
-              </button>
+                </button>
+                {canKick && (
+                  <button
+                    onClick={() => kickMember(u)}
+                    disabled={busy === u.id}
+                    title={`Remove @${u.username}`}
+                    style={{
+                      padding: '6px 10px', borderRadius: 999,
+                      background: 'transparent', color: 'var(--cn-danger)',
+                      border: '0.5px solid var(--cn-border-s)',
+                      cursor: busy === u.id ? 'wait' : 'pointer',
+                      fontFamily: 'var(--cn-font-body)', fontWeight: 700, fontSize: 11,
+                    }}
+                  >{busy === u.id ? '…' : 'Remove'}</button>
+                )}
+              </div>
             );
           })}
         </div>
+
+        {isCreator && (
+          confirmDelete ? (
+            <div style={{ padding: '14px 18px', borderTop: '0.5px solid var(--cn-border-s)' }}>
+              <div style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 800, fontSize: 14, marginBottom: 6 }}>
+                Delete this group?
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--cn-text-dim)', lineHeight: 1.4, marginBottom: 12 }}>
+                Every member loses access. Messages and events are erased. This can't be undone.
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => setConfirmDelete(false)} disabled={busy === 'group'} style={{
+                  flex: 1, padding: '10px 14px', borderRadius: 10,
+                  background: 'var(--cn-bg-elev)', color: 'var(--cn-text)',
+                  border: '0.5px solid var(--cn-border-s)', cursor: 'pointer',
+                  fontWeight: 700, fontSize: 13, fontFamily: 'var(--cn-font-body)',
+                }}>Cancel</button>
+                <button onClick={deleteGroup} disabled={busy === 'group'} style={{
+                  flex: 1, padding: '10px 14px', borderRadius: 10,
+                  background: 'var(--cn-danger)', color: '#fff',
+                  border: 'none', cursor: busy === 'group' ? 'wait' : 'pointer',
+                  fontWeight: 700, fontSize: 13, fontFamily: 'var(--cn-font-body)',
+                }}>{busy === 'group' ? 'Deleting…' : 'Delete group'}</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmDelete(true)} style={{
+              width: '100%', padding: '14px 18px',
+              display: 'flex', alignItems: 'center', gap: 12,
+              background: 'transparent', border: 'none',
+              borderTop: '0.5px solid var(--cn-border-s)',
+              cursor: 'pointer', color: 'var(--cn-danger)',
+              fontFamily: 'var(--cn-font-body)', fontWeight: 700, fontSize: 13,
+              textAlign: 'left',
+            }}>
+              <Icon name="x" size={18} stroke="var(--cn-danger)" />
+              Delete group
+            </button>
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AddMemberPanel({ conv, existingIds, onCancel, onAdded }) {
+  const [q, setQ] = React.useState('');
+  const [results, setResults] = React.useState([]);
+  const [busy, setBusy] = React.useState(null);
+  const [err, setErr] = React.useState(null);
+
+  React.useEffect(() => {
+    const t = q.trim();
+    if (!t) { setResults([]); return; }
+    let cancelled = false;
+    const id = setTimeout(async () => {
+      try {
+        const list = await API.searchUsers(t);
+        if (!cancelled) setResults((list || []).filter(u => !existingIds.has(u.id)));
+      } catch (e) { if (!cancelled) setErr(e.message); }
+    }, 200);
+    return () => { cancelled = true; clearTimeout(id); };
+  }, [q, existingIds]);
+
+  const invite = async (u) => {
+    setBusy(u.id); setErr(null);
+    try {
+      const updated = await API.inviteToGroup(conv.id, u.id);
+      onAdded?.(updated);
+    } catch (e) {
+      setErr(e.message || 'Could not invite');
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div style={{ borderBottom: '0.5px solid var(--cn-border-s)', padding: '12px 14px' }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+        <input
+          autoFocus
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          placeholder="Find someone to invite…"
+          style={{
+            flex: 1, padding: '10px 14px', borderRadius: 999,
+            background: 'var(--cn-bg)',
+            border: '0.5px solid var(--cn-border-s)',
+            color: 'var(--cn-text)', fontSize: 13,
+            outline: 'none', fontFamily: 'var(--cn-font-body)',
+          }}
+        />
+        <button onClick={onCancel} style={{
+          padding: '8px 14px', borderRadius: 999,
+          background: 'transparent', color: 'var(--cn-text-dim)',
+          border: '0.5px solid var(--cn-border-s)', cursor: 'pointer',
+          fontWeight: 600, fontSize: 12, fontFamily: 'var(--cn-font-body)',
+        }}>Cancel</button>
+      </div>
+      {err && <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-danger)', marginBottom: 6 }}>{err}</div>}
+      <div>
+        {results.map(u => (
+          <div key={u.id} style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '8px 4px',
+          }}>
+            <Avatar user={u} size={32} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>{u.displayName}</div>
+              <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>@{u.username}</div>
+            </div>
+            <button onClick={() => invite(u)} disabled={busy === u.id} style={{
+              padding: '6px 12px', borderRadius: 999,
+              background: 'var(--cn-accent)', color: 'var(--cn-on-accent)',
+              border: 'none', cursor: busy === u.id ? 'wait' : 'pointer',
+              fontFamily: 'var(--cn-font-body)', fontWeight: 700, fontSize: 11,
+            }}>{busy === u.id ? '…' : 'Invite'}</button>
+          </div>
+        ))}
+        {q.trim() && results.length === 0 && (
+          <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)', padding: '6px 4px' }}>
+            No matches.
+          </div>
+        )}
       </div>
     </div>
   );

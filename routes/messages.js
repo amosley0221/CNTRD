@@ -80,6 +80,7 @@ function hydrateConversation(conv, viewerId) {
     game_id: conv.game_id || null,
     closes_at: conv.closes_at || null,
     created_at: conv.created_at,
+    created_by: conv.created_by || null,
     last_message_at: conv.last_message_at,
     members,
     other: !conv.is_group ? members.find(m => m.id !== viewerId) || null : null,
@@ -344,6 +345,47 @@ router.post('/:id/members', (req, res) => {
 router.delete('/:id/members/me', (req, res) => {
   db.prepare('DELETE FROM conversation_members WHERE conversation_id = ? AND user_id = ?').run(req.params.id, req.user.id);
   res.json({ left: true });
+});
+
+// Remove another member from a group. Only the creator can kick. The
+// kicked user is also removed from any pending invites for the group.
+// A system message announces who was removed.
+router.delete('/:id/members/:userId', (req, res) => {
+  const conv = db.prepare('SELECT * FROM conversations WHERE id = ?').get(req.params.id);
+  if (!conv || !conv.is_group) return res.status(404).json({ error: 'Group not found' });
+  if (conv.created_by !== req.user.id) return res.status(403).json({ error: 'Only the group creator can remove members' });
+  if (req.params.userId === req.user.id) return res.status(400).json({ error: 'Use the leave endpoint to remove yourself' });
+
+  const target = db.prepare('SELECT id, username FROM users WHERE id = ?').get(req.params.userId);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+
+  const wasMember = !!db.prepare('SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?')
+    .get(conv.id, target.id);
+
+  db.transaction(() => {
+    db.prepare('DELETE FROM conversation_members WHERE conversation_id = ? AND user_id = ?')
+      .run(conv.id, target.id);
+    db.prepare('DELETE FROM conversation_invites WHERE conversation_id = ? AND user_id = ?')
+      .run(conv.id, target.id);
+    if (wasMember) {
+      db.prepare(`INSERT INTO messages (id, conversation_id, user_id, content, is_system) VALUES (?, ?, ?, ?, 1)`)
+        .run(uuidv4(), conv.id, req.user.id, `${req.user.username} removed ${target.username} from the group`);
+      db.prepare(`UPDATE conversations SET last_message_at = datetime('now') WHERE id = ?`).run(conv.id);
+    }
+  })();
+
+  res.json(hydrateConversation(conv, req.user.id));
+});
+
+// Delete a group entirely. Only the creator can delete; FK cascades take
+// out members, invites, messages, and events.
+router.delete('/:id', (req, res) => {
+  const conv = db.prepare('SELECT * FROM conversations WHERE id = ?').get(req.params.id);
+  if (!conv) return res.status(404).json({ error: 'Conversation not found' });
+  if (!conv.is_group) return res.status(400).json({ error: 'Only group conversations can be deleted' });
+  if (conv.created_by !== req.user.id) return res.status(403).json({ error: 'Only the group creator can delete the group' });
+  db.prepare('DELETE FROM conversations WHERE id = ?').run(conv.id);
+  res.json({ deleted: true });
 });
 
 // Hydrate a message row plus its (optional) reply target.
