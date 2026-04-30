@@ -306,7 +306,6 @@ function AvatarCropper({ file, onCancel, onConfirm }) {
       canvas.height = OUTPUT_SIZE;
       const ctx = canvas.getContext('2d');
       const img = new Image();
-      img.crossOrigin = 'anonymous';
       await new Promise((resolve, reject) => {
         img.onload = resolve;
         img.onerror = reject;

@@ -190,6 +190,26 @@ function Avatar({ user, size = 32, ring = false, ringColor = 'var(--cn-accent)' 
   const u = (typeof user === 'string') ? USERS[user] : user;
   if (!u) return null;
   const fs = Math.max(10, Math.round(size * 0.36));
+  const ringShadow = ring
+    ? `0 0 0 2px var(--cn-bg), 0 0 0 ${2 + 2}px ${ringColor}`
+    : 'inset 0 0 0 0.5px rgba(255,255,255,0.1)';
+  // If the user uploaded a custom photo, show that. Otherwise fall back
+  // to a colored circle with the user's initials.
+  if (u.avatar) {
+    return (
+      <img
+        src={u.avatar}
+        alt=""
+        style={{
+          width: size, height: size, borderRadius: '50%',
+          objectFit: 'cover',
+          flexShrink: 0,
+          boxShadow: ringShadow,
+          background: avatarBg(u.avatarHue ?? 200),
+        }}
+      />
+    );
+  }
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%',
@@ -199,9 +219,7 @@ function Avatar({ user, size = 32, ring = false, ringColor = 'var(--cn-accent)' 
       fontFamily: 'var(--cn-font-body)',
       fontWeight: 700, fontSize: fs, letterSpacing: 0.5,
       flexShrink: 0,
-      boxShadow: ring
-        ? `0 0 0 2px var(--cn-bg), 0 0 0 ${2 + 2}px ${ringColor}`
-        : 'inset 0 0 0 0.5px rgba(255,255,255,0.1)',
+      boxShadow: ringShadow,
     }}>
       {avatarInitials(u.displayName)}
     </div>
