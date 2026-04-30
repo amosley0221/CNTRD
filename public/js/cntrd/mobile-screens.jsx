@@ -2198,9 +2198,9 @@ function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0
 // everything from this user. Tapping fires the action sheet.
 function ProfileAvatar({ user, size = 88, hasRecentPlay, hasUnwatchedPlay, onTap }) {
   const ring = hasRecentPlay ? 4 : 0;
-  const ringFill = hasUnwatchedPlay
-    ? 'conic-gradient(from 0deg, var(--cn-accent), #ff4d8a, #ffb74d, var(--cn-accent))'
-    : (hasRecentPlay ? 'var(--cn-text-mute)' : 'transparent');
+  // Solid accent when there's a Play this viewer hasn't watched, dimmed
+  // gray once they've watched everything in the 24h window.
+  const ringFill = hasUnwatchedPlay ? 'var(--cn-accent)' : 'var(--cn-text-mute)';
   return (
     <button
       onClick={onTap}
@@ -2220,7 +2220,7 @@ function ProfileAvatar({ user, size = 88, hasRecentPlay, hasUnwatchedPlay, onTap
         <span style={{
           position: 'absolute', inset: 0, borderRadius: '50%',
           background: ringFill,
-          opacity: hasUnwatchedPlay ? 1 : 0.45,
+          opacity: hasUnwatchedPlay ? 1 : 0.5,
         }} />
       )}
       <span style={{

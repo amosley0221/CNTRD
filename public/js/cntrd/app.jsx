@@ -285,13 +285,32 @@ function CNTRDApp() {
 
   // Pull-to-refresh: replace the visible feed with the server's latest, and
   // clear any pending pill since those posts are now part of the main list.
+  // Also refresh Plays so a new bubble shows up without reloading the page.
   const handlePullRefreshFeed = React.useCallback(async () => {
     try {
-      const fresh = await (authed ? API.feed() : API.explore());
+      const [fresh, freshPlays] = await Promise.all([
+        authed ? API.feed() : API.explore(),
+        API.plays(),
+      ]);
       setPosts((fresh || []).map(normalizePost));
+      setPlays((freshPlays || []).map(normalizePlay));
       setPendingFeed([]);
     } catch { /* leave existing posts in place */ }
   }, [authed]);
+
+  // Refetch Plays whenever the user lands on the Feed screen so new
+  // posts from people they follow show up in the rail without a manual
+  // pull-to-refresh.
+  React.useEffect(() => {
+    if (!bootstrapped) return;
+    if (screen !== 'home') return;
+    let cancelled = false;
+    API.plays().then(list => {
+      if (cancelled) return;
+      setPlays((list || []).map(normalizePlay));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [screen, bootstrapped, authed]);
 
   // Poll live + recent games every 60s.
   React.useEffect(() => {

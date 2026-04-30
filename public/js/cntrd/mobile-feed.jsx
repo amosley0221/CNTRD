@@ -95,12 +95,13 @@ function PlayBubble({ play, add, unwatched = true, onClick }) {
         position: 'relative',
         width: 60, height: 60, borderRadius: '50%',
         padding: 2,
+        // Live keeps the red pulse ring; otherwise use the user's
+        // accent color when there's an unwatched play, dimmed gray
+        // once everything in the rail has been viewed.
         background: play.live
-          ? `conic-gradient(from 0deg, var(--cn-live), ${team.primary}, var(--cn-live))`
-          : (unwatched
-            ? `conic-gradient(from 0deg, ${team.primary}, ${team.accent}, ${team.primary})`
-            : 'var(--cn-text-mute)'),
-        opacity: unwatched ? 1 : 0.55,
+          ? `conic-gradient(from 0deg, var(--cn-live), var(--cn-accent), var(--cn-live))`
+          : (unwatched ? 'var(--cn-accent)' : 'var(--cn-text-mute)'),
+        opacity: unwatched || play.live ? 1 : 0.55,
       }}>
         <div style={{
           width: '100%', height: '100%', borderRadius: '50%',
