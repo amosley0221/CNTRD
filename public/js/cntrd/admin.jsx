@@ -119,6 +119,7 @@ function AdminScreen({ tweaks, onNav, me }) {
         {[
           { id: 'users',   label: 'Users' },
           { id: 'reports', label: 'Reports', badge: reportsCounts.pending + reportsCounts.escalated },
+          ...(me?.is_owner ? [{ id: 'watchwords', label: 'Watchwords' }] : []),
         ].map(t => {
           const active = tab === t.id;
           return (
@@ -146,6 +147,8 @@ function AdminScreen({ tweaks, onNav, me }) {
 
       {tab === 'reports' ? (
         <ReportsTab me={me} onCounts={setReportsCounts} />
+      ) : tab === 'watchwords' && me?.is_owner ? (
+        <WatchwordsTab />
       ) : (<>
       {/* Search */}
       <div style={{ padding: '10px 16px', borderBottom: '0.5px solid var(--cn-border)' }}>
@@ -322,11 +325,25 @@ function ReportCard({ r, me, busy, onResolve }) {
         </span>
       </div>
       <div style={{ fontSize: 13, marginBottom: 6 }}>
-        <strong>@{r.reporter?.username || 'someone'}</strong>
-        <span style={{ color: 'var(--cn-text-mute)' }}> reported </span>
-        {r.target_user
-          ? <strong>@{r.target_user.username}</strong>
-          : <span>{r.target_type}</span>}
+        {r.auto_flag ? (
+          <>
+            <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-warn)', fontWeight: 800, letterSpacing: 1 }}>
+              AUTO-FLAG{r.matched_term ? ` · "${r.matched_term}"` : ''}
+            </span>
+            <span style={{ color: 'var(--cn-text-mute)' }}> on </span>
+            {r.target_user
+              ? <strong>@{r.target_user.username}</strong>
+              : <span>{r.target_type}</span>}
+          </>
+        ) : (
+          <>
+            <strong>@{r.reporter?.username || 'someone'}</strong>
+            <span style={{ color: 'var(--cn-text-mute)' }}> reported </span>
+            {r.target_user
+              ? <strong>@{r.target_user.username}</strong>
+              : <span>{r.target_type}</span>}
+          </>
+        )}
         {r.target_user?.banned && (
           <span style={{ marginLeft: 6, color: 'var(--cn-danger)', fontFamily: 'var(--cn-font-mono)', fontSize: 10, fontWeight: 800 }}>
             BANNED{r.target_user.banned_until ? ` · until ${r.target_user.banned_until}` : ''}
@@ -352,6 +369,19 @@ function ReportCard({ r, me, busy, onResolve }) {
           <div style={{ fontSize: 9, color: 'var(--cn-text-mute)', letterSpacing: 1, marginBottom: 4 }}>SNAPSHOT</div>
           {r.content_snapshot}
         </div>
+      )}
+      {r.media_url && (
+        <a href={r.media_url} target="_blank" rel="noopener" style={{
+          display: 'block', marginTop: 8, borderRadius: 8, overflow: 'hidden',
+          border: '0.5px solid var(--cn-border-s)', background: '#000',
+          maxHeight: 200,
+        }}>
+          {/\.(mp4|mov|webm)$/i.test(r.media_url) ? (
+            <video src={r.media_url} controls muted style={{ width: '100%', maxHeight: 200, objectFit: 'contain', background: '#000' }} />
+          ) : (
+            <img src={r.media_url} alt="" style={{ width: '100%', maxHeight: 200, objectFit: 'contain', background: '#000' }} />
+          )}
+        </a>
       )}
       {isResolved && (
         <div style={{ marginTop: 8, fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>
@@ -404,6 +434,119 @@ function mini(color) {
     fontFamily: 'var(--cn-font-body)', fontWeight: 700, fontSize: 11,
     cursor: 'pointer',
   };
+}
+
+function WatchwordsTab() {
+  const [list, setList] = React.useState([]);
+  const [draft, setDraft] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
+  const refresh = React.useCallback(async () => {
+    setLoading(true); setErr(null);
+    try {
+      const rows = await API.watchwordsList();
+      setList(rows || []);
+    } catch (e) {
+      setErr(e.message || 'Failed to load');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  React.useEffect(() => { refresh(); }, [refresh]);
+
+  const add = async () => {
+    const w = draft.trim();
+    if (!w || busy) return;
+    setBusy(true); setErr(null);
+    try {
+      await API.watchwordsAdd(w);
+      setDraft('');
+      await refresh();
+    } catch (e) {
+      setErr(e.message || 'Could not add');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const remove = async (id) => {
+    setBusy(true); setErr(null);
+    try {
+      await API.watchwordsRemove(id);
+      setList(prev => prev.filter(w => w.id !== id));
+    } catch (e) {
+      setErr(e.message || 'Could not remove');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ padding: '14px 16px', overflowY: 'auto' }}>
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 800, fontSize: 16, marginBottom: 4 }}>
+          Auto-flag watchwords
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--cn-text-dim)', lineHeight: 1.45 }}>
+          Posts and Plays whose body matches any of these terms (whole word, case-insensitive)
+          will fire an automatic review notification to you. Admins won't be pinged on auto-flags.
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <input
+          value={draft}
+          onChange={e => setDraft(e.target.value.slice(0, 60))}
+          onKeyDown={e => e.key === 'Enter' && add()}
+          placeholder="Add a word…"
+          style={{
+            flex: 1, padding: '10px 14px', borderRadius: 999,
+            background: 'var(--cn-bg-elev)',
+            border: '0.5px solid var(--cn-border-s)',
+            color: 'var(--cn-text)', fontSize: 13,
+            outline: 'none', fontFamily: 'var(--cn-font-body)',
+          }}
+        />
+        <button onClick={add} disabled={!draft.trim() || busy} style={{
+          padding: '10px 16px', borderRadius: 999,
+          background: draft.trim() && !busy ? 'var(--cn-accent)' : 'var(--cn-bg-elev2)',
+          color:      draft.trim() && !busy ? 'var(--cn-on-accent)' : 'var(--cn-text-mute)',
+          border: 'none', cursor: busy ? 'wait' : (draft.trim() ? 'pointer' : 'not-allowed'),
+          fontWeight: 700, fontSize: 12, fontFamily: 'var(--cn-font-body)',
+        }}>{busy ? '…' : 'Add'}</button>
+      </div>
+
+      {err && <div style={{ marginBottom: 10, color: 'var(--cn-danger)', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>{err}</div>}
+      {loading && <div style={{ padding: 12, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>Loading…</div>}
+      {!loading && list.length === 0 && (
+        <div style={{ padding: 12, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>
+          No watchwords yet.
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {list.map(w => (
+          <span key={w.id} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            padding: '6px 10px 6px 14px', borderRadius: 999,
+            background: 'var(--cn-bg-elev)',
+            border: '0.5px solid var(--cn-border-s)',
+            fontSize: 13, fontWeight: 600,
+          }}>
+            {w.word}
+            <button onClick={() => remove(w.id)} disabled={busy} style={{
+              background: 'transparent', border: 'none',
+              color: 'var(--cn-text-mute)',
+              cursor: 'pointer', padding: 0, display: 'flex',
+            }} title="Remove">
+              <Icon name="x" size={14} stroke="currentColor" />
+            </button>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function AdminStat({ label, value, sub }) {

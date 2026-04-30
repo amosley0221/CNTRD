@@ -244,7 +244,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS reports (
     id TEXT PRIMARY KEY,
     reporter_id TEXT NOT NULL,
-    target_type TEXT NOT NULL,         -- 'post' | 'message' | 'user'
+    target_type TEXT NOT NULL,         -- 'post' | 'message' | 'user' | 'play'
     target_id TEXT NOT NULL,
     target_user_id TEXT,               -- offending author (for ban actions)
     reason TEXT,
@@ -262,6 +262,26 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_reports_target ON reports(target_type, target_id);
+`);
+// Auto-flag fields. Reports created by the watchword scanner mark
+// auto_flag = 1 and store which term tripped the filter so the
+// review card can render them as system flags rather than user
+// reports.
+ensureColumn('reports', 'auto_flag',    "INTEGER DEFAULT 0");
+ensureColumn('reports', 'matched_term', "TEXT DEFAULT NULL");
+ensureColumn('reports', 'media_url',    "TEXT DEFAULT NULL");
+
+// Owner-managed watchword list. Posts and plays whose text contains
+// any of these terms (case-insensitive whole-word match) automatically
+// fire a review notification to the owner.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS watch_words (
+    id TEXT PRIMARY KEY,
+    word TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    created_by TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+  );
 `);
 
 // Gameday chats auto-close after a 24 h grace period past the game's

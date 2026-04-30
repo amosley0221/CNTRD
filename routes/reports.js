@@ -5,25 +5,33 @@ const db = require('../database/db');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { notify } = require('../services/notifier');
 
-const TARGET_TYPES = new Set(['post', 'message', 'user']);
+const TARGET_TYPES = new Set(['post', 'message', 'user', 'play']);
 const RESOLUTIONS  = new Set(['dismiss', 'remove_content', 'temp_ban', 'escalate']);
 
-// Snapshot the text of the reported entity at the time of the report so
-// review still has context if the author edits or deletes after.
+// Snapshot the text + (for plays) media URL of the reported entity at
+// the time of the report so review still has context if the author
+// edits or deletes after. media_url goes onto the report row directly
+// so admins can click through to the actual photo / clip.
 function captureSnapshot(targetType, targetId) {
   if (targetType === 'post') {
-    const p = db.prepare('SELECT user_id, content FROM posts WHERE id = ?').get(targetId);
-    return { authorId: p?.user_id || null, snapshot: p?.content || null };
+    const p = db.prepare('SELECT user_id, content, image FROM posts WHERE id = ?').get(targetId);
+    return { authorId: p?.user_id || null, snapshot: p?.content || null, mediaUrl: p?.image || null };
   }
   if (targetType === 'message') {
     const m = db.prepare('SELECT user_id, content FROM messages WHERE id = ?').get(targetId);
-    return { authorId: m?.user_id || null, snapshot: m?.content || null };
+    return { authorId: m?.user_id || null, snapshot: m?.content || null, mediaUrl: null };
   }
   if (targetType === 'user') {
-    const u = db.prepare('SELECT id, bio FROM users WHERE id = ?').get(targetId);
-    return { authorId: u?.id || null, snapshot: u?.bio || null };
+    const u = db.prepare('SELECT id, bio, avatar FROM users WHERE id = ?').get(targetId);
+    return { authorId: u?.id || null, snapshot: u?.bio || null, mediaUrl: u?.avatar || null };
   }
-  return { authorId: null, snapshot: null };
+  if (targetType === 'play') {
+    const p = db.prepare('SELECT user_id, label, caption, media_url FROM plays WHERE id = ?').get(targetId);
+    if (!p) return { authorId: null, snapshot: null, mediaUrl: null };
+    const text = [p.caption, p.label].filter(Boolean).join('\n');
+    return { authorId: p.user_id, snapshot: text || null, mediaUrl: p.media_url || null };
+  }
+  return { authorId: null, snapshot: null, mediaUrl: null };
 }
 
 function adminAndOwnerIds(excludeUserId) {
@@ -54,6 +62,9 @@ function hydrateReport(r) {
     target_id: r.target_id,
     reason: r.reason || '',
     content_snapshot: r.content_snapshot || '',
+    media_url: r.media_url || null,
+    auto_flag: !!r.auto_flag,
+    matched_term: r.matched_term || null,
     status: r.status,
     resolution: r.resolution || null,
     resolution_note: r.resolution_note || '',
@@ -84,7 +95,7 @@ router.post('/', requireAuth, (req, res) => {
   if (!TARGET_TYPES.has(targetType)) return res.status(400).json({ error: 'Invalid target_type' });
   if (!targetId) return res.status(400).json({ error: 'target_id is required' });
 
-  const { authorId, snapshot } = captureSnapshot(targetType, targetId);
+  const { authorId, snapshot, mediaUrl } = captureSnapshot(targetType, targetId);
   // Don't capture the report if the author is the reporter themselves.
   if (authorId && authorId === req.user.id) {
     return res.status(400).json({ error: 'You can\'t report your own content' });
@@ -107,9 +118,9 @@ router.post('/', requireAuth, (req, res) => {
 
   const id = uuidv4();
   db.prepare(`
-    INSERT INTO reports (id, reporter_id, target_type, target_id, target_user_id, reason, content_snapshot)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id, req.user.id, targetType, targetId, authorId, reason || null, snapshot || null);
+    INSERT INTO reports (id, reporter_id, target_type, target_id, target_user_id, reason, content_snapshot, media_url)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, req.user.id, targetType, targetId, authorId, reason || null, snapshot || null, mediaUrl || null);
 
   // Fan out to every admin + owner. dedupeKey collapses repeat
   // notifications for the same review queue per recipient per day.
@@ -188,6 +199,8 @@ router.post('/:id/resolve', requireAuth, requireAdmin, (req, res) => {
     if (action === 'remove_content') {
       if (r.target_type === 'post') {
         db.prepare('DELETE FROM posts WHERE id = ?').run(r.target_id);
+      } else if (r.target_type === 'play') {
+        db.prepare('DELETE FROM plays WHERE id = ?').run(r.target_id);
       } else if (r.target_type === 'message') {
         db.prepare(`UPDATE messages SET deleted_at = datetime('now') WHERE id = ?`).run(r.target_id);
       } else if (r.target_type === 'user') {

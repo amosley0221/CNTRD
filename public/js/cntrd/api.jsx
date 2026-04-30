@@ -209,6 +209,11 @@ const API = {
   reportsCounts()                    { return request('GET',  '/api/reports/counts').catch(() => ({ pending: 0, escalated: 0 })); },
   reportResolve(id, payload)         { return request('POST', `/api/reports/${id}/resolve`, payload); },
 
+  // Watchwords (owner manages, admins can read).
+  watchwordsList()                   { return request('GET',    '/api/admin/watchwords'); },
+  watchwordsAdd(word)                { return request('POST',   '/api/admin/watchwords', { word }); },
+  watchwordsRemove(id)               { return request('DELETE', `/api/admin/watchwords/${id}`); },
+
   // Admin (server enforces is_admin)
   adminUsers(q)            { return request('GET',  '/api/admin/users' + (q ? '?q=' + encodeURIComponent(q) : '')); },
   adminStats()             { return request('GET',  '/api/admin/stats'); },

@@ -1464,6 +1464,7 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
 
   const [idx, setIdx] = React.useState(initialIdx);
   const [progress, setProgress] = React.useState(0);   // 0..1 for the current play
+  const [reportOpen, setReportOpen] = React.useState(false);
   const videoRef = React.useRef(null);
 
   React.useEffect(() => { setIdx(initialIdx); }, [initialIdx]);
@@ -1583,6 +1584,17 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
             </svg>
           </button>
         )}
+        {!isMine && (
+          <button onClick={() => setReportOpen(true)} title="Report play" style={{
+            background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)',
+            border: '0.5px solid rgba(255,255,255,0.18)', borderRadius: '50%',
+            width: 32, height: 32, color: 'var(--cn-danger)',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            marginRight: 4,
+          }}>
+            <Icon name="bell" size={14} stroke="var(--cn-danger)" />
+          </button>
+        )}
         <button onClick={() => onNav?.('home')} style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer' }}>
           <Icon name="x" size={22} stroke="#fff" />
         </button>
@@ -1670,6 +1682,18 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
 
       {/* No reply bar — Plays don't have a comment system yet. Reactions
           above are how viewers respond. */}
+      {reportOpen && (
+        <ReportSheet
+          targetType="play"
+          targetId={play.id}
+          preview={[
+            play.caption ? `Caption: ${play.caption}` : '',
+            play.label   ? `Label: ${play.label}`     : '',
+            play.media_url ? `Media: ${play.media_url}` : '',
+          ].filter(Boolean).join('\n')}
+          onClose={() => setReportOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -192,6 +192,19 @@ router.post('/', requireAuth, (req, res) => {
     }
   }
 
+  // Owner watchword scan — auto-flag the post for owner review when
+  // the body trips the filter. Best-effort; never blocks the response.
+  try {
+    const { autoFlag } = require('../services/watchwords');
+    autoFlag({
+      targetType: 'post',
+      targetId: id,
+      authorId: req.user.id,
+      content: trimmed,
+      mediaUrl: image || null,
+    });
+  } catch { /* don't fail the post on flag errors */ }
+
   const row = db.prepare(`${SELECT_POST} WHERE p.id = ?`).get(id);
   attachInteraction(row, req.user.id);
   res.status(201).json(hydrate(row));

@@ -182,6 +182,20 @@ router.post('/', requireAuth, (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(id, req.user.id, team, label.trim(), h, liveFlag, url, kind, cap, stickerJson, filterToken);
 
+  // Owner watchword scan — flag the play for owner review when its
+  // caption (or label) trips the filter. Best-effort.
+  try {
+    const { autoFlag } = require('../services/watchwords');
+    const haystack = [cap, label.trim()].filter(Boolean).join('\n');
+    autoFlag({
+      targetType: 'play',
+      targetId: id,
+      authorId: req.user.id,
+      content: haystack,
+      mediaUrl: url,
+    });
+  } catch { /* don't fail the play on flag errors */ }
+
   const row = db.prepare(`${SELECT} WHERE p.id = ?`).get(id);
   res.status(201).json(hydrate(row, req.user.id));
 });

@@ -165,4 +165,39 @@ router.post('/users/:id/official', (req, res) => {
   res.json({ is_official: !!next });
 });
 
+// Owner-managed watchword list. Posts and plays whose body matches one
+// of these words trip an auto-flag review notification to the owner.
+const { v4: uuidv4 } = require('uuid');
+
+router.get('/watchwords', (req, res) => {
+  const rows = db.prepare(`
+    SELECT w.id, w.word, w.created_at,
+           u.username AS created_by_username
+    FROM watch_words w
+    LEFT JOIN users u ON u.id = w.created_by
+    ORDER BY w.created_at DESC
+  `).all();
+  res.json(rows);
+});
+
+router.post('/watchwords', requireOwner, (req, res) => {
+  const word = String(req.body?.word || '').trim();
+  if (!word) return res.status(400).json({ error: 'Word is required' });
+  if (word.length > 60) return res.status(400).json({ error: 'Word must be 60 characters or fewer' });
+  const id = uuidv4();
+  try {
+    db.prepare('INSERT INTO watch_words (id, word, created_by) VALUES (?, ?, ?)').run(id, word, req.user.id);
+  } catch (e) {
+    if (String(e.message).includes('UNIQUE')) return res.status(409).json({ error: 'That word is already on the list' });
+    throw e;
+  }
+  res.status(201).json({ id, word });
+});
+
+router.delete('/watchwords/:id', requireOwner, (req, res) => {
+  const r = db.prepare('DELETE FROM watch_words WHERE id = ?').run(req.params.id);
+  if (r.changes === 0) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
+});
+
 module.exports = router;
