@@ -239,12 +239,12 @@ function SignupScreen({ tweaks, onNav, onSignup }) {
     }
   };
 
+  // Email + username are required; everything else (avatar, teams, leagues)
+  // is optional — users can skip and configure later from Settings.
   const stepValid =
     step === 0 ? (email.includes('@') && passwordOK(password)) :
     step === 1 ? (username.length >= 3) :
-    step === 2 ? true :
-    step === 3 ? (picks.length > 0) :
-    /* step 4 */ (leaguePicks.length > 0);
+    /* steps 2/3/4 */ true;
 
   return (
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
@@ -318,7 +318,7 @@ function SignupScreen({ tweaks, onNav, onSignup }) {
         {step === 3 && (
           <>
             <H1>Pick your teams</H1>
-            <Subhead>Tap a league to expand. Pick as many as you want — at least one. You can change these any time from Settings.</Subhead>
+            <Subhead>Tap a league to expand. Pick as many as you want, or skip and add them later from Settings.</Subhead>
             <div style={{ marginTop: 18 }}>
               <LeaguePicker picks={picks} onTogglePick={togglePick} />
             </div>
@@ -327,7 +327,7 @@ function SignupScreen({ tweaks, onNav, onSignup }) {
         {step === 4 && (
           <>
             <H1>Follow leagues</H1>
-            <Subhead>These decide what you see in Next Up + Recent Finals. Your favorite teams' leagues are pre-selected. Add UFC, golf, tennis, racing, or anything else you watch.</Subhead>
+            <Subhead>These decide what you see in Next Up + Recent Finals. Your favorite teams' leagues are pre-selected. Add UFC, golf, tennis, racing, or anything else you watch — or skip for now.</Subhead>
             <div style={{ marginTop: 18 }}>
               <LeaguesPicker picks={leaguePicks} onTogglePick={toggleLeague} />
             </div>
@@ -347,8 +347,12 @@ function SignupScreen({ tweaks, onNav, onSignup }) {
         }}>{busy
           ? 'Creating account…'
           : (step < 4
-              ? 'Continue'
-              : `Finish · ${picks.length} team${picks.length === 1 ? '' : 's'} · ${leaguePicks.length} league${leaguePicks.length === 1 ? '' : 's'}`)}</button>
+              ? (step === 3 && picks.length === 0
+                  ? 'Skip for now'
+                  : (step === 4 && leaguePicks.length === 0 ? 'Skip for now' : 'Continue'))
+              : (picks.length === 0 && leaguePicks.length === 0
+                  ? 'Finish · skip for now'
+                  : `Finish · ${picks.length} team${picks.length === 1 ? '' : 's'} · ${leaguePicks.length} league${leaguePicks.length === 1 ? '' : 's'}`))}</button>
       </div>
     </div>
   );
@@ -399,7 +403,7 @@ function SettingsScreen({ tweaks, setTweak, onNav, me, onMeUpdated, unreadNotifs
   return (
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg-elev2)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderBottom: '0.5px solid var(--cn-border)', background: 'var(--cn-bg)' }}>
-        <button style={iconBtnStyle()} onClick={() => onNav?.('profile')}>
+        <button style={iconBtnStyle()} onClick={() => onNav?.('back')}>
           <Icon name="chevron-l" size={22} stroke="var(--cn-text)" />
         </button>
         <span style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 16 }}>SETTINGS</span>
@@ -650,7 +654,7 @@ function GamedayList({ tweaks, onNav, games, me, onPick, unreadMessages = 0 }) {
   return (
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '0.5px solid var(--cn-border)', background: 'var(--cn-bg-elev2)' }}>
-        <button onClick={() => onNav?.('home')} style={iconBtnStyle()}>
+        <button onClick={() => onNav?.('back')} style={iconBtnStyle()}>
           <Icon name="chevron-l" size={22} stroke="var(--cn-text)" />
         </button>
         <span style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 14 }}>GAMEDAY</span>

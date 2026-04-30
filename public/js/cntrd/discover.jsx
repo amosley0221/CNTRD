@@ -66,7 +66,7 @@ function DiscoverScreen({ tweaks, onNav, me, onOpenGame, discoverQuery }) {
         borderBottom: '0.5px solid var(--cn-border)',
         background: 'var(--cn-bg-elev2)',
       }}>
-        <button style={iconBtnStyle()} onClick={() => onNav?.('home')} title="Back">
+        <button style={iconBtnStyle()} onClick={() => onNav?.('back')} title="Back">
           <Icon name="chevron-l" size={22} stroke="var(--cn-text)" />
         </button>
         <div style={{

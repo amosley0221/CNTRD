@@ -33,7 +33,7 @@ function GameDetailScreen({ tweaks, onNav, selectedGame }) {
         padding: '10px 14px', borderBottom: '0.5px solid var(--cn-border)',
         background: 'var(--cn-bg-elev2)',
       }}>
-        <button style={iconBtnStyle()} onClick={() => onNav?.('home')}>
+        <button style={iconBtnStyle()} onClick={() => onNav?.('back')}>
           <Icon name="chevron-l" size={22} stroke="var(--cn-text)" />
         </button>
         <span style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 14 }}>
@@ -566,7 +566,7 @@ function TeamScheduleScreen({ tweaks, onNav, scheduleTeam, onOpenGame }) {
         padding: '10px 14px', borderBottom: '0.5px solid var(--cn-border)',
         background: 'var(--cn-bg-elev2)',
       }}>
-        <button style={iconBtnStyle()} onClick={() => onNav?.('home')}>
+        <button style={iconBtnStyle()} onClick={() => onNav?.('back')}>
           <Icon name="chevron-l" size={22} stroke="var(--cn-text)" />
         </button>
         <span style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 14 }}>

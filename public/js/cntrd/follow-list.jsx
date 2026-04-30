@@ -100,7 +100,7 @@ function FollowListScreen({ tweaks, onNav, me, followListMode, followListUsernam
         padding: '10px 14px', borderBottom: '0.5px solid var(--cn-border)',
         background: 'var(--cn-bg-elev2)',
       }}>
-        <button style={iconBtnStyle()} onClick={() => onNav?.(isMyList ? 'profile' : 'userProfile')}>
+        <button style={iconBtnStyle()} onClick={() => onNav?.('back')}>
           <Icon name="chevron-l" size={22} stroke="var(--cn-text)" />
         </button>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>

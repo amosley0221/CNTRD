@@ -97,7 +97,7 @@ function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePl
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
       {/* Top bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderBottom: '0.5px solid var(--cn-border)' }}>
-        <button style={iconBtnStyle()} onClick={() => onNav?.('home')}><Icon name="chevron-l" size={22} stroke="var(--cn-text)" /></button>
+        <button style={iconBtnStyle()} onClick={() => onNav?.('back')}><Icon name="chevron-l" size={22} stroke="var(--cn-text)" /></button>
         <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 12, color: 'var(--cn-text-dim)' }}>@{u.username}</span>
         <button style={iconBtnStyle()} onClick={() => onNav?.('settings')}><Icon name="settings" size={20} stroke="var(--cn-text)" /></button>
       </div>
@@ -1613,7 +1613,7 @@ function EditProfileScreen({ tweaks, onNav, me, onMeUpdated }) {
         padding: '10px 14px', borderBottom: '0.5px solid var(--cn-border)',
         background: 'var(--cn-bg-elev2)',
       }}>
-        <button style={iconBtnStyle()} onClick={() => onNav?.('profile')} title="Back">
+        <button style={iconBtnStyle()} onClick={() => onNav?.('back')} title="Back">
           <Icon name="chevron-l" size={22} stroke="var(--cn-text)" />
         </button>
         <span style={{
@@ -1826,7 +1826,7 @@ function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0
   return (
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderBottom: '0.5px solid var(--cn-border)' }}>
-        <button style={iconBtnStyle()} onClick={() => onNav?.('home')}><Icon name="chevron-l" size={22} stroke="var(--cn-text)" /></button>
+        <button style={iconBtnStyle()} onClick={() => onNav?.('back')}><Icon name="chevron-l" size={22} stroke="var(--cn-text)" /></button>
         <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 12, color: 'var(--cn-text-dim)' }}>@{username || ''}</span>
         <span style={{ width: 32 }} />
       </div>

@@ -61,7 +61,7 @@ function MessagesListScreen({ onNav, me, onOpenThread, onCompose, onUnread, unre
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
       <ScreenTopBar
         title="MESSAGES"
-        onBack={() => onNav?.('home')}
+        onBack={() => onNav?.('back')}
         right={
           <button onClick={onCompose} style={{
             padding: '6px 12px', borderRadius: 999,

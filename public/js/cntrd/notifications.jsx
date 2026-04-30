@@ -158,7 +158,7 @@ function NotificationsScreen({ tweaks, onNav, me, setMessageContext, onUnreadNot
         padding: '10px 14px', borderBottom: '0.5px solid var(--cn-border)',
         background: 'var(--cn-bg-elev2)',
       }}>
-        <button style={iconBtnStyle()} onClick={() => onNav?.('home')}>
+        <button style={iconBtnStyle()} onClick={() => onNav?.('back')}>
           <Icon name="chevron-l" size={22} stroke="var(--cn-text)" />
         </button>
         <span style={{

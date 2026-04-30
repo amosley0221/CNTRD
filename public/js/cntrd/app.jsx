@@ -118,6 +118,11 @@ function CNTRDApp() {
   const [pendingFeed, setPendingFeed] = React.useState([]);   // staged new posts; user taps to merge
   const [replyTo, setReplyTo] = React.useState(null);   // post being replied to in composer
   const [screen, setScreen] = React.useState('login');
+  // Navigation history — every nav (other than 'back') pushes the
+  // current screen onto this stack so a 'back' pops the most recent.
+  // Falls back to 'home' when the stack is empty so the back arrow
+  // never leaves the user stranded.
+  const screenHistoryRef = React.useRef([]);
 
   const isWide = useMediaQuery('(min-width: 980px)');
   const rootRef = React.useRef(null);
@@ -301,16 +306,36 @@ function CNTRDApp() {
       API.setToken(null);
       setMe(null);
       setScreen('login');
+      screenHistoryRef.current = [];
+      return;
+    }
+    // 'back' pops history; falls through to 'home' when empty so the
+    // back arrow never leaves the user on a blank screen.
+    if (next === 'back') {
+      const stack = screenHistoryRef.current;
+      const prev = stack.pop() || 'home';
+      setScreen(prev);
       return;
     }
     const target = next === 'search' ? 'home' : next;
+    // Push the current screen onto the history stack BEFORE we change
+    // it, so 'back' from the next screen returns here. Skip pushing if
+    // we're already on the target (no-op nav) or on the auth screens.
+    setScreen(prev => {
+      if (prev !== target && prev !== 'login' && prev !== 'signup') {
+        const stack = screenHistoryRef.current;
+        if (stack[stack.length - 1] !== prev) stack.push(prev);
+        // Cap the stack so it can't grow forever in long sessions.
+        if (stack.length > 50) stack.shift();
+      }
+      return target;
+    });
     // Sidebar / direct nav to Gameday (without picking a game) lands on the
     // list view. handleOpenGameday is the only path that sets gamedayPick.
     if (target === 'chat') setGamedayPick(null);
     // Leaving the composer (or going to plain compose) drops any pinned reply
     // target so the next session starts fresh.
     if (target !== 'compose') setReplyTo(null);
-    setScreen(target);
   }, []);
 
   const handleLogin = React.useCallback(async ({ login, password, persist = true }) => {
