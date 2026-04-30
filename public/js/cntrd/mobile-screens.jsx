@@ -1465,6 +1465,10 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
   const [idx, setIdx] = React.useState(initialIdx);
   const [progress, setProgress] = React.useState(0);   // 0..1 for the current play
   const [reportOpen, setReportOpen] = React.useState(false);
+  // When the auto-advance crosses into a new user's plays, show a brief
+  // identity card so viewers can tell whose Plays they're now watching.
+  const [transitionUser, setTransitionUser] = React.useState(null);
+  const prevUserIdRef = React.useRef(null);
   const videoRef = React.useRef(null);
 
   React.useEffect(() => { setIdx(initialIdx); }, [initialIdx]);
@@ -1501,6 +1505,21 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
     if (!play?.id || isMine) return;
     window.API?.markPlayViewed?.(play.id);
   }, [play?.id, isMine]);
+
+  // Detect when the auto-advance moved into a different author. Show a
+  // ~900 ms identity card so viewers can tell they've crossed into a
+  // new user's Plays. Skips on initial mount.
+  React.useEffect(() => {
+    const uid = u?.id || null;
+    const prev = prevUserIdRef.current;
+    if (uid && prev && uid !== prev) {
+      setTransitionUser(u);
+      const t = setTimeout(() => setTransitionUser(null), 900);
+      prevUserIdRef.current = uid;
+      return () => clearTimeout(t);
+    }
+    prevUserIdRef.current = uid;
+  }, [u?.id]);
 
   const goNext = React.useCallback(() => {
     setIdx(i => {
@@ -1679,6 +1698,47 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
           when this viewer taps. (Server-backed reactions need a play
           reactions table; UI is ready for that.) */}
       <PlayReactions playId={play.id} />
+
+      {/* Identity hand-off overlay — flashes when the auto-advance
+          crosses into a different author's plays. */}
+      {transitionUser && (
+        <div
+          key={transitionUser.id}
+          style={{
+            position: 'absolute', inset: 0, zIndex: 6,
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', gap: 14,
+            background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(14px)',
+            color: '#fff', textAlign: 'center', padding: 24,
+            pointerEvents: 'none',
+            animation: 'cn-play-handoff 900ms ease forwards',
+          }}
+        >
+          <div style={{
+            padding: 4, borderRadius: '50%',
+            background: 'conic-gradient(from 0deg, var(--cn-accent), #ff4d8a, #ffb74d, var(--cn-accent))',
+          }}>
+            <span style={{
+              display: 'flex', padding: 3,
+              background: '#000', borderRadius: '50%',
+            }}>
+              <Avatar user={transitionUser} size={104} />
+            </span>
+          </div>
+          <div style={{
+            fontFamily: 'var(--cn-font-display)', fontWeight: 800, fontSize: 22,
+            textShadow: '0 4px 20px rgba(0,0,0,0.6)',
+          }}>
+            {transitionUser.displayName || transitionUser.username}
+          </div>
+          <div style={{
+            fontFamily: 'var(--cn-font-mono)', fontSize: 11,
+            color: 'rgba(255,255,255,0.7)', letterSpacing: 1,
+          }}>
+            NOW VIEWING THEIR PLAYS
+          </div>
+        </div>
+      )}
 
       {/* No reply bar — Plays don't have a comment system yet. Reactions
           above are how viewers respond. */}
