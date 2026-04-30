@@ -64,10 +64,58 @@ function isApprovedFollower(viewerId, ownerId) {
   return !!db.prepare('SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?').get(viewerId, ownerId);
 }
 
+// Returned when the profile owner has blocked the current viewer. We
+// keep the username (the URL has it anyway) but strip every other
+// detail so the blocked viewer can't see avatar, counts, bio, posts
+// or whether the account is private. The client renders an "account
+// unavailable" placeholder.
+function blockedFromView(user) {
+  return {
+    id: user.id,
+    username: user.username,
+    display_name: user.username,
+    avatar: null,
+    avatar_hue: 200,
+    blocked_by_owner: true,
+    is_private: false,
+    is_admin: false,
+    is_owner: false,
+    is_official: false,
+    is_verified: false,
+    hide_username: true,
+    follower_count: 0,
+    following_count: 0,
+    post_count: 0,
+    bio: '',
+    pronouns: '',
+    city: '',
+    team_tags: [],
+    followed_leagues: [],
+    has_recent_play: false,
+  };
+}
+
+function hasRecentPlay(userId) {
+  // "Recent" = posted in the last 24 hours.
+  const r = db.prepare(`
+    SELECT 1 FROM plays
+    WHERE user_id = ? AND created_at > datetime('now', '-24 hours')
+    LIMIT 1
+  `).get(userId);
+  return !!r;
+}
+
 // Get user by username
 router.get('/:username', optionalAuth, (req, res) => {
   const user = hydrate(db.prepare(`SELECT ${PUBLIC_USER_COLS} FROM users WHERE username = ?`).get(req.params.username));
   if (!user) return res.status(404).json({ error: 'User not found' });
+
+  // If the profile owner has blocked the viewer, return an opaque view.
+  if (req.user && req.user.id !== user.id) {
+    const blocked = db.prepare('SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?')
+      .get(user.id, req.user.id);
+    if (blocked) return res.json(blockedFromView(user));
+  }
 
   let is_following = false;
   let request_pending = false;
@@ -79,9 +127,9 @@ router.get('/:username', optionalAuth, (req, res) => {
   // Lock the response if private and the viewer isn't allowed in.
   const allowed = isApprovedFollower(req.user?.id, user.id);
   if (user.is_private && !allowed) {
-    return res.json({ ...lockedView(user), is_following: false, request_pending });
+    return res.json({ ...lockedView(user), is_following: false, request_pending, has_recent_play: false });
   }
-  res.json({ ...user, is_following, request_pending });
+  res.json({ ...user, is_following, request_pending, has_recent_play: hasRecentPlay(user.id) });
 });
 
 const { KNOWN_TYPES: NOTIF_TYPES } = require('../services/notifier');

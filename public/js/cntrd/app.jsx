@@ -456,6 +456,34 @@ function CNTRDApp() {
     goTo('plays');
   }, [goTo]);
 
+  // "View latest Play" tap on a profile avatar fetches that user's plays
+  // and opens the viewer focused on the most recent one.
+  React.useEffect(() => {
+    const handler = async (e) => {
+      const username = e.detail?.username;
+      if (!username) return;
+      try {
+        const list = await API.userPlays(username);
+        const latest = (list || [])[0];
+        if (latest) {
+          setPlays(prev => {
+            const merged = [...(prev || [])];
+            for (const p of (list || [])) {
+              const i = merged.findIndex(x => x.id === p.id);
+              if (i < 0) merged.push(p);
+              else merged[i] = p;
+            }
+            return merged;
+          });
+          setSelectedPlay(latest);
+          goTo('plays');
+        }
+      } catch {}
+    };
+    window.addEventListener('cntrd:open-user-plays', handler);
+    return () => window.removeEventListener('cntrd:open-user-plays', handler);
+  }, [goTo]);
+
   const handleDeletePlay = React.useCallback(async (id) => {
     if (!id) return;
     await API.deletePlay(id);

@@ -735,6 +735,7 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me, games }) {
   const [stickerKind, setStickerKind] = React.useState(null);
   const [stickerGame, setStickerGame] = React.useState(null);
   const [picker, setPicker] = React.useState(null);     // 'score' opens the live-game picker
+  const [caption, setCaption] = React.useState('');     // free-form text added before posting
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState(null);
 
@@ -877,6 +878,17 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me, games }) {
     setBusy(true); setErr(null);
     try {
       const { url, kind } = await window.API.uploadMedia(preview.file);
+      // Snapshot the score sticker game so the play renders the
+      // scoreboard later even after the live game ends.
+      const snapshot = stickerKind === 'score' && stickerGame ? {
+        game_id: stickerGame.id,
+        league:  stickerGame.league,
+        home:    stickerGame.home,
+        away:    stickerGame.away,
+        home_score: stickerGame.homeScore,
+        away_score: stickerGame.awayScore,
+        period:  stickerGame.period || '',
+      } : null;
       if (onCreate) {
         await onCreate({
           team_code: overlayTeam?.code || overlay || null,
@@ -884,6 +896,8 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me, games }) {
           hue: meUser.avatarHue ?? 200,
           media_url: url,
           media_kind: kind,
+          caption: caption.trim(),
+          score_sticker: snapshot,
         });
       }
       onNav?.('home');
@@ -1138,22 +1152,37 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me, games }) {
           </div>
         ) : (
           // Preview controls
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-            <button onClick={swapForAnother} disabled={busy} style={{
-              padding: '10px 18px', borderRadius: 999,
-              background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)',
-              border: '0.5px solid rgba(255,255,255,0.2)',
-              color: '#fff', cursor: busy ? 'not-allowed' : 'pointer',
-              fontWeight: 700, fontSize: 12, fontFamily: 'var(--cn-font-body)',
-              opacity: busy ? 0.6 : 1,
-            }}>Choose different</button>
-            <button onClick={usePreview} disabled={busy} style={{
-              padding: '10px 22px', borderRadius: 999,
-              background: '#fff', color: '#000',
-              border: 'none', cursor: busy ? 'not-allowed' : 'pointer',
-              fontWeight: 800, fontSize: 13, fontFamily: 'var(--cn-font-body)',
-              opacity: busy ? 0.6 : 1,
-            }}>{busy ? 'Posting…' : 'Use this play'}</button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <input
+              value={caption}
+              onChange={e => setCaption(e.target.value.slice(0, 280))}
+              placeholder="Add a caption…"
+              maxLength={280}
+              style={{
+                padding: '10px 14px', borderRadius: 999,
+                background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(10px)',
+                border: '0.5px solid rgba(255,255,255,0.25)',
+                color: '#fff', fontSize: 13, outline: 'none',
+                fontFamily: 'var(--cn-font-body)',
+              }}
+            />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button onClick={swapForAnother} disabled={busy} style={{
+                padding: '10px 18px', borderRadius: 999,
+                background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)',
+                border: '0.5px solid rgba(255,255,255,0.2)',
+                color: '#fff', cursor: busy ? 'not-allowed' : 'pointer',
+                fontWeight: 700, fontSize: 12, fontFamily: 'var(--cn-font-body)',
+                opacity: busy ? 0.6 : 1,
+              }}>Choose different</button>
+              <button onClick={usePreview} disabled={busy} style={{
+                padding: '10px 22px', borderRadius: 999,
+                background: '#fff', color: '#000',
+                border: 'none', cursor: busy ? 'not-allowed' : 'pointer',
+                fontWeight: 800, fontSize: 13, fontFamily: 'var(--cn-font-body)',
+                opacity: busy ? 0.6 : 1,
+              }}>{busy ? 'Posting…' : 'Use this play'}</button>
+            </div>
           </div>
         )}
 
@@ -1500,12 +1529,43 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
           real media underneath. */}
       <div style={{
         position: 'absolute', left: 24, right: 80, bottom: 110,
-        fontFamily: 'var(--cn-font-display)', fontWeight: 800,
-        fontSize: 32, lineHeight: 0.95,
-        color: '#fff', textShadow: '0 4px 20px rgba(0,0,0,0.6)',
-        textTransform: 'uppercase',
         zIndex: 3, pointerEvents: 'none',
-      }}>{play.label}.</div>
+        textShadow: '0 4px 20px rgba(0,0,0,0.6)',
+      }}>
+        <div style={{
+          fontFamily: 'var(--cn-font-display)', fontWeight: 800,
+          fontSize: 32, lineHeight: 0.95,
+          color: '#fff', textTransform: 'uppercase',
+        }}>{play.label}.</div>
+        {play.caption && (
+          <div style={{
+            marginTop: 8, fontSize: 15, lineHeight: 1.35, color: '#fff',
+            fontFamily: 'var(--cn-font-body)', fontWeight: 500,
+            display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical',
+            overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>{play.caption}</div>
+        )}
+      </div>
+
+      {/* Frozen score sticker — captured at publish time and rendered as
+          a top-right scoreboard pill. */}
+      {play.score_sticker && (play.score_sticker.home || play.score_sticker.away) && (
+        <div style={{
+          position: 'absolute', top: 24, right: 16, zIndex: 3,
+          padding: '8px 12px', borderRadius: 12,
+          background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(10px)',
+          border: '0.5px solid rgba(255,255,255,0.18)',
+          color: '#fff', display: 'flex', alignItems: 'center', gap: 8,
+          fontFamily: 'var(--cn-font-display)', fontWeight: 800,
+          fontVariantNumeric: 'tabular-nums', pointerEvents: 'none',
+        }}>
+          <span style={{ fontSize: 11 }}>{play.score_sticker.away || ''}</span>
+          <span style={{ fontSize: 16 }}>{play.score_sticker.away_score ?? ''}</span>
+          <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12 }}>·</span>
+          <span style={{ fontSize: 16 }}>{play.score_sticker.home_score ?? ''}</span>
+          <span style={{ fontSize: 11 }}>{play.score_sticker.home || ''}</span>
+        </div>
+      )}
 
       {/* reactions — local only for now; counts start at 0 and bump
           when this viewer taps. (Server-backed reactions need a play
@@ -1780,6 +1840,8 @@ function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0
   const [tab, setTab] = React.useState('posts');
   const [busyFollow, setBusyFollow] = React.useState(false);
   const [busyMessage, setBusyMessage] = React.useState(false);
+  const [avatarSheetOpen, setAvatarSheetOpen] = React.useState(false);
+  const [avatarFullOpen, setAvatarFullOpen] = React.useState(false);
   const scrollerRef = React.useRef(null);
 
   const username = viewUsername;
@@ -1883,10 +1945,43 @@ function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0
     is_following: !!user.is_following,
     request_pending: !!user.request_pending,
     locked: !!user.is_private && !user.is_following && !isMe,
+    blocked_by_owner: !!user.blocked_by_owner,
+    has_recent_play: !!user.has_recent_play,
     joined: user.created_at
       ? 'Joined ' + new Date(user.created_at.replace(' ', 'T') + 'Z').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
       : '',
   } : null;
+
+  // The profile owner blocked the viewer — render a hard placeholder
+  // and stop here. No avatar, no counts, no posts.
+  if (view?.blocked_by_owner) {
+    return (
+      <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', borderBottom: '0.5px solid var(--cn-border)' }}>
+          <button style={iconBtnStyle()} onClick={() => onNav?.('back')}>
+            <Icon name="chevron-l" size={22} stroke="var(--cn-text)" />
+          </button>
+          <span style={{
+            flex: 1, textAlign: 'center',
+            fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)',
+            textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 14,
+          }}>PROFILE</span>
+          <span style={{ width: 32 }} />
+        </div>
+        <div style={{
+          flex: 1, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center',
+        }}>
+          <div style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 800, fontSize: 22, marginBottom: 6 }}>
+            Account unavailable
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--cn-text-dim)', lineHeight: 1.45, maxWidth: 320 }}>
+            You can't view this profile right now.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
@@ -1907,7 +2002,12 @@ function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0
           <>
             <div style={{ padding: '20px 16px 0' }}>
               <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 12, gap: 8 }}>
-                <Avatar user={view} size={88} ring />
+                <ProfileAvatar
+                  user={view}
+                  size={88}
+                  hasRecentPlay={view.has_recent_play}
+                  onTap={() => setAvatarSheetOpen(true)}
+                />
                 {!isMe && (
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <button
@@ -2017,7 +2117,130 @@ function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0
           </>
         )}
       </div>
+      {avatarSheetOpen && view && (
+        <AvatarChoiceSheet
+          user={view}
+          hasRecentPlay={view.has_recent_play}
+          onClose={() => setAvatarSheetOpen(false)}
+          onViewPicture={() => { setAvatarSheetOpen(false); setAvatarFullOpen(true); }}
+          onViewPlay={() => {
+            setAvatarSheetOpen(false);
+            window.dispatchEvent(new CustomEvent('cntrd:open-user-plays', { detail: { username: view.username } }));
+          }}
+        />
+      )}
+      {avatarFullOpen && view && (
+        <FullAvatarViewer user={view} onClose={() => setAvatarFullOpen(false)} />
+      )}
       <BottomNav active={null} onChange={onNav} unreadMessages={unreadMessages} />
+    </div>
+  );
+}
+
+// Avatar wrapper that shows an accent ring when the user has posted a
+// Play in the last 24 hours (Instagram-style "story" indicator). Tapping
+// the avatar fires the action sheet.
+function ProfileAvatar({ user, size = 88, hasRecentPlay, onTap }) {
+  const ring = hasRecentPlay ? 4 : 0;
+  return (
+    <button
+      onClick={onTap}
+      style={{
+        background: 'transparent', border: 'none', padding: 0,
+        cursor: 'pointer', position: 'relative',
+        width: size + ring * 2, height: size + ring * 2,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+      title={hasRecentPlay ? 'View profile picture or latest Play' : 'View profile picture'}
+    >
+      {hasRecentPlay && (
+        <span style={{
+          position: 'absolute', inset: 0, borderRadius: '50%',
+          background: 'conic-gradient(from 0deg, var(--cn-accent), #ff4d8a, #ffb74d, var(--cn-accent))',
+        }} />
+      )}
+      <span style={{
+        position: 'relative',
+        background: 'var(--cn-bg)',
+        borderRadius: '50%',
+        padding: hasRecentPlay ? 2 : 0,
+        display: 'flex',
+      }}>
+        <Avatar user={user} size={size} />
+      </span>
+    </button>
+  );
+}
+
+function AvatarChoiceSheet({ user, hasRecentPlay, onClose, onViewPicture, onViewPlay }) {
+  return (
+    <div onClick={onClose} style={{
+      position: 'absolute', inset: 0, zIndex: 60,
+      background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)',
+      display: 'flex', alignItems: 'flex-end',
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        width: '100%', background: 'var(--cn-bg-elev2)',
+        borderTopLeftRadius: 18, borderTopRightRadius: 18,
+        padding: '10px 0 calc(28px + env(safe-area-inset-bottom, 0px))',
+        color: 'var(--cn-text)',
+      }}>
+        <div style={{ padding: '14px 18px 12px', borderBottom: '0.5px solid var(--cn-border-s)' }}>
+          <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1 }}>
+            @{user.username}
+          </div>
+        </div>
+        <button onClick={onViewPicture} style={sheetRowStyle()}>
+          <Icon name="image" size={18} stroke="var(--cn-text)" />
+          View profile picture
+        </button>
+        {hasRecentPlay && (
+          <button onClick={onViewPlay} style={sheetRowStyle('var(--cn-accent)')}>
+            <Icon name="lightning" size={18} stroke="var(--cn-accent)" />
+            View latest Play
+          </button>
+        )}
+        <button onClick={onClose} style={sheetRowStyle('var(--cn-text-mute)')}>
+          <Icon name="x" size={18} stroke="var(--cn-text-mute)" />
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function sheetRowStyle(color = 'var(--cn-text)') {
+  return {
+    width: '100%', padding: '14px 18px',
+    display: 'flex', alignItems: 'center', gap: 12,
+    background: 'transparent', border: 'none', cursor: 'pointer',
+    color, fontSize: 14, fontWeight: 600, textAlign: 'left',
+    fontFamily: 'var(--cn-font-body)',
+  };
+}
+
+function FullAvatarViewer({ user, onClose }) {
+  return (
+    <div onClick={onClose} style={{
+      position: 'absolute', inset: 0, zIndex: 70,
+      background: 'rgba(0,0,0,0.92)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 24, cursor: 'zoom-out',
+    }}>
+      {user.avatar ? (
+        <img
+          src={user.avatar}
+          alt=""
+          style={{
+            maxWidth: '90%', maxHeight: '80%',
+            borderRadius: '50%', boxShadow: '0 12px 60px rgba(0,0,0,0.6)',
+          }}
+        />
+      ) : (
+        <div style={{ transform: 'scale(3)', pointerEvents: 'none' }}>
+          <Avatar user={user} size={120} />
+        </div>
+      )}
     </div>
   );
 }

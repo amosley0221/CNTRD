@@ -277,6 +277,12 @@ ensureColumn('posts', 'edited_at', "TEXT DEFAULT NULL");   // timestamp of last 
 // Plays carry an optional uploaded photo or short clip.
 ensureColumn('plays', 'media_url',  "TEXT DEFAULT NULL");
 ensureColumn('plays', 'media_kind', "TEXT DEFAULT NULL");  // 'image' | 'video'
+// Free-form caption the user can attach when posting a Play.
+ensureColumn('plays', 'caption',    "TEXT DEFAULT NULL");
+// Score sticker snapshot (game id, league, team codes + scores) at the
+// moment the play was published. Stored as JSON so the viewer can render
+// the live scoreboard the play was tagged with even after the game ends.
+ensureColumn('plays', 'score_sticker', "TEXT DEFAULT NULL");
 
 // Seed Terms / Privacy / About if they don't exist yet. Admins can edit
 // them from the admin console at /api/pages/:slug.

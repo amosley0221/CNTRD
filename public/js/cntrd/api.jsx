@@ -139,6 +139,7 @@ const API = {
   updateMe(payload)        { return request('PATCH','/api/users/me/profile', payload); },
 
   plays()                  { return request('GET',  '/api/plays'); },
+  userPlays(username)      { return request('GET',  `/api/plays/user/${encodeURIComponent(username)}`); },
   createPlay(payload)      { return request('POST', '/api/plays', payload); },
   deletePlay(id)           { return request('DELETE', `/api/plays/${id}`); },
 
