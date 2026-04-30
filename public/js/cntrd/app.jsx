@@ -85,6 +85,7 @@ function normalizeMe(u) {
     posts: u.post_count ?? 0,
     avatar: u.avatar,
     avatarHue: u.avatar_hue ?? 200,
+    is_private: !!u.is_private,
     is_admin: !!u.is_admin,
     is_owner: !!u.is_owner,
     is_official: !!u.is_official,

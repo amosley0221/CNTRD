@@ -29,6 +29,8 @@ function hydrate(u) {
 }
 
 // Strip details from a private user when the viewer isn't an approved follower.
+// Role flags pass through — owners / admins / verified accounts still wear
+// their badge from a locked profile so visitors know who they're requesting.
 function lockedView(user) {
   return {
     id: user.id,
@@ -38,6 +40,10 @@ function lockedView(user) {
     avatar_hue: user.avatar_hue,
     is_private: true,
     locked: true,                 // tells the client to show a "private" CTA
+    is_admin:    !!user.is_admin || !!user.is_owner,
+    is_owner:    !!user.is_owner,
+    is_official: !!user.is_official,
+    is_verified: !!user.is_verified,
     follower_count: user.follower_count,
     following_count: user.following_count,
     created_at: user.created_at,
@@ -133,6 +139,34 @@ router.patch('/me/profile', requireAuth, (req, res) => {
   values.push(req.user.id);
   db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values);
 
+  // Switching from private → public auto-accepts every pending follow
+  // request: those requesters explicitly asked to follow, and the account
+  // is now open, so leaving them stuck on a "Requested" button is just
+  // friction. Each pending row becomes a follow + a follow_accept notif.
+  if (is_private === false || is_private === 0) {
+    const pending = db.prepare('SELECT requester_id FROM follow_requests WHERE target_id = ?').all(req.user.id);
+    if (pending.length) {
+      const tx = db.transaction(() => {
+        for (const { requester_id } of pending) {
+          const already = db.prepare('SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?').get(requester_id, req.user.id);
+          if (!already) {
+            db.prepare('INSERT INTO follows (follower_id, following_id) VALUES (?, ?)').run(requester_id, req.user.id);
+            db.prepare('UPDATE users SET follower_count  = follower_count  + 1 WHERE id = ?').run(req.user.id);
+            db.prepare('UPDATE users SET following_count = following_count + 1 WHERE id = ?').run(requester_id);
+          }
+        }
+        db.prepare('DELETE FROM follow_requests WHERE target_id = ?').run(req.user.id);
+      });
+      tx();
+      for (const { requester_id } of pending) {
+        notify({
+          userId: requester_id, type: 'follow_accept', actorId: req.user.id,
+          data: { username: req.user.username },
+        });
+      }
+    }
+  }
+
   const updated = hydrate(db.prepare(`SELECT ${PUBLIC_USER_COLS} FROM users WHERE id = ?`).get(req.user.id));
   res.json(updated);
 });
@@ -189,7 +223,9 @@ router.post('/:username/follow', requireAuth, (req, res) => {
 // Incoming follow requests for me.
 router.get('/me/follow-requests', requireAuth, (req, res) => {
   const rows = db.prepare(`
-    SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags, fr.created_at
+    SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags,
+           u.is_admin, u.is_owner, u.is_official, u.is_verified,
+           fr.created_at
     FROM follow_requests fr
     JOIN users u ON u.id = fr.requester_id
     WHERE fr.target_id = ?
@@ -202,6 +238,10 @@ router.get('/me/follow-requests', requireAuth, (req, res) => {
     avatar: u.avatar,
     avatarHue: u.avatar_hue ?? 200,
     teams: JSON.parse(u.team_tags || '[]'),
+    is_admin:    !!u.is_admin || !!u.is_owner,
+    is_owner:    !!u.is_owner,
+    is_official: !!u.is_official,
+    is_verified: !!u.is_verified,
     requested_at: u.created_at,
   })));
 });

@@ -72,14 +72,18 @@ function NotificationsScreen({ tweaks, onNav, me, setMessageContext, onUnreadNot
   }, [notifs]);
 
   // Counts per tab — show on the tab pill if there's anything unread.
+  // Requests are sourced from the live follow_requests table (authoritative),
+  // so we deliberately skip follow_request notifications in the loop to
+  // avoid double-counting them once the request is also pending.
   const counts = React.useMemo(() => {
     const out = { scores: 0, activity: 0, requests: 0 };
     for (const n of notifs) {
       if (n.read) continue;
+      if (n.type === 'follow_request') continue;
       const cat = categorizeNotif(n);
       if (cat in out) out[cat] += 1;
     }
-    out.requests += requests.length;
+    out.requests = requests.length;
     return out;
   }, [notifs, requests]);
 
@@ -451,7 +455,10 @@ function RequestRow({ req, onAccept, onReject }) {
     }}>
       <Avatar user={req} size={36} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 14, fontWeight: 700 }}>{req.displayName}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 14, fontWeight: 700 }}>{req.displayName}</span>
+          <RoleBadges user={req} size={12} />
+        </div>
         <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>@{req.username} · {relTime(req.requested_at)}</div>
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
