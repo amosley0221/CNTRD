@@ -127,16 +127,15 @@ function pickRecord(records) {
   return (total || records[0])?.summary || '';
 }
 
-function normalizeSeries(comp) {
+function normalizeSeries(comp, leagueCode) {
   // Playoff series live on `competitions[0].series` (NBA/NHL/MLB) — short
   // record like "0-2" or "Best of 7". We surface both.
   //
   // ESPN's two endpoints disagree on the shape: scoreboard uses
   // `totalCompetitions` for the best-of length, but the /summary
   // endpoint puts the games-already-played count there. So we try
-  // several fields, and if the value we get is smaller than the
-  // games-played count it can't be the format length — fall back to
-  // a max-wins heuristic (4 wins ⇒ best of 7, 3 ⇒ 5, etc.).
+  // several fields, validate, and fall back to the league's standard
+  // playoff format when the value we got can't be right.
   const s = comp?.series || comp?.headToHeadGames;
   if (!s) return null;
 
@@ -170,6 +169,13 @@ function normalizeSeries(comp) {
   const totalPlayed = hw + aw;
   const maxWins = Math.max(hw, aw);
 
+  // Standard playoff format per league. NBA/NHL/WNBA play every round
+  // best-of-7. MLB's LDS is best-of-5; LCS/WS are best-of-7 — we use
+  // 7 as the default since we can't tell the round from this data, and
+  // 5 is corrected later if the wins prove the series is shorter.
+  const lc = String(leagueCode || '').toLowerCase();
+  const standardBestOf = (lc === 'nba' || lc === 'nhl' || lc === 'wnba' || lc === 'mlb') ? 7 : 5;
+
   // Try every field ESPN has been observed to use for the format length.
   let bestOf = null;
   for (const candidate of [s.length, s.totalCompetitions, s.gamesInSeries, s.format?.gamesInSeries]) {
@@ -177,21 +183,19 @@ function normalizeSeries(comp) {
     if (Number.isFinite(n) && n > 0) { bestOf = n; break; }
   }
 
-  // Sanity-check: a valid best-of has to be odd and ≥ games already
-  // played. If not, derive it from the wins. Best-of-3 needs 2 wins,
-  // best-of-5 needs 3, best-of-7 needs 4.
+  // Sanity-check: a valid best-of has to be odd and ≥ games played and
+  // ≥ wins-to-clinch * 2 - 1. If not, fall back to the league standard.
   const minBestOf = Math.max(maxWins * 2 - 1, totalPlayed);
   if (!bestOf || bestOf < minBestOf || bestOf % 2 === 0) {
-    if (maxWins >= 4) bestOf = 7;
-    else if (maxWins >= 3) bestOf = 5;
-    else if (totalPlayed >= 1) bestOf = Math.max(3, bestOf || 0);
+    bestOf = Math.max(minBestOf, standardBestOf);
+    if (bestOf % 2 === 0) bestOf += 1;
   }
 
   // Synthesise a summary when ESPN didn't ship one — picks who's
-  // winning / has won the series so the detail page reads "PHI wins
-  // series 4-2" instead of just "best of 7".
+  // winning / has won the series so the detail page reads "VGK leads
+  // series 3-2" instead of just "best of 7".
   let summary = rawSummary;
-  if (!summary && bestOf && totalPlayed > 0) {
+  if (!summary && totalPlayed > 0) {
     const winsToClinch = Math.ceil(bestOf / 2);
     if (hw >= winsToClinch) {
       summary = `${homeAbbr || 'Home'} wins series ${hw}-${aw}`;
@@ -265,7 +269,7 @@ function normalizeEvent(ev, leagueCode) {
     awayScore: state === 'scheduled' ? '–' : (readScore(away) ?? 0),
     homeRecord: pickRecord(home.records),
     awayRecord: pickRecord(away.records),
-    series: normalizeSeries(comp),
+    series: normalizeSeries(comp, leagueCode),
     aggregate: normalizeAggregate(home, away),
     season_type: seasonTypeId,
     period,
@@ -588,7 +592,7 @@ async function getGameDetail(leagueCode, eventId) {
       const stRaw = header.season?.type || comp.seasonType || header.seasonType || null;
       return Number(stRaw?.id ?? stRaw?.type ?? stRaw) || null;
     })(),
-    series: normalizeSeries(comp),
+    series: normalizeSeries(comp, league.code),
     aggregate: normalizeAggregate(home, away),
     home: {
       id: home.team?.id ? String(home.team.id) : null,
