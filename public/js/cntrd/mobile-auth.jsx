@@ -889,20 +889,23 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
     let active = true;
     setChatLoading(true);
     window.API.gamedayConversation(gameId)
-      .then(({ convId: cid, messages: msgs }) => {
+      .then(({ convId: cid, messages: msgs, now }) => {
         if (!active) return;
         setConvId(cid);
         const mapped = msgs.map(m => mapGameMsg(m, me, home.code, away.code));
         setMessages(mapped);
-        if (msgs.length > 0) lastMsgAt.current = msgs[msgs.length - 1].created_at;
+        // Polling cursor: use the latest message's timestamp if any, else
+        // the server's current time so brand-new messages still get caught.
+        lastMsgAt.current = msgs.length > 0
+          ? msgs[msgs.length - 1].created_at
+          : (now || new Date().toISOString().replace('T', ' ').replace(/\.\d+Z$/, ''));
 
         pollRef.current = setInterval(async () => {
           if (!active) return;
           try {
             const cursor = lastMsgAt.current;
-            const fresh = cursor
-              ? await window.API.conversationMessagesAfter(cid, cursor)
-              : [];
+            if (!cursor) return;
+            const fresh = await window.API.conversationMessagesAfter(cid, cursor);
             if (!active || !fresh.length) return;
             lastMsgAt.current = fresh[fresh.length - 1].created_at;
             setMessages(prev => {
@@ -913,7 +916,7 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
               return added.length ? [...prev, ...added] : prev;
             });
           } catch {}
-        }, 5000);
+        }, 2500);
       })
       .catch(() => {})
       .finally(() => { if (active) setChatLoading(false); });

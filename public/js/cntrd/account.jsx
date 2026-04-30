@@ -19,7 +19,11 @@ function AccountScreen({ tweaks, onNav, me, onMeUpdated }) {
         <span style={{ width: 32 }} />
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 18px 60px', display: 'flex', flexDirection: 'column', gap: 22 }}>
+      <div style={{
+        flex: 1, overflowY: 'auto',
+        padding: '20px 18px calc(120px + env(safe-area-inset-bottom, 0px))',
+        display: 'flex', flexDirection: 'column', gap: 22,
+      }}>
         <ProfilePictureCard me={u} onMeUpdated={onMeUpdated} />
         <UsernameCard me={u} onMeUpdated={onMeUpdated} />
         <EmailCard    me={u} onMeUpdated={onMeUpdated} />

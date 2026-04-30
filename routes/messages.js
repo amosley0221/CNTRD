@@ -68,25 +68,26 @@ function hydrateConversation(conv, viewerId) {
 
 // ── routes ──────────────────────────────────────────────────────────
 
-// List my conversations (recent first).
+// List my conversations (recent first). Excludes gameday rooms — those
+// are accessed only through the gameday screen, not the DMs inbox.
 router.get('/', (req, res) => {
   const rows = db.prepare(`
     SELECT c.id, c.name, c.is_group, c.created_at, c.last_message_at
     FROM conversations c
     JOIN conversation_members m ON m.conversation_id = c.id
-    WHERE m.user_id = ?
+    WHERE m.user_id = ? AND c.game_id IS NULL
     ORDER BY c.last_message_at DESC
     LIMIT 100
   `).all(req.user.id);
   res.json(rows.map(c => hydrateConversation(c, req.user.id)));
 });
 
-// Total unread (used by the sidebar badge).
+// Total unread (used by the sidebar badge). Gameday rooms don't count.
 router.get('/unread', (req, res) => {
   const rows = db.prepare(`
     SELECT c.id FROM conversations c
     JOIN conversation_members m ON m.conversation_id = c.id
-    WHERE m.user_id = ?
+    WHERE m.user_id = ? AND c.game_id IS NULL
   `).all(req.user.id);
   let total = 0;
   for (const r of rows) total += unreadCount(r.id, req.user.id);
@@ -246,8 +247,14 @@ router.get('/gameday/:gameId', (req, res) => {
     ORDER BY m.created_at DESC LIMIT 50
   `).all(convId);
 
+  // Server's current time so the client can poll for messages newer than
+  // "now" even when the room has no messages yet (otherwise an empty room
+  // never picks up the first message until the user re-enters).
+  const now = db.prepare("SELECT datetime('now') AS t").get().t;
+
   res.json({
     convId,
+    now,
     messages: rows.reverse().map(r => ({
       id: r.id,
       content: r.content,
