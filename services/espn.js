@@ -130,15 +130,85 @@ function pickRecord(records) {
 function normalizeSeries(comp) {
   // Playoff series live on `competitions[0].series` (NBA/NHL/MLB) — short
   // record like "0-2" or "Best of 7". We surface both.
+  //
+  // ESPN's two endpoints disagree on the shape: scoreboard uses
+  // `totalCompetitions` for the best-of length, but the /summary
+  // endpoint puts the games-already-played count there. So we try
+  // several fields, and if the value we get is smaller than the
+  // games-played count it can't be the format length — fall back to
+  // a max-wins heuristic (4 wins ⇒ best of 7, 3 ⇒ 5, etc.).
   const s = comp?.series || comp?.headToHeadGames;
   if (!s) return null;
-  const homeWins = Number(s.competitors?.[0]?.wins ?? s.summary?.split('-')?.[0] ?? NaN);
-  const awayWins = Number(s.competitors?.[1]?.wins ?? s.summary?.split('-')?.[1] ?? NaN);
-  const length   = Number(s.totalCompetitions || s.length || 0);
-  const summary  = s.summary || s.description || '';
+
+  const rawSummary = s.summary || s.description || '';
+
+  // Match the series competitors to home/away by team id so wins go to
+  // the right side when ESPN orders them differently across endpoints.
+  const homeComp = comp.competitors?.find(c => c.homeAway === 'home');
+  const awayComp = comp.competitors?.find(c => c.homeAway === 'away');
+  const homeId   = homeComp?.team?.id || homeComp?.id;
+  const awayId   = awayComp?.team?.id || awayComp?.id;
+  const homeAbbr = homeComp?.team?.abbreviation || homeComp?.team?.shortDisplayName || '';
+  const awayAbbr = awayComp?.team?.abbreviation || awayComp?.team?.shortDisplayName || '';
+
+  const sCompetitors = Array.isArray(s.competitors) ? s.competitors : [];
+  const matchSide = (id) => sCompetitors.find(c =>
+    String(c.id || '') === String(id || '') ||
+    String(c.team?.id || '') === String(id || '')
+  );
+  const sHome = matchSide(homeId) || sCompetitors[0];
+  const sAway = matchSide(awayId) || sCompetitors[1];
+
+  let homeWins = Number(sHome?.wins);
+  let awayWins = Number(sAway?.wins);
+  if (!Number.isFinite(homeWins) || !Number.isFinite(awayWins)) {
+    const m = rawSummary.match(/(\d+)\s*-\s*(\d+)/);
+    if (m) { homeWins = Number(m[1]); awayWins = Number(m[2]); }
+  }
+  const hw = Number.isFinite(homeWins) ? homeWins : 0;
+  const aw = Number.isFinite(awayWins) ? awayWins : 0;
+  const totalPlayed = hw + aw;
+  const maxWins = Math.max(hw, aw);
+
+  // Try every field ESPN has been observed to use for the format length.
+  let bestOf = null;
+  for (const candidate of [s.length, s.totalCompetitions, s.gamesInSeries, s.format?.gamesInSeries]) {
+    const n = Number(candidate);
+    if (Number.isFinite(n) && n > 0) { bestOf = n; break; }
+  }
+
+  // Sanity-check: a valid best-of has to be odd and ≥ games already
+  // played. If not, derive it from the wins. Best-of-3 needs 2 wins,
+  // best-of-5 needs 3, best-of-7 needs 4.
+  const minBestOf = Math.max(maxWins * 2 - 1, totalPlayed);
+  if (!bestOf || bestOf < minBestOf || bestOf % 2 === 0) {
+    if (maxWins >= 4) bestOf = 7;
+    else if (maxWins >= 3) bestOf = 5;
+    else if (totalPlayed >= 1) bestOf = Math.max(3, bestOf || 0);
+  }
+
+  // Synthesise a summary when ESPN didn't ship one — picks who's
+  // winning / has won the series so the detail page reads "PHI wins
+  // series 4-2" instead of just "best of 7".
+  let summary = rawSummary;
+  if (!summary && bestOf && totalPlayed > 0) {
+    const winsToClinch = Math.ceil(bestOf / 2);
+    if (hw >= winsToClinch) {
+      summary = `${homeAbbr || 'Home'} wins series ${hw}-${aw}`;
+    } else if (aw >= winsToClinch) {
+      summary = `${awayAbbr || 'Away'} wins series ${aw}-${hw}`;
+    } else if (hw > aw) {
+      summary = `${homeAbbr || 'Home'} leads series ${hw}-${aw}`;
+    } else if (aw > hw) {
+      summary = `${awayAbbr || 'Away'} leads series ${aw}-${hw}`;
+    } else {
+      summary = `Tied ${hw}-${aw}`;
+    }
+  }
+
   return {
     summary,
-    bestOf: length > 0 ? length : null,
+    bestOf: bestOf || null,
     homeWins: Number.isFinite(homeWins) ? homeWins : null,
     awayWins: Number.isFinite(awayWins) ? awayWins : null,
   };
