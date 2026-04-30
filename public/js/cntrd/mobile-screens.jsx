@@ -514,14 +514,16 @@ function ComposerScreen({ tweaks, onNav, onPost, me, replyTo }) {
   const meUser = me || ME;
   // Hide UCL duplicates (e.g. Chelsea-EPL + Chelsea-UCL) so the user has
   // one obvious tag per club instead of two side-by-side that would
-  // resolve to the same name.
+  // resolve to the same name. Empty when the user hasn't picked any
+  // teams — we don't auto-suggest random clubs, and posting works
+  // without a tag.
   const meTeams = dedupeUclOverlap(
-    (meUser.teams && meUser.teams.length) ? meUser.teams : ['LAL', 'NYG', 'ARS']
+    (meUser.teams && meUser.teams.length) ? meUser.teams : []
   );
   const isReply = !!replyTo?.id;
   const [text, setText] = React.useState('');
   const [type, setType] = React.useState('take');
-  const [tag, setTag] = React.useState(meTeams[0]);
+  const [tag, setTag] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
   const [err, setErr]   = React.useState(null);
   const [media, setMedia] = React.useState(null);     // { url, kind, localPreview, name }
@@ -552,7 +554,7 @@ function ComposerScreen({ tweaks, onNav, onPost, me, replyTo }) {
     if (!canSubmit || busy || uploading) return;
     setBusy(true); setErr(null);
     try {
-      const body = { content: text.trim(), type, tags: [tag] };
+      const body = { content: text.trim(), type, tags: tag ? [tag] : [] };
       if (type === 'photo' && media?.url) body.image = media.url;
       if (type === 'clip'  && media?.url) body.extra = { video_url: media.url };
       if (isReply) body.reply_to = replyTo.id;
@@ -612,40 +614,42 @@ function ComposerScreen({ tweaks, onNav, onPost, me, replyTo }) {
         <div style={{ display: 'flex', gap: 10 }}>
           <Avatar user={meUser} size={36} />
           <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
-              {meTeams.map(t => {
-                const team = resolveTeam(t);
-                if (!team) return null;
-                const selected = tag === t;
-                // Show the team *name* so users with multiple teams sharing
-                // the same code (Eagles + 76ers + Phillies + Flyers all use
-                // "PHI") can tell their picks apart. Code becomes a small
-                // prefix so the league context is still visible.
-                return (
-                  <button key={t} onClick={() => setTag(t)} style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 5,
-                    background: selected ? team.primary : 'transparent',
-                    border: `0.5px solid ${selected ? team.primary : 'var(--cn-border-s)'}`,
-                    color: selected ? pickContrast(team.primary) : 'var(--cn-text-dim)',
-                    borderRadius: 999, padding: '4px 10px',
-                    fontSize: 12, fontWeight: 700,
-                    cursor: 'pointer', maxWidth: '100%',
-                  }} title={team.fullName || team.name}>
-                    <span style={{
-                      fontSize: 10,
-                      opacity: 0.75,
-                      fontFamily: 'var(--cn-font-mono)',
-                      letterSpacing: 0.5,
-                    }}>{team.code}</span>
-                    <span style={{
-                      whiteSpace: 'nowrap', overflow: 'hidden',
-                      textOverflow: 'ellipsis', maxWidth: 140,
-                    }}>{team.name}</span>
-                  </button>
-                );
-              })}
-              <button style={{ background: 'transparent', border: '0.5px dashed var(--cn-border-s)', color: 'var(--cn-text-mute)', borderRadius: 999, padding: '3px 9px', fontSize: 11, cursor: 'pointer' }}>+ tag</button>
-            </div>
+            {meTeams.length > 0 && (
+              <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
+                {meTeams.map(t => {
+                  const team = resolveTeam(t);
+                  if (!team) return null;
+                  const selected = tag === t;
+                  // Show the team *name* so users with multiple teams sharing
+                  // the same code (Eagles + 76ers + Phillies + Flyers all use
+                  // "PHI") can tell their picks apart. Code becomes a small
+                  // prefix so the league context is still visible. Tapping a
+                  // selected pill deselects so the post can go untagged.
+                  return (
+                    <button key={t} onClick={() => setTag(selected ? null : t)} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5,
+                      background: selected ? team.primary : 'transparent',
+                      border: `0.5px solid ${selected ? team.primary : 'var(--cn-border-s)'}`,
+                      color: selected ? pickContrast(team.primary) : 'var(--cn-text-dim)',
+                      borderRadius: 999, padding: '4px 10px',
+                      fontSize: 12, fontWeight: 700,
+                      cursor: 'pointer', maxWidth: '100%',
+                    }} title={team.fullName || team.name}>
+                      <span style={{
+                        fontSize: 10,
+                        opacity: 0.75,
+                        fontFamily: 'var(--cn-font-mono)',
+                        letterSpacing: 0.5,
+                      }}>{team.code}</span>
+                      <span style={{
+                        whiteSpace: 'nowrap', overflow: 'hidden',
+                        textOverflow: 'ellipsis', maxWidth: 140,
+                      }}>{team.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <MentionTextarea
               value={text}
               onChange={(v) => setText(v.slice(0, max))}
