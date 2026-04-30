@@ -3,6 +3,30 @@
 
 function PlaysRail({ playsLabel = 'PLAYS', onPlay, onAdd, plays }) {
   const items = (plays && plays.length ? plays : PLAYS);
+  // Group plays by author so the rail shows one bubble per user
+  // (Instagram-style "story" pattern). Pick the most recent play
+  // per user as the bubble's lead, but keep the full set so a tap
+  // can open the viewer on the right starting play.
+  const grouped = React.useMemo(() => {
+    const byUser = new Map();
+    for (const p of items) {
+      const uid = (typeof p.user === 'string' ? p.user : p.user?.id) || p.user_id || 'anon';
+      const existing = byUser.get(uid);
+      if (!existing || (p.created_at || '') > (existing.lead.created_at || '')) {
+        byUser.set(uid, { lead: p, plays: [...(existing?.plays || []), p] });
+      } else {
+        existing.plays.push(p);
+        byUser.set(uid, existing);
+      }
+    }
+    // Order: any group with a live play first, then by most recent activity.
+    return Array.from(byUser.values()).sort((a, b) => {
+      const aLive = a.plays.some(p => p.live) ? 1 : 0;
+      const bLive = b.plays.some(p => p.live) ? 1 : 0;
+      if (aLive !== bLive) return bLive - aLive;
+      return (b.lead.created_at || '').localeCompare(a.lead.created_at || '');
+    });
+  }, [items]);
   return (
     <div style={{
       padding: '12px 16px 14px',
@@ -21,7 +45,7 @@ function PlaysRail({ playsLabel = 'PLAYS', onPlay, onAdd, plays }) {
           fontSize: 14, color: 'var(--cn-text)',
         }}>{playsLabel}</span>
         <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)' }}>
-          {items.length} from people you follow
+          {grouped.length} from people you follow
         </span>
       </div>
       <div style={{
@@ -30,7 +54,7 @@ function PlaysRail({ playsLabel = 'PLAYS', onPlay, onAdd, plays }) {
       }}>
         {/* Add new play */}
         <PlayBubble add onClick={onAdd} />
-        {items.map(p => <PlayBubble key={p.id} play={p} onClick={onPlay} />)}
+        {grouped.map(g => <PlayBubble key={g.lead.id} play={g.lead} onClick={onPlay} />)}
       </div>
     </div>
   );
@@ -70,12 +94,11 @@ function PlayBubble({ play, add, onClick }) {
       }}>
         <div style={{
           width: '100%', height: '100%', borderRadius: '50%',
-          background: avatarBg(u.avatarHue),
+          background: 'var(--cn-bg)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: '#fff', fontWeight: 700, fontSize: 18,
-          border: '2px solid var(--cn-bg)',
+          padding: 2,
         }}>
-          {avatarInitials(u.displayName)}
+          <Avatar user={u} size={52} />
         </div>
         {play.live && (
           <div style={{

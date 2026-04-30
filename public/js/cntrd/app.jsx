@@ -408,8 +408,12 @@ function CNTRDApp() {
     setPosts(prev => prev.filter(p => p.user?.id !== userId));
   }, []);
 
-  const handleCreatePlay = React.useCallback(async ({ team_code, label, hue }) => {
-    const created = await API.createPlay({ team_code, label, hue });
+  const handleCreatePlay = React.useCallback(async (payload) => {
+    // Forward every field the composer set: team/label/hue plus the
+    // uploaded media URL + kind, the caption, and the frozen score
+    // sticker. Stripping any of these out used to leave the play
+    // image-less and the viewer falling back to the team gradient.
+    const created = await API.createPlay(payload);
     const norm = normalizePlay(created);
     setPlays(prev => [norm, ...prev]);
   }, []);
