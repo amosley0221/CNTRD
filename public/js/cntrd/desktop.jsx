@@ -92,6 +92,7 @@ function DesktopMainContent({ screen, ...props }) {
     userProfile:   UserProfileScreen,
     discover:      DiscoverScreen,
     postThread:    PostThreadScreen,
+    followList:    FollowListScreen,
     tagFeed:       TagFeedScreen,
     messages:      MessagesRoot,
     notifications: NotificationsScreen,

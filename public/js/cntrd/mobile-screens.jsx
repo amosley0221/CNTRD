@@ -138,8 +138,10 @@ function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePl
           </div>
           <div style={{ marginTop: 14, display: 'flex', gap: 18 }}>
             <Stat label="Posts" value={u.posts ?? 0} />
-            <Stat label="Followers" value={u.followers ?? 0} />
-            <Stat label="Following" value={u.following ?? 0} />
+            <Stat label="Followers" value={u.followers ?? 0}
+              onClick={() => window.dispatchEvent(new CustomEvent('cntrd:open-follow-list', { detail: { username: u.username, mode: 'followers' } }))} />
+            <Stat label="Following" value={u.following ?? 0}
+              onClick={() => window.dispatchEvent(new CustomEvent('cntrd:open-follow-list', { detail: { username: u.username, mode: 'following' } }))} />
           </div>
           <FanCard teams={u.teams || []} />
         </div>
@@ -205,7 +207,21 @@ function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePl
   );
 }
 
-function Stat({ label, value }) {
+function Stat({ label, value, onClick }) {
+  if (onClick) {
+    return (
+      <button onClick={onClick} style={{
+        background: 'transparent', border: 'none', padding: 0, margin: 0,
+        cursor: 'pointer', color: 'inherit', textAlign: 'left',
+        fontFamily: 'inherit',
+      }}>
+        <_StatBody label={label} value={value} />
+      </button>
+    );
+  }
+  return <_StatBody label={label} value={value} />;
+}
+function _StatBody({ label, value }) {
   return (
     <div>
       <div style={{
@@ -1868,8 +1884,10 @@ function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0
               </div>
               <div style={{ marginTop: 14, display: 'flex', gap: 18 }}>
                 <Stat label="Posts" value={view.posts} />
-                <Stat label="Followers" value={view.followers} />
-                <Stat label="Following" value={view.following} />
+                <Stat label="Followers" value={view.followers}
+                  onClick={() => window.dispatchEvent(new CustomEvent('cntrd:open-follow-list', { detail: { username: view.username, mode: 'followers' } }))} />
+                <Stat label="Following" value={view.following}
+                  onClick={() => window.dispatchEvent(new CustomEvent('cntrd:open-follow-list', { detail: { username: view.username, mode: 'following' } }))} />
               </div>
               {view.teams.length > 0 && <FanCard teams={view.teams} />}
             </div>

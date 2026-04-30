@@ -147,6 +147,10 @@ const API = {
 
   // Follow / privacy / blocks
   followUser(username)                  { return request('POST', `/api/users/${username}/follow`); },
+  followers(username)                   { return request('GET',  `/api/users/${username}/followers`); },
+  followingList(username)               { return request('GET',  `/api/users/${username}/following`); },
+  removeFollower(username)              { return request('POST', `/api/users/${username}/remove-follower`); },
+  muteUser(username)                    { return request('POST', `/api/users/${username}/mute`); },
   followRequests()                      { return request('GET',  '/api/users/me/follow-requests'); },
   acceptFollowRequest(username)         { return request('POST', `/api/users/${username}/follow-request/accept`); },
   rejectFollowRequest(username)         { return request('POST', `/api/users/${username}/follow-request/reject`); },

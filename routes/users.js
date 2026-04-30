@@ -291,30 +291,87 @@ router.get('/me/blocks', requireAuth, (req, res) => {
 
 // Followers / Following / Posts ---------
 
-router.get('/:username/followers', (req, res) => {
+router.get('/:username/followers', requireAuth, (req, res) => {
   const target = db.prepare('SELECT id FROM users WHERE username = ?').get(req.params.username);
   if (!target) return res.status(404).json({ error: 'User not found' });
   const followers = db.prepare(`
-    SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
+    SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags,
+           u.is_admin, u.is_owner, u.is_official, u.is_verified,
+           (SELECT 1 FROM follows WHERE follower_id = ? AND following_id = u.id) AS i_follow_them,
+           (SELECT 1 FROM mutes   WHERE muter_id    = ? AND muted_id     = u.id) AS i_mute_them,
+           (SELECT 1 FROM blocks  WHERE blocker_id  = ? AND blocked_id   = u.id) AS i_block_them
     FROM follows f JOIN users u ON u.id = f.follower_id
     WHERE f.following_id = ?
-    ORDER BY f.created_at DESC LIMIT 50
-  `).all(target.id);
-  followers.forEach(u => { u.team_tags = JSON.parse(u.team_tags || '[]'); });
+    ORDER BY f.created_at DESC LIMIT 200
+  `).all(req.user.id, req.user.id, req.user.id, target.id);
+  followers.forEach(u => {
+    u.team_tags  = JSON.parse(u.team_tags || '[]');
+    u.is_admin    = !!u.is_admin || !!u.is_owner;
+    u.is_owner    = !!u.is_owner;
+    u.is_official = !!u.is_official;
+    u.is_verified = !!u.is_verified;
+    u.i_follow_them = !!u.i_follow_them;
+    u.i_mute_them   = !!u.i_mute_them;
+    u.i_block_them  = !!u.i_block_them;
+  });
   res.json(followers);
 });
 
-router.get('/:username/following', (req, res) => {
+router.get('/:username/following', requireAuth, (req, res) => {
   const target = db.prepare('SELECT id FROM users WHERE username = ?').get(req.params.username);
   if (!target) return res.status(404).json({ error: 'User not found' });
   const following = db.prepare(`
-    SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
+    SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags,
+           u.is_admin, u.is_owner, u.is_official, u.is_verified,
+           (SELECT 1 FROM follows WHERE follower_id = ? AND following_id = u.id) AS i_follow_them,
+           (SELECT 1 FROM mutes   WHERE muter_id    = ? AND muted_id     = u.id) AS i_mute_them,
+           (SELECT 1 FROM blocks  WHERE blocker_id  = ? AND blocked_id   = u.id) AS i_block_them
     FROM follows f JOIN users u ON u.id = f.following_id
     WHERE f.follower_id = ?
-    ORDER BY f.created_at DESC LIMIT 50
-  `).all(target.id);
-  following.forEach(u => { u.team_tags = JSON.parse(u.team_tags || '[]'); });
+    ORDER BY f.created_at DESC LIMIT 200
+  `).all(req.user.id, req.user.id, req.user.id, target.id);
+  following.forEach(u => {
+    u.team_tags  = JSON.parse(u.team_tags || '[]');
+    u.is_admin    = !!u.is_admin || !!u.is_owner;
+    u.is_owner    = !!u.is_owner;
+    u.is_official = !!u.is_official;
+    u.is_verified = !!u.is_verified;
+    u.i_follow_them = !!u.i_follow_them;
+    u.i_mute_them   = !!u.i_mute_them;
+    u.i_block_them  = !!u.i_block_them;
+  });
   res.json(following);
+});
+
+// Kick someone out of your followers (they no longer follow you).
+// Idempotent — if they don't follow you, returns success.
+router.post('/:username/remove-follower', requireAuth, (req, res) => {
+  const target = db.prepare('SELECT id FROM users WHERE username = ?').get(req.params.username);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  if (target.id === req.user.id) return res.status(400).json({ error: 'Cannot remove yourself' });
+  const existed = db.prepare('SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?').get(target.id, req.user.id);
+  if (existed) {
+    db.prepare('DELETE FROM follows WHERE follower_id = ? AND following_id = ?').run(target.id, req.user.id);
+    db.prepare('UPDATE users SET follower_count = MAX(0, follower_count - 1) WHERE id = ?').run(req.user.id);
+    db.prepare('UPDATE users SET following_count = MAX(0, following_count - 1) WHERE id = ?').run(target.id);
+  }
+  res.json({ removed: true });
+});
+
+// Toggle mute on a user. Mutes hide a user's posts from the muter's feed
+// without unfollowing or blocking; the other person doesn't know they
+// were muted.
+router.post('/:username/mute', requireAuth, (req, res) => {
+  const target = db.prepare('SELECT id FROM users WHERE username = ?').get(req.params.username);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  if (target.id === req.user.id) return res.status(400).json({ error: 'Cannot mute yourself' });
+  const existing = db.prepare('SELECT 1 FROM mutes WHERE muter_id = ? AND muted_id = ?').get(req.user.id, target.id);
+  if (existing) {
+    db.prepare('DELETE FROM mutes WHERE muter_id = ? AND muted_id = ?').run(req.user.id, target.id);
+    return res.json({ muted: false });
+  }
+  db.prepare('INSERT INTO mutes (muter_id, muted_id) VALUES (?, ?)').run(req.user.id, target.id);
+  return res.json({ muted: true });
 });
 
 // Get user's posts (private profiles return [] for non-approved viewers).

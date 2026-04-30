@@ -23,15 +23,17 @@ const SELECT_POST = `
 `;
 
 // Build the SQL fragment that hides authors blocked-by or blocking the
-// viewer. Returns { fragment, params } that you splice into a WHERE clause.
+// viewer, plus authors the viewer has muted. Returns { fragment, params }
+// that you splice into a WHERE clause.
 function blockFilter(viewerId) {
   if (!viewerId) return { fragment: '', params: [] };
   return {
     fragment: `
       AND p.user_id NOT IN (SELECT blocked_id FROM blocks WHERE blocker_id = ?)
       AND p.user_id NOT IN (SELECT blocker_id FROM blocks WHERE blocked_id = ?)
+      AND p.user_id NOT IN (SELECT muted_id   FROM mutes  WHERE muter_id   = ?)
     `,
-    params: [viewerId, viewerId],
+    params: [viewerId, viewerId, viewerId],
   };
 }
 

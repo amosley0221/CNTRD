@@ -172,6 +172,16 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_events_conv ON events(conversation_id, start_at);
   CREATE INDEX IF NOT EXISTS idx_events_pending ON events(start_at, pre_alert_sent);
 
+  CREATE TABLE IF NOT EXISTS mutes (
+    muter_id TEXT NOT NULL,
+    muted_id TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (muter_id, muted_id),
+    FOREIGN KEY (muter_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (muted_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_mutes_muter ON mutes(muter_id);
+
   CREATE TABLE IF NOT EXISTS bookmarks (
     user_id TEXT NOT NULL,
     post_id TEXT NOT NULL,

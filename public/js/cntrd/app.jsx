@@ -107,6 +107,8 @@ function CNTRDApp() {
   const [viewUsername, setViewUsername] = React.useState(null);  // username being inspected on userProfile screen
   const [discoverQuery, setDiscoverQuery] = React.useState('');   // seeds the Discover screen's input
   const [threadPostId, setThreadPostId] = React.useState(null);   // post being viewed in the thread screen
+  const [followListMode, setFollowListMode] = React.useState('followers');
+  const [followListUsername, setFollowListUsername] = React.useState(null);
   const [selectedTag, setSelectedTag]   = React.useState(null);  // 'NFL:PHI' or 'PHI'
   const [selectedPlay, setSelectedPlay] = React.useState(null);  // play object when viewing a specific Play
   const [gamedayPick, setGamedayPick]   = React.useState(null);  // { id, league, ... } when entering chat for a specific game
@@ -501,6 +503,20 @@ function CNTRDApp() {
     return () => window.removeEventListener('cntrd:open-user', handler);
   }, [me?.username]);
 
+  // Tap a Followers / Following stat → open the list with the right
+  // mode + username pre-filled.
+  React.useEffect(() => {
+    const handler = (e) => {
+      const { username, mode } = e.detail || {};
+      if (!username) return;
+      setFollowListUsername(username);
+      setFollowListMode(mode === 'following' ? 'following' : 'followers');
+      setScreen('followList');
+    };
+    window.addEventListener('cntrd:open-follow-list', handler);
+    return () => window.removeEventListener('cntrd:open-follow-list', handler);
+  }, []);
+
   // Tap a post body anywhere → open the thread (post + replies).
   React.useEffect(() => {
     const handler = (e) => {
@@ -576,6 +592,7 @@ function CNTRDApp() {
     userProfile:  UserProfileScreen,
     discover:     DiscoverScreen,
     postThread:   PostThreadScreen,
+    followList:   FollowListScreen,
     tagFeed:      TagFeedScreen,
     messages:     MessagesRoot,
     notifications: NotificationsScreen,
@@ -596,6 +613,7 @@ function CNTRDApp() {
     viewUsername,
     discoverQuery,
     threadPostId,
+    followListMode, followListUsername,
     gamedayPick, setGamedayPick,
     onOpenGameday: handleOpenGameday,
     onOpenPlay: handleOpenPlay,
