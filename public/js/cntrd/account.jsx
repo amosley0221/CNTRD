@@ -3,9 +3,18 @@
 // profile picture. Each form has its own busy / error / success state
 // so a username-change error doesn't blow away other section state.
 
-function AccountScreen({ tweaks, onNav, me, onMeUpdated }) {
+function AccountScreen({ tweaks, onNav, me, onMeUpdated, accountSection, setAccountSection }) {
   const u = me || ME;
-  const [view, setView] = React.useState('list'); // list | avatar | username | email | password
+  // Settings rows can deep-link straight to a specific editor by setting
+  // accountSection before navigating. Consume it once and clear so a
+  // back-then-forward sequence returns to the list.
+  const [view, setView] = React.useState(accountSection || 'list');
+  React.useEffect(() => {
+    if (accountSection) {
+      setView(accountSection);
+      setAccountSection?.(null);
+    }
+  }, [accountSection, setAccountSection]);
 
   const headerLabel = {
     list: 'ACCOUNT',

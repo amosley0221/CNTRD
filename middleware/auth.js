@@ -2,6 +2,25 @@ const jwt = require('jsonwebtoken');
 const db  = require('../database/db');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'cntrd_jwt_secret_change_in_production';
+// Server-set HttpOnly session cookie. Survives Safari ITP's 7-day JS-cookie
+// cap because it's set via Set-Cookie, not document.cookie.
+const SESSION_COOKIE = 'cntrd_session';
+const SESSION_COOKIE_MAX_AGE = 30 * 24 * 60 * 60;  // seconds
+
+function setSessionCookie(res, token) {
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  res.append('Set-Cookie',
+    `${SESSION_COOKIE}=${encodeURIComponent(token)}; Max-Age=${SESSION_COOKIE_MAX_AGE}; Path=/; HttpOnly; SameSite=Lax${secure}`
+  );
+}
+function clearSessionCookie(res) {
+  res.append('Set-Cookie', `${SESSION_COOKIE}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax`);
+}
+function readBearerOrCookie(req) {
+  const auth = req.headers.authorization?.split(' ')[1];
+  if (auth) return auth;
+  return req.cookies?.[SESSION_COOKIE] || null;
+}
 
 const ADMIN_EMAILS = new Set(
   (process.env.ADMIN_EMAILS || '')
@@ -27,7 +46,7 @@ function loadFreshUser(id) {
 }
 
 function requireAuth(req, res, next) {
-  const token = req.headers.authorization?.split(' ')[1];
+  const token = readBearerOrCookie(req);
   if (!token) return res.status(401).json({ error: 'Authentication required' });
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
@@ -48,7 +67,7 @@ function requireAuth(req, res, next) {
 }
 
 function optionalAuth(req, res, next) {
-  const token = req.headers.authorization?.split(' ')[1];
+  const token = readBearerOrCookie(req);
   if (token) {
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
@@ -77,4 +96,8 @@ function requireOwner(req, res, next) {
   next();
 }
 
-module.exports = { requireAuth, optionalAuth, requireAdmin, requireOwner, JWT_SECRET, isAdminEmail, isOwnerEmail };
+module.exports = {
+  requireAuth, optionalAuth, requireAdmin, requireOwner,
+  JWT_SECRET, isAdminEmail, isOwnerEmail,
+  setSessionCookie, clearSessionCookie,
+};

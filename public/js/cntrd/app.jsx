@@ -115,6 +115,7 @@ function CNTRDApp() {
   const [selectedPlay, setSelectedPlay] = React.useState(null);  // play object when viewing a specific Play
   const [gamedayPick, setGamedayPick]   = React.useState(null);  // { id, league, ... } when entering chat for a specific game
   const [messageContext, setMessageContext] = React.useState({ mode: 'list' });
+  const [accountSection, setAccountSection] = React.useState(null);  // 'avatar' | 'username' | 'email' | 'password' | null
   const [unreadMessages, setUnreadMessages] = React.useState(0);
   const [unreadNotifs, setUnreadNotifs]     = React.useState(0);
   const [pendingFeed, setPendingFeed] = React.useState([]);   // staged new posts; user taps to merge
@@ -185,8 +186,14 @@ function CNTRDApp() {
     async function boot() {
       window.__originalME = window.ME;
       const tasks = [];
-      if (API.hasToken()) tasks.push(API.me().catch(() => { API.setToken(null); return null; }));
-      else tasks.push(Promise.resolve(null));
+      // Always try /me on boot — the server-set HttpOnly session cookie
+      // can authenticate us even when client-side storage was wiped
+      // (Safari ITP, private mode hand-off, etc.). 401 falls through to
+      // the login screen as normal.
+      tasks.push(API.me().catch((e) => {
+        if (e?.status === 401) API.setToken(null);
+        return null;
+      }));
       tasks.push(API.allTeams().catch(() => null));
       tasks.push(API.leagueCatalog().catch(() => null));
 
@@ -322,6 +329,7 @@ function CNTRDApp() {
 
   const handleNav = React.useCallback((next) => {
     if (next === 'logout') {
+      API.logout();          // clears the HttpOnly session cookie server-side
       API.setToken(null);
       setMe(null);
       setScreen('login');
@@ -347,7 +355,7 @@ function CNTRDApp() {
   }, [goTo]);
 
   const handleLogin = React.useCallback(async ({ login, password, persist = true }) => {
-    const { token, user } = await API.login({ login, password });
+    const { token, user } = await API.login({ login, password, persist });
     API.setToken(token, { persist });
     setMe(normalizeMe(user));
   }, []);
@@ -652,6 +660,7 @@ function CNTRDApp() {
     onOpenPlay: handleOpenPlay,
     onDeletePlay: handleDeletePlay,
     messageContext, setMessageContext,
+    accountSection, setAccountSection,
     replyTo,
     feedPending: pendingFeed.length,
     onRefreshFeed: handleRefreshFeed,

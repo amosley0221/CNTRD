@@ -12,6 +12,25 @@ app.use(cors());
 app.use(express.json({ limit: '256kb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Tiny cookie parser — no extra dep. Stores parsed values on req.cookies.
+app.use((req, _res, next) => {
+  req.cookies = Object.create(null);
+  const header = req.headers.cookie;
+  if (header) {
+    for (const part of header.split(';')) {
+      const eq = part.indexOf('=');
+      if (eq < 0) continue;
+      const k = part.slice(0, eq).trim();
+      const v = part.slice(eq + 1).trim();
+      if (k) {
+        try { req.cookies[k] = decodeURIComponent(v); }
+        catch { req.cookies[k] = v; }
+      }
+    }
+  }
+  next();
+});
+
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(uploadRouter.uploadDir));

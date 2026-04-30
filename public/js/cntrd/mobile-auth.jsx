@@ -366,7 +366,11 @@ function Subhead({ children }) {
 }
 
 // ─── SETTINGS ─────────────────────────────────────────────────
-function SettingsScreen({ tweaks, setTweak, onNav, me, onMeUpdated, unreadNotifs }) {
+function SettingsScreen({ tweaks, setTweak, onNav, me, onMeUpdated, unreadNotifs, setAccountSection }) {
+  const goAccount = (section) => {
+    setAccountSection?.(section);
+    onNav?.('account');
+  };
   const meUser = me || ME;
   const togglePrivate = async (next) => {
     try {
@@ -487,7 +491,7 @@ function SettingsScreen({ tweaks, setTweak, onNav, me, onMeUpdated, unreadNotifs
                 <Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />
               </div>
             }
-            onClick={() => onNav?.('account')}
+            onClick={() => goAccount('username')}
           />
           <Row
             label="Email"
@@ -497,12 +501,12 @@ function SettingsScreen({ tweaks, setTweak, onNav, me, onMeUpdated, unreadNotifs
                 <Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />
               </div>
             }
-            onClick={() => onNav?.('account')}
+            onClick={() => goAccount('email')}
           />
           <Row
             label="Change password"
             right={<Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />}
-            onClick={() => onNav?.('account')}
+            onClick={() => goAccount('password')}
           />
           <Row
             label="Profile picture"
@@ -514,7 +518,7 @@ function SettingsScreen({ tweaks, setTweak, onNav, me, onMeUpdated, unreadNotifs
                 <Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />
               </div>
             }
-            onClick={() => onNav?.('account')}
+            onClick={() => goAccount('avatar')}
             last
           />
         </Section>

@@ -107,6 +107,7 @@ const API = {
   me()                     { return request('GET',  '/api/auth/me'); },
   login(payload)           { return request('POST', '/api/auth/login', payload); },
   register(payload)        { return request('POST', '/api/auth/register', payload); },
+  logout()                 { return request('POST', '/api/auth/logout').catch(() => null); },
   updateAccount(payload)   { return request('PATCH','/api/auth/account', payload); },
   saveTweaks(payload)      { return request('PUT',  '/api/auth/tweaks', payload); },
 

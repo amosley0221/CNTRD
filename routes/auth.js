@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../database/db');
-const { JWT_SECRET, requireAuth, isAdminEmail, isOwnerEmail } = require('../middleware/auth');
+const { JWT_SECRET, requireAuth, isAdminEmail, isOwnerEmail, setSessionCookie, clearSessionCookie } = require('../middleware/auth');
 const { isValidTeamCode } = require('../data/teams');
 const leaguesRouter = require('./leagues');
 
@@ -129,6 +129,9 @@ router.post('/register', (req, res) => {
   const token = jwt.sign({ id, username }, JWT_SECRET, { expiresIn: '30d' });
   const user = hydrate(db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`).get(id));
 
+  // Sign-up always plants the HttpOnly cookie — fresh users want to stay
+  // logged in. The Bearer token is also returned for clients that prefer it.
+  setSessionCookie(res, token);
   res.status(201).json({ token, user });
 });
 
@@ -158,7 +161,20 @@ router.post('/login', (req, res) => {
   const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '30d' });
   const safe = hydrate(db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`).get(user.id));
 
+  // Plant an HttpOnly session cookie unless the caller explicitly opted out
+  // (sessionStorage-only login). Server-set cookies aren't subject to
+  // Safari's 7-day ITP cap, so the user stays signed in across browser
+  // restarts even when localStorage is wiped.
+  if (req.body?.persist !== false) setSessionCookie(res, token);
+  else clearSessionCookie(res);
+
   res.json({ token, user: safe });
+});
+
+// Logout — clears both the in-memory session (client) and the HttpOnly cookie.
+router.post('/logout', (req, res) => {
+  clearSessionCookie(res);
+  res.json({ ok: true });
 });
 
 // Get current user
