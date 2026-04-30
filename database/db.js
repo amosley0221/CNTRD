@@ -240,6 +240,14 @@ ensureColumn('conversations', 'closes_at', "TEXT DEFAULT NULL");
 // Threaded replies inside a conversation.
 ensureColumn('messages', 'reply_to_id', "TEXT DEFAULT NULL");
 
+// Edit / soft-delete metadata for chat messages. Both null when untouched.
+ensureColumn('messages', 'edited_at',  "TEXT DEFAULT NULL");
+ensureColumn('messages', 'deleted_at', "TEXT DEFAULT NULL");
+
+// Typing indicator: each member pings this column while composing; readers
+// poll the conversation and surface anyone whose typing_until > now.
+ensureColumn('conversation_members', 'typing_until', "TEXT DEFAULT NULL");
+
 // post type: take | photo | score | poll | clip | box | rumor
 ensureColumn('posts', 'type',  "TEXT DEFAULT 'take'");
 ensureColumn('posts', 'tags',  "TEXT DEFAULT '[]'");      // JSON array of team codes

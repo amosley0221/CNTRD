@@ -23,11 +23,18 @@ function hydrateUser(u) {
 }
 
 function membersOf(convId) {
+  // Returns each member with their last_read_at so the client can derive
+  // per-message read receipts (a message is read by member X if X's
+  // last_read_at >= the message's created_at).
   return db.prepare(`
-    SELECT u.${SELECT_USER.split(', ').join(', u.')}
+    SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags,
+           m.last_read_at, m.typing_until
     FROM conversation_members m JOIN users u ON u.id = m.user_id
     WHERE m.conversation_id = ?
-  `).all(convId).map(hydrateUser);
+  `).all(convId).map(r => ({
+    ...hydrateUser(r),
+    last_read_at: r.last_read_at,
+  }));
 }
 
 function unreadCount(convId, userId) {
@@ -40,17 +47,32 @@ function unreadCount(convId, userId) {
 }
 
 function lastMessage(convId) {
-  return db.prepare(`
-    SELECT id, user_id, content, created_at
+  const r = db.prepare(`
+    SELECT id, user_id, content, created_at, deleted_at
     FROM messages
     WHERE conversation_id = ?
     ORDER BY created_at DESC LIMIT 1
   `).get(convId);
+  if (!r) return null;
+  return {
+    id: r.id, user_id: r.user_id,
+    content: r.deleted_at ? null : r.content,
+    deleted: !!r.deleted_at,
+    created_at: r.created_at,
+  };
 }
 
 function hydrateConversation(conv, viewerId) {
   const members = membersOf(conv.id);
   const last = lastMessage(conv.id);
+  // Pull anyone whose typing_until is still in the future (excluding
+  // the viewer themselves — no self-typing indicator).
+  const typingRows = db.prepare(`
+    SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
+    FROM conversation_members m JOIN users u ON u.id = m.user_id
+    WHERE m.conversation_id = ? AND m.user_id != ?
+      AND m.typing_until IS NOT NULL AND m.typing_until > datetime('now')
+  `).all(conv.id, viewerId);
   return {
     id: conv.id,
     name: conv.name,
@@ -59,10 +81,9 @@ function hydrateConversation(conv, viewerId) {
     last_message_at: conv.last_message_at,
     members,
     other: !conv.is_group ? members.find(m => m.id !== viewerId) || null : null,
-    last_message: last ? {
-      id: last.id, user_id: last.user_id, content: last.content, created_at: last.created_at,
-    } : null,
+    last_message: last,
     unread: unreadCount(conv.id, viewerId),
+    typing_users: typingRows.map(hydrateUser),
   };
 }
 
@@ -218,11 +239,16 @@ router.delete('/:id/members/me', (req, res) => {
 });
 
 // Hydrate a message row plus its (optional) reply target.
+// Soft-deleted messages return null content + a deleted flag so the
+// client can render a tombstone.
 function hydrateMessageRow(r) {
+  const isDeleted = !!r.deleted_at;
   const out = {
     id: r.id,
-    content: r.content,
+    content: isDeleted ? null : r.content,
     created_at: r.created_at,
+    edited_at: r.edited_at || null,
+    deleted: isDeleted,
     user: {
       id: r.user_id,
       username: r.username,
@@ -235,7 +261,7 @@ function hydrateMessageRow(r) {
   };
   if (r.reply_to_id) {
     const parent = db.prepare(`
-      SELECT m.id, m.user_id, m.content, m.created_at,
+      SELECT m.id, m.user_id, m.content, m.created_at, m.deleted_at,
              u.username, u.display_name
       FROM messages m JOIN users u ON u.id = m.user_id
       WHERE m.id = ?
@@ -243,7 +269,8 @@ function hydrateMessageRow(r) {
     if (parent) {
       out.reply_to = {
         id: parent.id,
-        content: parent.content,
+        content: parent.deleted_at ? null : parent.content,
+        deleted: !!parent.deleted_at,
         created_at: parent.created_at,
         user: {
           id: parent.user_id,
@@ -348,7 +375,7 @@ router.get('/gameday/:gameId', (req, res) => {
   }
 
   const rows = db.prepare(`
-    SELECT m.id, m.user_id, m.content, m.created_at, m.reply_to_id,
+    SELECT m.id, m.user_id, m.content, m.created_at, m.reply_to_id, m.edited_at, m.deleted_at,
            u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
     FROM messages m JOIN users u ON u.id = m.user_id
     WHERE m.conversation_id = ?
@@ -378,7 +405,7 @@ router.get('/:id/messages', (req, res) => {
   const before = req.query.before;
   const after  = req.query.after;
   const params = [req.params.id];
-  let q = `SELECT m.id, m.user_id, m.content, m.created_at, m.reply_to_id,
+  let q = `SELECT m.id, m.user_id, m.content, m.created_at, m.reply_to_id, m.edited_at, m.deleted_at,
                   u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
            FROM messages m JOIN users u ON u.id = m.user_id
            WHERE m.conversation_id = ?`;
@@ -429,7 +456,7 @@ router.post('/:id/messages', (req, res) => {
   db.prepare('INSERT INTO messages (id, conversation_id, user_id, content, reply_to_id) VALUES (?, ?, ?, ?, ?)')
     .run(id, req.params.id, req.user.id, content, replyToId);
   db.prepare(`UPDATE conversations SET last_message_at = datetime('now') WHERE id = ?`).run(req.params.id);
-  db.prepare(`UPDATE conversation_members SET last_read_at = datetime('now')
+  db.prepare(`UPDATE conversation_members SET last_read_at = datetime('now'), typing_until = NULL
               WHERE conversation_id = ? AND user_id = ?`).run(req.params.id, req.user.id);
 
   if (!isGameday) {
@@ -488,13 +515,88 @@ router.post('/:id/messages', (req, res) => {
   }
 
   const row = db.prepare(`
-    SELECT m.id, m.user_id, m.content, m.created_at, m.reply_to_id,
+    SELECT m.id, m.user_id, m.content, m.created_at, m.reply_to_id, m.edited_at, m.deleted_at,
            u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
     FROM messages m JOIN users u ON u.id = m.user_id
     WHERE m.id = ?
   `).get(id);
 
   res.status(201).json(hydrateMessageRow(row));
+});
+
+// Edit a message — only the sender can edit, and only if not already deleted.
+router.patch('/:id/messages/:msgId', (req, res) => {
+  const conv = db.prepare('SELECT id, game_id, closes_at FROM conversations WHERE id = ?').get(req.params.id);
+  if (!conv) return res.status(404).json({ error: 'Conversation not found' });
+  const member = db.prepare('SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?').get(conv.id, req.user.id);
+  if (!member) return res.status(404).json({ error: 'Conversation not found' });
+
+  // Closed gameday rooms are read-only.
+  if (conv.game_id && conv.closes_at) {
+    const closesMs = sqliteToMs(conv.closes_at);
+    if (closesMs && closesMs < Date.now()) return res.status(410).json({ error: 'Gameday chat closed' });
+  }
+
+  const msg = db.prepare('SELECT id, user_id, deleted_at FROM messages WHERE id = ? AND conversation_id = ?')
+    .get(req.params.msgId, conv.id);
+  if (!msg) return res.status(404).json({ error: 'Message not found' });
+  if (msg.user_id !== req.user.id) return res.status(403).json({ error: 'You can only edit your own messages' });
+  if (msg.deleted_at) return res.status(400).json({ error: 'Message has been deleted' });
+
+  const content = String(req.body?.content || '').trim();
+  if (!content) return res.status(400).json({ error: 'Message cannot be empty' });
+  if (content.length > 2000) return res.status(400).json({ error: 'Message too long' });
+
+  db.prepare(`UPDATE messages SET content = ?, edited_at = datetime('now') WHERE id = ?`)
+    .run(content, msg.id);
+
+  const row = db.prepare(`
+    SELECT m.id, m.user_id, m.content, m.created_at, m.reply_to_id, m.edited_at, m.deleted_at,
+           u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
+    FROM messages m JOIN users u ON u.id = m.user_id
+    WHERE m.id = ?
+  `).get(msg.id);
+  res.json(hydrateMessageRow(row));
+});
+
+// Soft-delete a message — only the sender can delete.
+router.delete('/:id/messages/:msgId', (req, res) => {
+  const conv = db.prepare('SELECT id FROM conversations WHERE id = ?').get(req.params.id);
+  if (!conv) return res.status(404).json({ error: 'Conversation not found' });
+  const member = db.prepare('SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?').get(conv.id, req.user.id);
+  if (!member) return res.status(404).json({ error: 'Conversation not found' });
+
+  const msg = db.prepare('SELECT id, user_id, deleted_at FROM messages WHERE id = ? AND conversation_id = ?')
+    .get(req.params.msgId, conv.id);
+  if (!msg) return res.status(404).json({ error: 'Message not found' });
+  if (msg.user_id !== req.user.id) return res.status(403).json({ error: 'You can only delete your own messages' });
+  if (msg.deleted_at) return res.json({ deleted: true });
+
+  db.prepare(`UPDATE messages SET deleted_at = datetime('now') WHERE id = ?`).run(msg.id);
+  res.json({ deleted: true, id: msg.id });
+});
+
+// Pulse the typing indicator. Caller's typing_until is bumped to now+5s
+// so other members see them as "typing…" in the conversation polling.
+router.post('/:id/typing', (req, res) => {
+  const member = db.prepare('SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!member) return res.status(404).json({ error: 'Conversation not found' });
+  // Don't pulse typing in closed gameday rooms (or non-DM contexts).
+  const conv = db.prepare('SELECT game_id, closes_at FROM conversations WHERE id = ?').get(req.params.id);
+  if (conv?.game_id && conv.closes_at) {
+    const closesMs = sqliteToMs(conv.closes_at);
+    if (closesMs && closesMs < Date.now()) return res.json({ ok: false, closed: true });
+  }
+  db.prepare(`UPDATE conversation_members SET typing_until = datetime('now', '+5 seconds')
+              WHERE conversation_id = ? AND user_id = ?`).run(req.params.id, req.user.id);
+  res.json({ ok: true });
+});
+
+// Clear typing immediately (e.g. after the user sends).
+router.delete('/:id/typing', (req, res) => {
+  db.prepare(`UPDATE conversation_members SET typing_until = NULL
+              WHERE conversation_id = ? AND user_id = ?`).run(req.params.id, req.user.id);
+  res.json({ ok: true });
 });
 
 // Search room participants for @-mention autocomplete. Excludes muted-out users.

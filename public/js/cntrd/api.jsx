@@ -172,6 +172,10 @@ const API = {
     return request('GET', `/api/messages/gameday/${encodeURIComponent(gameId)}${qs ? '?' + qs : ''}`);
   },
   sendMessage(id, content, replyToId)   { return request('POST', `/api/messages/${id}/messages`, replyToId ? { content, reply_to_id: replyToId } : { content }); },
+  editMessage(id, msgId, content)       { return request('PATCH',  `/api/messages/${id}/messages/${msgId}`, { content }); },
+  deleteMessage(id, msgId)              { return request('DELETE', `/api/messages/${id}/messages/${msgId}`); },
+  pulseTyping(id)                       { return request('POST', `/api/messages/${id}/typing`); },
+  clearTyping(id)                       { return request('DELETE', `/api/messages/${id}/typing`); },
   conversationParticipants(id, q)       { return request('GET',  `/api/messages/${id}/participants${q ? '?q=' + encodeURIComponent(q) : ''}`); },
   createConversation(payload)           { return request('POST', '/api/messages', payload); },
   renameConversation(id, name)          { return request('PATCH',`/api/messages/${id}`, { name }); },

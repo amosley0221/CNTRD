@@ -37,6 +37,7 @@ function MessagesListScreen({ onNav, me, onOpenThread, onCompose, onUnread, unre
   const [convs, setConvs] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState(null);
+  const [confirmDelete, setConfirmDelete] = React.useState(null);
 
   const load = React.useCallback(async () => {
     setErr(null);
@@ -50,6 +51,13 @@ function MessagesListScreen({ onNav, me, onOpenThread, onCompose, onUnread, unre
       setLoading(false);
     }
   }, [onUnread]);
+
+  const removeConv = async (conv) => {
+    setConvs(prev => prev.filter(c => c.id !== conv.id));
+    setConfirmDelete(null);
+    try { await API.leaveConversation(conv.id); }
+    catch { load(); }
+  };
 
   React.useEffect(() => {
     load();
@@ -78,9 +86,59 @@ function MessagesListScreen({ onNav, me, onOpenThread, onCompose, onUnread, unre
         {loading ? <Empty>Loading…</Empty>
           : err ? <Empty danger>{err}</Empty>
           : convs.length === 0 ? <EmptyState onCompose={onCompose} />
-          : convs.map(c => <ConversationRow key={c.id} conv={c} me={me} onClick={() => onOpenThread(c.id)} />)}
+          : convs.map(c => <ConversationRow key={c.id} conv={c} me={me} onClick={() => onOpenThread(c.id)} onDelete={() => setConfirmDelete(c)} />)}
       </div>
       <BottomNav active="messages" onChange={onNav} unreadMessages={unreadMessages} />
+      {confirmDelete && (
+        <ConfirmDeleteSheet
+          conv={confirmDelete}
+          me={me}
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => removeConv(confirmDelete)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ConfirmDeleteSheet({ conv, me, onCancel, onConfirm }) {
+  const title = conversationTitle(conv, me);
+  const isGroup = !!conv.is_group;
+  return (
+    <div onClick={onCancel} style={{
+      position: 'absolute', inset: 0, zIndex: 50,
+      background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)',
+      display: 'flex', alignItems: 'flex-end',
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        width: '100%', background: 'var(--cn-bg-elev2)',
+        borderTopLeftRadius: 18, borderTopRightRadius: 18,
+        padding: '16px 18px calc(20px + env(safe-area-inset-bottom, 0px))',
+        color: 'var(--cn-text)',
+      }}>
+        <div style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 800, fontSize: 16, marginBottom: 6 }}>
+          {isGroup ? 'Leave this group?' : `Delete chat with ${title}?`}
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--cn-text-dim)', lineHeight: 1.4, marginBottom: 14 }}>
+          {isGroup
+            ? "You won't receive new messages from this group. The group continues for everyone else."
+            : "The conversation disappears from your inbox. The other person still has their copy."}
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onCancel} style={{
+            flex: 1, padding: '12px 14px', borderRadius: 10,
+            background: 'var(--cn-bg-elev)', color: 'var(--cn-text)',
+            border: '0.5px solid var(--cn-border-s)', cursor: 'pointer',
+            fontWeight: 700, fontSize: 13, fontFamily: 'var(--cn-font-body)',
+          }}>Cancel</button>
+          <button onClick={onConfirm} style={{
+            flex: 1, padding: '12px 14px', borderRadius: 10,
+            background: 'var(--cn-danger)', color: '#fff',
+            border: 'none', cursor: 'pointer',
+            fontWeight: 700, fontSize: 13, fontFamily: 'var(--cn-font-body)',
+          }}>{isGroup ? 'Leave' : 'Delete'}</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -99,38 +157,58 @@ function EmptyState({ onCompose }) {
   );
 }
 
-function ConversationRow({ conv, me, onClick }) {
+function ConversationRow({ conv, me, onClick, onDelete }) {
   const title = conversationTitle(conv, me);
-  const subtitle = conv.last_message?.content || (conv.is_group ? `${conv.members.length} people` : '');
+  const lastMsgText = conv.last_message?.deleted
+    ? 'Message deleted'
+    : conv.last_message?.content || (conv.is_group ? `${conv.members.length} people` : '');
   const previewSender = conv.last_message
     ? (conv.last_message.user_id === me?.id ? 'You: ' : '')
     : '';
   return (
-    <div onClick={onClick} style={{
+    <div style={{
       display: 'flex', alignItems: 'center', gap: 12,
       padding: '12px 16px', borderBottom: '0.5px solid var(--cn-border)',
-      cursor: 'pointer',
       background: conv.unread > 0 ? 'color-mix(in srgb, var(--cn-accent) 6%, transparent)' : 'transparent',
     }}>
-      <ConversationAvatar conv={conv} me={me} size={42} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <span style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {title}
-          </span>
-          <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)' }}>
-            {conv.last_message_at ? relTime(conv.last_message_at) : ''}
-          </span>
+      <button onClick={onClick} style={{
+        flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12,
+        background: 'transparent', border: 'none', padding: 0,
+        textAlign: 'left', cursor: 'pointer', color: 'inherit', font: 'inherit',
+      }}>
+        <ConversationAvatar conv={conv} me={me} size={42} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <span style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {title}
+            </span>
+            <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)' }}>
+              {conv.last_message_at ? relTime(conv.last_message_at) : ''}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <span style={{
+              fontSize: 12, color: 'var(--cn-text-dim)',
+              fontStyle: conv.last_message?.deleted ? 'italic' : 'normal',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              flex: 1, minWidth: 0,
+            }}>{previewSender}{lastMsgText}</span>
+            {conv.unread > 0 && <UnreadBadge n={conv.unread} />}
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <span style={{
-            fontSize: 12, color: 'var(--cn-text-dim)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            flex: 1, minWidth: 0,
-          }}>{previewSender}{subtitle}</span>
-          {conv.unread > 0 && <UnreadBadge n={conv.unread} />}
-        </div>
-      </div>
+      </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
+        title={conv.is_group ? 'Leave group' : 'Delete chat'}
+        style={{
+          width: 36, height: 36, borderRadius: 999,
+          background: 'transparent', border: 'none', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'var(--cn-text-mute)',
+        }}
+      >
+        <Icon name="x" size={16} stroke="currentColor" />
+      </button>
     </div>
   );
 }
@@ -188,8 +266,11 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
   const [renaming, setRenaming] = React.useState(false);
   const [nameDraft, setNameDraft] = React.useState('');
   const [replyTo, setReplyTo] = React.useState(null);
+  const [editing, setEditing] = React.useState(null); // { id, content }
+  const [actionMsg, setActionMsg] = React.useState(null);
   const scrollRef = React.useRef(null);
   const inputRef = React.useRef(null);
+  const lastTypingPulse = React.useRef(0);
 
   const load = React.useCallback(async () => {
     try {
@@ -231,17 +312,66 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
     if (!text || sending) return;
     setSending(true);
     setDraft('');
+    if (editing) {
+      const editId = editing.id;
+      setEditing(null);
+      try {
+        const updated = await API.editMessage(conversationId, editId, text);
+        setMessages(prev => prev.map(m => m.id === editId ? updated : m));
+      } catch (e) {
+        setErr(e.message || 'Edit failed');
+        setDraft(text);
+        setEditing({ id: editId, content: text });
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
     const replyId = replyTo?.id || null;
     setReplyTo(null);
     try {
       const m = await API.sendMessage(conversationId, text, replyId);
       setMessages(prev => [...prev, m]);
+      API.clearTyping(conversationId).catch(() => {});
     } catch (e) {
       setErr(e.message || 'Failed to send');
       setDraft(text);
     } finally {
       setSending(false);
     }
+  };
+
+  const startEdit = (m) => {
+    setEditing({ id: m.id, content: m.content });
+    setReplyTo(null);
+    setDraft(m.content || '');
+    setActionMsg(null);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+  const cancelEdit = () => { setEditing(null); setDraft(''); };
+  const deleteMsg = async (m) => {
+    setActionMsg(null);
+    setMessages(prev => prev.map(x => x.id === m.id ? { ...x, deleted: true, content: null } : x));
+    try { await API.deleteMessage(conversationId, m.id); }
+    catch { load(); }
+  };
+
+  // Pulse typing while the user composes — debounced to once per ~3 s so
+  // the row of API calls doesn't get silly.
+  const handleDraftChange = (val) => {
+    setDraft(val);
+    if (editing) return;
+    const now = Date.now();
+    if (val.trim() && now - lastTypingPulse.current > 3000) {
+      lastTypingPulse.current = now;
+      API.pulseTyping(conversationId).catch(() => {});
+    }
+  };
+
+  // Open the other user's profile when the header avatar/name is tapped.
+  const openOther = () => {
+    if (conv?.is_group || !conv?.other?.username) return;
+    window.dispatchEvent(new CustomEvent('cntrd:open-user', { detail: { username: conv.other.username } }));
   };
 
   const saveName = async () => {
@@ -277,7 +407,18 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
         <button style={iconBtnStyle()} onClick={onBack}>
           <Icon name="chevron-l" size={22} stroke="var(--cn-text)" />
         </button>
-        <ConversationAvatar conv={conv} me={me} size={32} />
+        <button
+          onClick={openOther}
+          disabled={conv.is_group || !conv.other?.username}
+          style={{
+            background: 'transparent', border: 'none', padding: 0,
+            cursor: !conv.is_group && conv.other?.username ? 'pointer' : 'default',
+            display: 'flex',
+          }}
+          title={conv.is_group ? '' : `View @${conv.other?.username || ''}`}
+        >
+          <ConversationAvatar conv={conv} me={me} size={32} />
+        </button>
         <div style={{ flex: 1, minWidth: 0 }}>
           {renaming ? (
             <div style={{ display: 'flex', gap: 6 }}>
@@ -300,7 +441,17 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
           ) : (
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
+                <button
+                  onClick={openOther}
+                  disabled={conv.is_group || !conv.other?.username}
+                  style={{
+                    background: 'transparent', border: 'none', padding: 0, margin: 0,
+                    cursor: !conv.is_group && conv.other?.username ? 'pointer' : 'default',
+                    color: 'inherit', fontWeight: 700, fontSize: 14,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    fontFamily: 'inherit',
+                  }}
+                >{title}</button>
                 {conv.is_group && (
                   <button onClick={() => { setRenaming(true); setNameDraft(conv.name || ''); }} style={{
                     background: 'transparent', border: 'none', cursor: 'pointer',
@@ -346,13 +497,92 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
           <div style={{ textAlign: 'center', color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 11, padding: 24 }}>
             Say hi — this conversation is empty.
           </div>
-        ) : messages.map((m, i) => {
-          const mine = m.user.id === me?.id;
-          const prev = messages[i - 1];
-          const showAuthor = !mine && (!prev || prev.user.id !== m.user.id);
-          return <MessageBubble key={m.id} m={m} mine={mine} showAuthor={showAuthor && conv.is_group} onReply={() => { setReplyTo(m); setTimeout(() => inputRef.current?.focus(), 0); }} />;
-        })}
+        ) : (() => {
+          // Read receipt: find the most recent of MY messages that has been
+          // seen by every other member (1:1 → just the other party).
+          const others = (conv.members || []).filter(m => m.id !== me?.id);
+          const minOtherReadMs = others.length
+            ? Math.min(...others.map(m => parseSqliteDate(m.last_read_at)?.getTime() ?? 0))
+            : 0;
+          const myMessageMs = (m) => parseSqliteDate(m.created_at)?.getTime() ?? 0;
+          let lastSeenMineId = null;
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i];
+            if (m.user.id === me?.id && myMessageMs(m) <= minOtherReadMs) {
+              lastSeenMineId = m.id;
+              break;
+            }
+          }
+          return messages.map((m, i) => {
+            const mine = m.user.id === me?.id;
+            const prev = messages[i - 1];
+            const showAuthor = !mine && (!prev || prev.user.id !== m.user.id);
+            return (
+              <MessageBubble
+                key={m.id}
+                m={m}
+                mine={mine}
+                showAuthor={showAuthor && conv.is_group}
+                showSeen={mine && m.id === lastSeenMineId}
+                onTap={() => setActionMsg(m)}
+                onReply={() => { setReplyTo(m); setTimeout(() => inputRef.current?.focus(), 0); }}
+              />
+            );
+          });
+        })()}
       </div>
+
+      {(conv.typing_users || []).length > 0 && (
+        <div style={{
+          padding: '4px 18px',
+          fontFamily: 'var(--cn-font-mono)', fontSize: 11,
+          color: 'var(--cn-text-mute)', fontStyle: 'italic',
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%',
+            background: 'var(--cn-accent)',
+            animation: 'cn-pulse 1.2s ease-in-out infinite',
+          }} />
+          {conv.typing_users.length === 1
+            ? `${conv.typing_users[0].displayName} is typing…`
+            : `${conv.typing_users.length} people are typing…`}
+        </div>
+      )}
+
+      {actionMsg && (
+        <DmActionSheet
+          msg={actionMsg}
+          isMine={actionMsg.user?.id === me?.id}
+          onClose={() => setActionMsg(null)}
+          onReply={() => { setReplyTo(actionMsg); setActionMsg(null); setTimeout(() => inputRef.current?.focus(), 0); }}
+          onEdit={() => startEdit(actionMsg)}
+          onDelete={() => deleteMsg(actionMsg)}
+        />
+      )}
+
+      {editing && (
+        <div style={{
+          padding: '8px 12px', borderTop: '0.5px solid var(--cn-border-s)',
+          background: 'var(--cn-bg-elev2)', display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          <div style={{ width: 3, alignSelf: 'stretch', background: 'var(--cn-accent)', borderRadius: 2 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1 }}>
+              EDITING MESSAGE
+            </div>
+            <div style={{
+              fontSize: 12, color: 'var(--cn-text-dim)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{editing.content}</div>
+          </div>
+          <button onClick={cancelEdit} style={{
+            background: 'transparent', border: 'none', cursor: 'pointer', padding: 6,
+          }} title="Cancel edit">
+            <Icon name="x" size={16} stroke="var(--cn-text-dim)" />
+          </button>
+        </div>
+      )}
 
       {replyTo && (
         <div style={{
@@ -386,9 +616,9 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
         <input
           ref={inputRef}
           value={draft}
-          onChange={e => setDraft(e.target.value)}
+          onChange={e => handleDraftChange(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), send())}
-          placeholder={replyTo ? `Reply to @${replyTo.user.username}` : 'Message…'}
+          placeholder={editing ? 'Edit your message…' : replyTo ? `Reply to @${replyTo.user.username}` : 'Message…'}
           style={{
             flex: 1, padding: '10px 14px', borderRadius: 999,
             background: 'var(--cn-bg-elev)',
@@ -673,64 +903,135 @@ function EventScheduleModal({ onClose, onCreate }) {
   );
 }
 
-function MessageBubble({ m, mine, showAuthor, onReply }) {
-  const [showActions, setShowActions] = React.useState(false);
+function MessageBubble({ m, mine, showAuthor, showSeen, onTap, onReply }) {
+  const isDeleted = !!m.deleted;
+  const isEdited = !!m.edited_at && !isDeleted;
+  const openAuthor = (e) => {
+    e.stopPropagation();
+    if (!m.user?.username) return;
+    window.dispatchEvent(new CustomEvent('cntrd:open-user', { detail: { username: m.user.username } }));
+  };
   return (
     <div style={{
       display: 'flex', flexDirection: mine ? 'row-reverse' : 'row',
       alignItems: 'flex-end', gap: 8,
     }}>
-      {!mine && <Avatar user={m.user} size={26} />}
+      {!mine && (
+        <button onClick={openAuthor} style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer' }}>
+          <Avatar user={m.user} size={26} />
+        </button>
+      )}
       <div style={{ maxWidth: '75%' }}>
         {showAuthor && (
-          <div style={{ fontSize: 10, fontFamily: 'var(--cn-font-mono)', color: 'var(--cn-text-mute)', marginBottom: 2, marginLeft: 2 }}>
+          <button onClick={openAuthor} style={{
+            background: 'transparent', border: 'none', padding: 0, marginLeft: 2, marginBottom: 2,
+            fontSize: 10, fontFamily: 'var(--cn-font-mono)',
+            color: 'var(--cn-text-mute)', cursor: 'pointer',
+          }}>
             @{m.user.username}
-          </div>
+          </button>
         )}
         <div
-          onClick={() => setShowActions(s => !s)}
+          onClick={() => !isDeleted && onTap?.(m)}
           style={{
             padding: '8px 12px',
-            background: mine ? 'var(--cn-accent)' : 'var(--cn-bg-elev)',
-            color: mine ? 'var(--cn-on-accent)' : 'var(--cn-text)',
+            background: isDeleted ? 'transparent' : (mine ? 'var(--cn-accent)' : 'var(--cn-bg-elev)'),
+            color: isDeleted ? 'var(--cn-text-mute)' : (mine ? 'var(--cn-on-accent)' : 'var(--cn-text)'),
             borderRadius: mine ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
             fontSize: 13.5, lineHeight: 1.45,
             whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-            border: mine ? 'none' : '0.5px solid var(--cn-border)',
-            cursor: 'pointer',
+            border: isDeleted ? '0.5px dashed var(--cn-border)' : (mine ? 'none' : '0.5px solid var(--cn-border)'),
+            fontStyle: isDeleted ? 'italic' : 'normal',
+            cursor: isDeleted ? 'default' : 'pointer',
           }}
         >
-          {m.reply_to && (
-            <div style={{
-              borderLeft: `2px solid ${mine ? 'var(--cn-on-accent)' : 'var(--cn-accent)'}`,
-              paddingLeft: 6, marginBottom: 4,
-              opacity: 0.85, fontSize: 11.5, lineHeight: 1.3,
-            }}>
-              <div style={{ fontWeight: 700, fontSize: 10, opacity: 0.9 }}>
-                {m.reply_to.user?.displayName || ('@' + (m.reply_to.user?.username || ''))}
-              </div>
-              <div style={{
-                overflow: 'hidden', textOverflow: 'ellipsis',
-                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-              }}>{m.reply_to.content}</div>
-            </div>
+          {isDeleted ? 'Message deleted' : (
+            <>
+              {m.reply_to && (
+                <div style={{
+                  borderLeft: `2px solid ${mine ? 'var(--cn-on-accent)' : 'var(--cn-accent)'}`,
+                  paddingLeft: 6, marginBottom: 4,
+                  opacity: 0.85, fontSize: 11.5, lineHeight: 1.3,
+                }}>
+                  <div style={{ fontWeight: 700, fontSize: 10, opacity: 0.9 }}>
+                    {m.reply_to.user?.displayName || ('@' + (m.reply_to.user?.username || ''))}
+                  </div>
+                  <div style={{
+                    overflow: 'hidden', textOverflow: 'ellipsis',
+                    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                    fontStyle: m.reply_to.deleted ? 'italic' : 'normal',
+                    opacity: m.reply_to.deleted ? 0.6 : 1,
+                  }}>{m.reply_to.deleted ? 'Message deleted' : m.reply_to.content}</div>
+                </div>
+              )}
+              {typeof window !== 'undefined' && window.renderMentions
+                ? window.renderMentions(m.content, mine ? 'var(--cn-on-accent)' : 'var(--cn-accent)')
+                : m.content}
+            </>
           )}
-          {typeof window !== 'undefined' && window.renderMentions
-            ? window.renderMentions(m.content, mine ? 'var(--cn-on-accent)' : 'var(--cn-accent)')
-            : m.content}
         </div>
-        <div style={{ fontSize: 9, fontFamily: 'var(--cn-font-mono)', color: 'var(--cn-text-mute)', marginTop: 2, textAlign: mine ? 'right' : 'left', display: 'flex', gap: 8, justifyContent: mine ? 'flex-end' : 'flex-start', alignItems: 'center' }}>
+        <div style={{
+          fontSize: 9, fontFamily: 'var(--cn-font-mono)', color: 'var(--cn-text-mute)',
+          marginTop: 2,
+          display: 'flex', gap: 6,
+          justifyContent: mine ? 'flex-end' : 'flex-start', alignItems: 'center',
+        }}>
           <span>{relTime(m.created_at)}</span>
-          {showActions && onReply && (
-            <button onClick={(e) => { e.stopPropagation(); setShowActions(false); onReply(); }} style={{
-              background: 'transparent', border: 'none', padding: 0,
-              color: 'var(--cn-accent)', fontSize: 10, fontWeight: 700,
-              cursor: 'pointer', fontFamily: 'inherit', textTransform: 'uppercase',
-            }}>Reply</button>
-          )}
+          {isEdited && <span>· edited</span>}
+          {showSeen && <span style={{ color: 'var(--cn-accent)', fontWeight: 700 }}>· seen</span>}
         </div>
       </div>
     </div>
+  );
+}
+
+function DmActionSheet({ msg, isMine, onClose, onReply, onEdit, onDelete }) {
+  const u = msg.user || {};
+  const preview = msg.deleted ? '(deleted)' : (msg.content || '');
+  return (
+    <div onClick={onClose} style={{
+      position: 'absolute', inset: 0, zIndex: 50,
+      background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)',
+      display: 'flex', alignItems: 'flex-end',
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        width: '100%', background: 'var(--cn-bg-elev2)',
+        borderTopLeftRadius: 18, borderTopRightRadius: 18,
+        padding: '10px 0 calc(28px + env(safe-area-inset-bottom, 0px))',
+        color: 'var(--cn-text)',
+      }}>
+        <div style={{ padding: '10px 18px 12px', borderBottom: '0.5px solid var(--cn-border-s)' }}>
+          <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1 }}>
+            FROM @{u.username || ''}
+          </div>
+          <div style={{
+            marginTop: 4, fontSize: 13, color: 'var(--cn-text-dim)',
+            overflow: 'hidden', textOverflow: 'ellipsis',
+            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+          }}>{preview}</div>
+        </div>
+        {!msg.deleted && <DmActionRow icon="reply" label="Reply" onClick={onReply} />}
+        {isMine && !msg.deleted && <DmActionRow icon="text" label="Edit" onClick={onEdit} />}
+        {isMine && !msg.deleted && <DmActionRow icon="x" label="Delete" onClick={onDelete} danger />}
+        <DmActionRow icon="x" label="Cancel" onClick={onClose} />
+      </div>
+    </div>
+  );
+}
+
+function DmActionRow({ icon, label, onClick, danger }) {
+  return (
+    <button onClick={onClick} style={{
+      width: '100%', padding: '14px 18px',
+      display: 'flex', alignItems: 'center', gap: 12,
+      background: 'transparent', border: 'none', cursor: 'pointer',
+      color: danger ? 'var(--cn-danger)' : 'var(--cn-text)',
+      fontSize: 14, fontWeight: 600, textAlign: 'left',
+      fontFamily: 'var(--cn-font-body)',
+    }}>
+      <Icon name={icon} size={18} stroke={danger ? 'var(--cn-danger)' : 'var(--cn-text)'} />
+      {label}
+    </button>
   );
 }
 

@@ -855,17 +855,21 @@ const CHAT_QUICK_REACTS = ['🔥', '🙌', '👏', '💯', '😱', '🤯', '🤝
 
 function mapGameMsg(m, me, homeCode, awayCode) {
   const userTeams = (m.user?.teams || []).map(t => String(t).split(':').pop());
+  const deleted = !!m.deleted;
   return {
     id: m.id,
     userId: m.user?.id || null,
     user: m.user?.username || 'unknown',
-    text: m.content,
+    text: deleted ? 'Message deleted' : m.content,
+    deleted,
+    edited: !!m.edited_at,
     time: relTime(m.created_at),
     mine: !!me && !!m.user && m.user.id === me.id,
     side: userTeams.find(c => c === homeCode || c === awayCode) || null,
     reply_to: m.reply_to ? {
       id: m.reply_to.id,
-      content: m.reply_to.content,
+      content: m.reply_to.deleted ? 'Message deleted' : m.reply_to.content,
+      deleted: !!m.reply_to.deleted,
       username: m.reply_to.user?.username || '',
       displayName: m.reply_to.user?.displayName || '',
     } : null,
@@ -1073,6 +1077,26 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
     } catch {}
     setActionMsg(null);
   };
+  const deleteMessageGameday = async (m) => {
+    if (!m?.id || !convId || !m.mine) { setActionMsg(null); return; }
+    setActionMsg(null);
+    setMessages(prev => prev.map(x => x.id === m.id ? { ...x, deleted: true, text: 'Message deleted' } : x));
+    try { await window.API.deleteMessage(convId, m.id); } catch {}
+  };
+  const editMessageGameday = async (m) => {
+    if (!m?.id || !convId || !m.mine) { setActionMsg(null); return; }
+    const next = window.prompt('Edit your message:', m.text);
+    setActionMsg(null);
+    if (next == null) return;
+    const trimmed = String(next).trim();
+    if (!trimmed || trimmed === m.text) return;
+    try {
+      const updated = await window.API.editMessage(convId, m.id, trimmed);
+      setMessages(prev => prev.map(x => x.id === m.id
+        ? { ...x, text: updated.content, deleted: !!updated.deleted }
+        : x));
+    } catch {}
+  };
   const startReply = (m) => { setReplyTo(m); setActionMsg(null); inputRef.current?.focus(); };
   const startMention = (m) => {
     if (!m?.user) return;
@@ -1157,6 +1181,8 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
           onMention={() => startMention(actionMsg)}
           onMute={() => muteUser(actionMsg)}
           onProfile={() => openProfile(actionMsg)}
+          onEdit={() => editMessageGameday(actionMsg)}
+          onDelete={() => deleteMessageGameday(actionMsg)}
         />
       )}
 
@@ -1396,20 +1422,22 @@ function ChatBubble({ m, onTap }) {
           </div>
         )}
         <div
-          onClick={() => onTap?.(m)}
+          onClick={() => !m.deleted && onTap?.(m)}
           style={{
             padding: '8px 12px', borderRadius: 14,
-            background: isMine ? 'var(--cn-accent)' : team
+            background: m.deleted ? 'transparent' : (isMine ? 'var(--cn-accent)' : team
               ? `color-mix(in srgb, ${team.primary} 15%, var(--cn-bg-elev))`
-              : 'var(--cn-bg-elev)',
-            color: isMine ? 'var(--cn-on-accent)' : 'var(--cn-text)',
+              : 'var(--cn-bg-elev)'),
+            color: m.deleted ? 'var(--cn-text-mute)' : (isMine ? 'var(--cn-on-accent)' : 'var(--cn-text)'),
             fontSize: 13.5, lineHeight: 1.4,
-            borderLeft: !isMine && team ? `2px solid ${team.primary}` : 'none',
+            borderLeft: !m.deleted && !isMine && team ? `2px solid ${team.primary}` : 'none',
+            border: m.deleted ? '0.5px dashed var(--cn-border)' : (isMine ? 'none' : 'none'),
             borderRadius: isMine ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-            cursor: onTap ? 'pointer' : 'default',
+            cursor: m.deleted ? 'default' : (onTap ? 'pointer' : 'default'),
+            fontStyle: m.deleted ? 'italic' : 'normal',
           }}
         >
-          {m.reply_to && (
+          {m.reply_to && !m.deleted && (
             <div style={{
               borderLeft: `2px solid ${isMine ? 'var(--cn-on-accent)' : 'var(--cn-accent)'}`,
               paddingLeft: 6, marginBottom: 4,
@@ -1421,24 +1449,33 @@ function ChatBubble({ m, onTap }) {
               <div style={{
                 overflow: 'hidden', textOverflow: 'ellipsis',
                 display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                fontStyle: m.reply_to.deleted ? 'italic' : 'normal',
+                opacity: m.reply_to.deleted ? 0.6 : 1,
               }}>{m.reply_to.content}</div>
             </div>
           )}
-          {renderMentions(m.text, mentionAccent)}
+          {m.deleted ? 'Message deleted' : renderMentions(m.text, mentionAccent)}
         </div>
         {isMine && m.time && (
           <div style={{
             fontFamily: 'var(--cn-font-mono)', fontSize: 9,
             color: 'var(--cn-text-mute)',
             marginTop: 3, textAlign: 'right',
-          }}>{m.time}</div>
+          }}>{m.time}{m.edited && !m.deleted ? ' · edited' : ''}</div>
+        )}
+        {!isMine && m.edited && !m.deleted && (
+          <div style={{
+            fontFamily: 'var(--cn-font-mono)', fontSize: 9,
+            color: 'var(--cn-text-mute)',
+            marginTop: 3,
+          }}>edited</div>
         )}
       </div>
     </div>
   );
 }
 
-function ChatActionSheet({ msg, onClose, onReply, onMention, onMute, onProfile }) {
+function ChatActionSheet({ msg, onClose, onReply, onMention, onMute, onProfile, onEdit, onDelete }) {
   const u = msg.meSnapshot || { username: msg.user, displayName: msg.user };
   return (
     <div onClick={onClose} style={{
@@ -1462,10 +1499,12 @@ function ChatActionSheet({ msg, onClose, onReply, onMention, onMute, onProfile }
             display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
           }}>{msg.text}</div>
         </div>
-        <ActionRow icon="reply" label="Reply" onClick={onReply} />
-        {!msg.mine && <ActionRow icon="chat" label={`Mention @${u.username}`} onClick={onMention} />}
+        {!msg.deleted && <ActionRow icon="reply" label="Reply" onClick={onReply} />}
+        {!msg.mine && !msg.deleted && <ActionRow icon="chat" label={`Mention @${u.username}`} onClick={onMention} />}
         {!msg.mine && <ActionRow icon="profile" label="View profile" onClick={onProfile} />}
         {!msg.mine && <ActionRow icon="bell" label="Mute user" onClick={onMute} danger />}
+        {msg.mine && !msg.deleted && onEdit && <ActionRow icon="text" label="Edit" onClick={onEdit} />}
+        {msg.mine && !msg.deleted && onDelete && <ActionRow icon="x" label="Delete" onClick={onDelete} danger />}
         <ActionRow icon="x" label="Cancel" onClick={onClose} />
       </div>
     </div>
