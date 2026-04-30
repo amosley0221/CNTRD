@@ -158,11 +158,15 @@ function _favoriteFirst(games, favSet) {
   return [...fav, ...rest];
 }
 
-function LiveGamesStrip({ onJoin, games, me, onOpenGame, onOpenGameday }) {
+function LiveGamesStrip({ onJoin, games, me, onOpenGame, onOpenGameday, showLive = true, showNextUp = true }) {
   const favSet = _favSet(me);
   const followed = _followedSet(me);
-  const live = _favoriteFirst(_filterFollowed(games?.live, favSet, followed), favSet);
-  const upcoming = _favoriteFirst(_filterFollowed(games?.upcoming, favSet, followed), favSet);
+  const live = showLive
+    ? _favoriteFirst(_filterFollowed(games?.live, favSet, followed), favSet)
+    : [];
+  const upcoming = showNextUp
+    ? _favoriteFirst(_filterFollowed(games?.upcoming, favSet, followed), favSet)
+    : [];
   const showing = live.length ? live : upcoming.slice(0, 3);
   if (!showing.length) return null;
   const empty = !live.length;
@@ -521,16 +525,20 @@ function FeedScreen({ tweaks, onNav, posts, plays, games, me, onOpenGame, onOpen
           onPlay={(p) => (onOpenPlay ? onOpenPlay(p) : onNav?.('plays'))}
           onAdd={() => onNav?.('playsCreator')}
         />
-        {tweaks.showLiveStrip !== false && (
+        {tweaks.showLiveStrip !== false && (tweaks.showLiveGames !== false || tweaks.showNextUp !== false) && (
           <LiveGamesStrip
             games={games}
             me={me}
             onOpenGame={onOpenGame}
             onOpenGameday={onOpenGameday}
             onJoin={() => onNav?.('chat')}
+            showLive={tweaks.showLiveGames !== false}
+            showNextUp={tweaks.showNextUp !== false}
           />
         )}
-        <RecentGamesStrip games={games} me={me} onOpenGame={onOpenGame} />
+        {tweaks.showRecentFinals !== false && (
+          <RecentGamesStrip games={games} me={me} onOpenGame={onOpenGame} />
+        )}
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           {items.map(p => <Post key={p.id} post={p} />)}
         </div>

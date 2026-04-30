@@ -493,7 +493,23 @@ function SettingsScreen({ tweaks, setTweak, onNav, me, onMeUpdated, unreadNotifs
                 }}>{d}</button>
               ))}
             </div>
-          } last />
+          } />
+          <Row
+            label="Live games"
+            sub="Show the live-now strip on your feed"
+            right={<ToggleSwitch on={tweaks.showLiveGames !== false} onChange={v => setTweak('showLiveGames', v)} />}
+          />
+          <Row
+            label="Next up"
+            sub="Show upcoming games when nothing's live"
+            right={<ToggleSwitch on={tweaks.showNextUp !== false} onChange={v => setTweak('showNextUp', v)} />}
+          />
+          <Row
+            label="Recent finals"
+            sub="Show recently-completed games on your feed"
+            right={<ToggleSwitch on={tweaks.showRecentFinals !== false} onChange={v => setTweak('showRecentFinals', v)} />}
+            last
+          />
         </Section>
 
         <Section title="Account">

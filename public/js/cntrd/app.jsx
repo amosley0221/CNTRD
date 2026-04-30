@@ -10,6 +10,9 @@ const TWEAK_DEFAULTS = {
   typePair: 'modern',
   playsLabel: 'Plays',
   showLiveStrip: true,
+  showLiveGames: true,
+  showNextUp: true,
+  showRecentFinals: true,
   showMarquee: false,
 };
 
