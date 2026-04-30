@@ -302,6 +302,23 @@ function CNTRDApp() {
     return () => { cancelled = true; clearInterval(id); };
   }, [bootstrapped]);
 
+  // Single source of truth for screen transitions: pushes the previous
+  // screen onto the history stack (so 'back' returns here), then swaps in
+  // the target. Both handleNav and the cntrd:open-* event handlers route
+  // through this so navigating via a tap gesture and via the side rail
+  // both contribute to the same back-history.
+  const goTo = React.useCallback((target) => {
+    if (!target) return;
+    setScreen(prev => {
+      if (prev !== target && prev !== 'login' && prev !== 'signup') {
+        const stack = screenHistoryRef.current;
+        if (stack[stack.length - 1] !== prev) stack.push(prev);
+        if (stack.length > 50) stack.shift();
+      }
+      return target;
+    });
+  }, []);
+
   const handleNav = React.useCallback((next) => {
     if (next === 'logout') {
       API.setToken(null);
@@ -319,25 +336,14 @@ function CNTRDApp() {
       return;
     }
     const target = next === 'search' ? 'home' : next;
-    // Push the current screen onto the history stack BEFORE we change
-    // it, so 'back' from the next screen returns here. Skip pushing if
-    // we're already on the target (no-op nav) or on the auth screens.
-    setScreen(prev => {
-      if (prev !== target && prev !== 'login' && prev !== 'signup') {
-        const stack = screenHistoryRef.current;
-        if (stack[stack.length - 1] !== prev) stack.push(prev);
-        // Cap the stack so it can't grow forever in long sessions.
-        if (stack.length > 50) stack.shift();
-      }
-      return target;
-    });
+    goTo(target);
     // Sidebar / direct nav to Gameday (without picking a game) lands on the
     // list view. handleOpenGameday is the only path that sets gamedayPick.
     if (target === 'chat') setGamedayPick(null);
     // Leaving the composer (or going to plain compose) drops any pinned reply
     // target so the next session starts fresh.
     if (target !== 'compose') setReplyTo(null);
-  }, []);
+  }, [goTo]);
 
   const handleLogin = React.useCallback(async ({ login, password, persist = true }) => {
     const { token, user } = await API.login({ login, password });
@@ -412,34 +418,34 @@ function CNTRDApp() {
       const code = e.detail;
       if (!code) return;
       setSelectedTag(code);
-      setScreen('tagFeed');
+      goTo('tagFeed');
     };
     window.addEventListener('cntrd:open-tag', handler);
     return () => window.removeEventListener('cntrd:open-tag', handler);
-  }, []);
+  }, [goTo]);
 
   // Click a game card → load the detail screen.
   const handleOpenGame = React.useCallback((game) => {
     if (!game?.id || !game?.league) return;
     setSelectedGame({ id: game.id, league: game.league });
-    setScreen('gameDetail');
-  }, []);
+    goTo('gameDetail');
+  }, [goTo]);
 
   // Pick a specific game's gameday chat (from a rail card's "Join the chat",
   // a live-game notification, or the gameday list view).
   const handleOpenGameday = React.useCallback((game) => {
     if (!game?.id || !game?.league) return;
     setGamedayPick(game);
-    setScreen('chat');
-  }, []);
+    goTo('chat');
+  }, [goTo]);
 
   // Open a specific Play in the full-screen viewer (from PlayBubble or the
   // profile plays grid). Falls back to the most recent play when none picked.
   const handleOpenPlay = React.useCallback((play) => {
     if (play && play.id) setSelectedPlay(play);
     else setSelectedPlay(null);
-    setScreen('plays');
-  }, []);
+    goTo('plays');
+  }, [goTo]);
 
   const handleDeletePlay = React.useCallback(async (id) => {
     if (!id) return;
@@ -494,11 +500,11 @@ function CNTRDApp() {
       const g = e.detail;
       if (!g?.id || !g?.league) return;
       setSelectedGame({ id: g.id, league: g.league });
-      setScreen('gameDetail');
+      goTo('gameDetail');
     };
     window.addEventListener('cntrd:open-game-from-notif', handler);
     return () => window.removeEventListener('cntrd:open-game-from-notif', handler);
-  }, []);
+  }, [goTo]);
 
   // GameDetailScreen fires this when the user taps "[Team] schedule →".
   React.useEffect(() => {
@@ -506,11 +512,11 @@ function CNTRDApp() {
       const t = e.detail;
       if (!t?.league || !t?.teamId) return;
       setScheduleTeam(t);
-      setScreen('teamSchedule');
+      goTo('teamSchedule');
     };
     window.addEventListener('cntrd:open-team-schedule', handler);
     return () => window.removeEventListener('cntrd:open-team-schedule', handler);
-  }, []);
+  }, [goTo]);
 
   // Tap a user's avatar / handle anywhere → open their profile.
   React.useEffect(() => {
@@ -519,15 +525,15 @@ function CNTRDApp() {
       if (!u) return;
       // Tapping yourself routes to your own profile screen.
       if (me?.username && u === me.username) {
-        setScreen('profile');
+        goTo('profile');
         return;
       }
       setViewUsername(u);
-      setScreen('userProfile');
+      goTo('userProfile');
     };
     window.addEventListener('cntrd:open-user', handler);
     return () => window.removeEventListener('cntrd:open-user', handler);
-  }, [me?.username]);
+  }, [me?.username, goTo]);
 
   // Tap a Followers / Following stat → open the list with the right
   // mode + username pre-filled.
@@ -537,11 +543,11 @@ function CNTRDApp() {
       if (!username) return;
       setFollowListUsername(username);
       setFollowListMode(mode === 'following' ? 'following' : 'followers');
-      setScreen('followList');
+      goTo('followList');
     };
     window.addEventListener('cntrd:open-follow-list', handler);
     return () => window.removeEventListener('cntrd:open-follow-list', handler);
-  }, []);
+  }, [goTo]);
 
   // Tap a post body anywhere → open the thread (post + replies).
   React.useEffect(() => {
@@ -549,11 +555,11 @@ function CNTRDApp() {
       const id = e.detail?.postId;
       if (!id) return;
       setThreadPostId(id);
-      setScreen('postThread');
+      goTo('postThread');
     };
     window.addEventListener('cntrd:open-post-thread', handler);
     return () => window.removeEventListener('cntrd:open-post-thread', handler);
-  }, []);
+  }, [goTo]);
 
   // Inline rail search → "See all results" / Enter routes to the
   // Discover screen with the query pre-filled.
@@ -561,11 +567,11 @@ function CNTRDApp() {
     const handler = (e) => {
       const q = String(e.detail?.q || '').trim();
       setDiscoverQuery(q);
-      setScreen('discover');
+      goTo('discover');
     };
     window.addEventListener('cntrd:open-discover', handler);
     return () => window.removeEventListener('cntrd:open-discover', handler);
-  }, []);
+  }, [goTo]);
 
   // Optimistic me.following adjustment when the user follows /
   // unfollows someone. The 30s /me poll reconciles afterward.
@@ -587,11 +593,11 @@ function CNTRDApp() {
       if (!id) return;
       const target = posts.find(p => p.id === id) || null;
       setReplyTo(target || { id });
-      setScreen('compose');
+      goTo('compose');
     };
     window.addEventListener('cntrd:open-reply', handler);
     return () => window.removeEventListener('cntrd:open-reply', handler);
-  }, [posts]);
+  }, [posts, goTo]);
 
   const screenMap = {
     home:         FeedScreen,
