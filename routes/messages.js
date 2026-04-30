@@ -217,6 +217,54 @@ router.delete('/:id/members/me', (req, res) => {
   res.json({ left: true });
 });
 
+// Hydrate a message row plus its (optional) reply target.
+function hydrateMessageRow(r) {
+  const out = {
+    id: r.id,
+    content: r.content,
+    created_at: r.created_at,
+    user: {
+      id: r.user_id,
+      username: r.username,
+      displayName: r.display_name || r.username,
+      avatar: r.avatar,
+      avatarHue: r.avatar_hue ?? 200,
+      teams: JSON.parse(r.team_tags || '[]'),
+    },
+    reply_to: null,
+  };
+  if (r.reply_to_id) {
+    const parent = db.prepare(`
+      SELECT m.id, m.user_id, m.content, m.created_at,
+             u.username, u.display_name
+      FROM messages m JOIN users u ON u.id = m.user_id
+      WHERE m.id = ?
+    `).get(r.reply_to_id);
+    if (parent) {
+      out.reply_to = {
+        id: parent.id,
+        content: parent.content,
+        created_at: parent.created_at,
+        user: {
+          id: parent.user_id,
+          username: parent.username,
+          displayName: parent.display_name || parent.username,
+        },
+      };
+    }
+  }
+  return out;
+}
+
+// Bidirectional mute filter for gameday rooms: hide messages from anyone
+// the viewer has muted AND from anyone who has muted the viewer. Returns
+// the SQL fragment plus the params to bind for it.
+const GAMEDAY_MUTE_WHERE = `AND m.user_id NOT IN (
+  SELECT muted_id FROM mutes WHERE muter_id = ?
+  UNION
+  SELECT muter_id FROM mutes WHERE muted_id = ?
+)`;
+
 // Find-or-create the shared gameday chat room for a game. Auto-joins caller.
 // Must be defined before GET /:id so Express doesn't treat "gameday" as an id.
 router.get('/gameday/:gameId', (req, res) => {
@@ -231,7 +279,6 @@ router.get('/gameday/:gameId', (req, res) => {
         .run(newId, `gameday:${gameId}`, req.user.id, gameId);
       conv = { id: newId };
     }
-    // Auto-join caller as member (idempotent).
     db.prepare(`INSERT OR IGNORE INTO conversation_members (conversation_id, user_id, last_read_at)
                 VALUES (?, ?, datetime('now'))`).run(conv.id, req.user.id);
     db.prepare(`UPDATE conversation_members SET last_read_at = datetime('now')
@@ -240,34 +287,20 @@ router.get('/gameday/:gameId', (req, res) => {
   })();
 
   const rows = db.prepare(`
-    SELECT m.id, m.user_id, m.content, m.created_at,
+    SELECT m.id, m.user_id, m.content, m.created_at, m.reply_to_id,
            u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
     FROM messages m JOIN users u ON u.id = m.user_id
     WHERE m.conversation_id = ?
+    ${GAMEDAY_MUTE_WHERE}
     ORDER BY m.created_at DESC LIMIT 50
-  `).all(convId);
+  `).all(convId, req.user.id, req.user.id);
 
-  // Server's current time so the client can poll for messages newer than
-  // "now" even when the room has no messages yet (otherwise an empty room
-  // never picks up the first message until the user re-enters).
   const now = db.prepare("SELECT datetime('now') AS t").get().t;
 
   res.json({
     convId,
     now,
-    messages: rows.reverse().map(r => ({
-      id: r.id,
-      content: r.content,
-      created_at: r.created_at,
-      user: {
-        id: r.user_id,
-        username: r.username,
-        displayName: r.display_name || r.username,
-        avatar: r.avatar,
-        avatarHue: r.avatar_hue ?? 200,
-        teams: JSON.parse(r.team_tags || '[]'),
-      },
-    })),
+    messages: rows.reverse().map(hydrateMessageRow),
   });
 });
 
@@ -276,40 +309,34 @@ router.get('/:id/messages', (req, res) => {
   const member = db.prepare('SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!member) return res.status(404).json({ error: 'Conversation not found' });
 
+  const conv = db.prepare('SELECT game_id FROM conversations WHERE id = ?').get(req.params.id);
+  const isGameday = !!conv?.game_id;
+
   const before = req.query.before;
   const after  = req.query.after;
   const params = [req.params.id];
-  let q = `SELECT m.id, m.user_id, m.content, m.created_at,
+  let q = `SELECT m.id, m.user_id, m.content, m.created_at, m.reply_to_id,
                   u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
            FROM messages m JOIN users u ON u.id = m.user_id
            WHERE m.conversation_id = ?`;
   if (before) { q += ' AND m.created_at < ?'; params.push(before); }
   if (after)  { q += ' AND m.created_at > ?'; params.push(after); }
+  if (isGameday) {
+    q += ' ' + GAMEDAY_MUTE_WHERE;
+    params.push(req.user.id, req.user.id);
+  }
   q += ' ORDER BY m.created_at DESC LIMIT 50';
   const rows = db.prepare(q).all(...params);
 
-  // Mark conversation read for this user.
   db.prepare(`
     UPDATE conversation_members SET last_read_at = datetime('now')
     WHERE conversation_id = ? AND user_id = ?
   `).run(req.params.id, req.user.id);
 
-  res.json(rows.map(r => ({
-    id: r.id,
-    content: r.content,
-    created_at: r.created_at,
-    user: {
-      id: r.user_id,
-      username: r.username,
-      displayName: r.display_name || r.username,
-      avatar: r.avatar,
-      avatarHue: r.avatar_hue ?? 200,
-      teams: JSON.parse(r.team_tags || '[]'),
-    },
-  })).reverse());   // chronological for display
+  res.json(rows.map(hydrateMessageRow).reverse());
 });
 
-// Send a message.
+// Send a message. Optionally reply_to_id (must be a message in the same conversation).
 router.post('/:id/messages', (req, res) => {
   const member = db.prepare('SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!member) return res.status(404).json({ error: 'Conversation not found' });
@@ -318,16 +345,23 @@ router.post('/:id/messages', (req, res) => {
   if (!content) return res.status(400).json({ error: 'Message cannot be empty' });
   if (content.length > 2000) return res.status(400).json({ error: 'Message too long' });
 
+  let replyToId = null;
+  if (req.body?.reply_to_id) {
+    const parent = db.prepare('SELECT id FROM messages WHERE id = ? AND conversation_id = ?')
+      .get(String(req.body.reply_to_id), req.params.id);
+    if (parent) replyToId = parent.id;
+  }
+
   const id = uuidv4();
-  db.prepare('INSERT INTO messages (id, conversation_id, user_id, content) VALUES (?, ?, ?, ?)')
-    .run(id, req.params.id, req.user.id, content);
+  db.prepare('INSERT INTO messages (id, conversation_id, user_id, content, reply_to_id) VALUES (?, ?, ?, ?, ?)')
+    .run(id, req.params.id, req.user.id, content, replyToId);
   db.prepare(`UPDATE conversations SET last_message_at = datetime('now') WHERE id = ?`).run(req.params.id);
-  // Sender has read everything they just sent.
   db.prepare(`UPDATE conversation_members SET last_read_at = datetime('now')
               WHERE conversation_id = ? AND user_id = ?`).run(req.params.id, req.user.id);
 
-  // Skip per-member notifications for gameday rooms to avoid inbox spam.
-  const isGameday = !!db.prepare('SELECT game_id FROM conversations WHERE id = ? AND game_id IS NOT NULL').get(req.params.id);
+  const conv = db.prepare('SELECT game_id FROM conversations WHERE id = ?').get(req.params.id);
+  const isGameday = !!conv?.game_id;
+
   if (!isGameday) {
     const others = db.prepare(`
       SELECT user_id FROM conversation_members WHERE conversation_id = ? AND user_id != ?
@@ -341,23 +375,97 @@ router.post('/:id/messages', (req, res) => {
     }
   }
 
+  // @-mention notifications. Parse @username tokens out of the body and
+  // notify each mentioned user once. In gameday rooms the mentioned user
+  // is auto-joined so they can read context. Skip if recipient muted sender.
+  const mentionMatches = content.match(/@([a-zA-Z0-9_]{3,20})/g) || [];
+  if (mentionMatches.length) {
+    const handles = [...new Set(mentionMatches.map(m => m.slice(1).toLowerCase()))];
+    const users = db.prepare(`
+      SELECT id, username FROM users
+      WHERE banned = 0 AND lower(username) IN (${handles.map(() => '?').join(',')})
+    `).all(...handles);
+    for (const u of users) {
+      if (u.id === req.user.id) continue;
+      const muted = db.prepare('SELECT 1 FROM mutes WHERE muter_id = ? AND muted_id = ?').get(u.id, req.user.id);
+      if (muted) continue;
+      if (isGameday) {
+        db.prepare(`INSERT OR IGNORE INTO conversation_members (conversation_id, user_id, last_read_at)
+                    VALUES (?, ?, '1970-01-01 00:00:00')`).run(req.params.id, u.id);
+      }
+      notify({
+        userId: u.id, type: 'mention', actorId: req.user.id,
+        data: { conversation_id: req.params.id, preview: content.slice(0, 140), gameday: isGameday },
+        dedupeKey: `mention:${id}:${u.id}`,
+      });
+    }
+  }
+
+  // Reply notification: ping the parent author if not the sender / not muted.
+  if (replyToId) {
+    const parent = db.prepare('SELECT user_id FROM messages WHERE id = ?').get(replyToId);
+    if (parent && parent.user_id !== req.user.id) {
+      const muted = db.prepare('SELECT 1 FROM mutes WHERE muter_id = ? AND muted_id = ?')
+        .get(parent.user_id, req.user.id);
+      if (!muted) {
+        notify({
+          userId: parent.user_id, type: 'message_reply', actorId: req.user.id,
+          data: { conversation_id: req.params.id, message_id: id, preview: content.slice(0, 140), gameday: isGameday },
+          dedupeKey: `reply:${id}`,
+        });
+      }
+    }
+  }
+
   const row = db.prepare(`
-    SELECT m.id, m.user_id, m.content, m.created_at,
+    SELECT m.id, m.user_id, m.content, m.created_at, m.reply_to_id,
            u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
     FROM messages m JOIN users u ON u.id = m.user_id
     WHERE m.id = ?
   `).get(id);
 
-  res.status(201).json({
-    id: row.id,
-    content: row.content,
-    created_at: row.created_at,
-    user: {
-      id: row.user_id, username: row.username, displayName: row.display_name || row.username,
-      avatar: row.avatar, avatarHue: row.avatar_hue ?? 200,
-      teams: JSON.parse(row.team_tags || '[]'),
-    },
-  });
+  res.status(201).json(hydrateMessageRow(row));
+});
+
+// Search room participants for @-mention autocomplete. Excludes muted-out users.
+router.get('/:id/participants', (req, res) => {
+  const member = db.prepare('SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!member) return res.status(404).json({ error: 'Conversation not found' });
+  const q = String(req.query.q || '').trim().toLowerCase();
+  const conv = db.prepare('SELECT game_id FROM conversations WHERE id = ?').get(req.params.id);
+  // For gameday rooms allow searching all users (global mention pool); for
+  // DMs/groups limit to room members.
+  let rows;
+  if (conv?.game_id) {
+    if (!q) return res.json([]);
+    const like = `%${q}%`;
+    rows = db.prepare(`
+      SELECT id, username, display_name, avatar, avatar_hue
+      FROM users
+      WHERE banned = 0 AND id != ?
+        AND id NOT IN (SELECT muter_id FROM mutes WHERE muted_id = ?)
+        AND id NOT IN (SELECT muted_id FROM mutes WHERE muter_id = ?)
+        AND (lower(username) LIKE ? OR lower(display_name) LIKE ?)
+      ORDER BY username
+      LIMIT 8
+    `).all(req.user.id, req.user.id, req.user.id, like, like);
+  } else {
+    rows = db.prepare(`
+      SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_hue
+      FROM conversation_members m JOIN users u ON u.id = m.user_id
+      WHERE m.conversation_id = ? AND u.id != ? AND u.banned = 0
+      ${q ? 'AND (lower(u.username) LIKE ? OR lower(u.display_name) LIKE ?)' : ''}
+      ORDER BY u.username
+      LIMIT 8
+    `).all(...(q ? [req.params.id, req.user.id, `%${q}%`, `%${q}%`] : [req.params.id, req.user.id]));
+  }
+  res.json(rows.map(r => ({
+    id: r.id,
+    username: r.username,
+    displayName: r.display_name || r.username,
+    avatar: r.avatar,
+    avatarHue: r.avatar_hue ?? 200,
+  })));
 });
 
 // ─── Group events ─────────────────────────────────────────────

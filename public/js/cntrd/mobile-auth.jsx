@@ -840,11 +840,18 @@ function mapGameMsg(m, me, homeCode, awayCode) {
   const userTeams = (m.user?.teams || []).map(t => String(t).split(':').pop());
   return {
     id: m.id,
+    userId: m.user?.id || null,
     user: m.user?.username || 'unknown',
     text: m.content,
     time: relTime(m.created_at),
     mine: !!me && !!m.user && m.user.id === me.id,
     side: userTeams.find(c => c === homeCode || c === awayCode) || null,
+    reply_to: m.reply_to ? {
+      id: m.reply_to.id,
+      content: m.reply_to.content,
+      username: m.reply_to.user?.username || '',
+      displayName: m.reply_to.user?.displayName || '',
+    } : null,
     meSnapshot: m.user ? {
       username: m.user.username,
       displayName: m.user.displayName,
@@ -861,6 +868,10 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
   const [showReacts, setShowReacts] = React.useState(false);
   const [convId, setConvId] = React.useState(null);
   const [chatLoading, setChatLoading] = React.useState(false);
+  const [actionMsg, setActionMsg] = React.useState(null);
+  const [replyTo, setReplyTo] = React.useState(null);
+  const [mentionPicker, setMentionPicker] = React.useState(null);
+  const inputRef = React.useRef(null);
   const lastMsgAt = React.useRef(null);
   const pollRef = React.useRef(null);
   const homeCodeRef = React.useRef(null);
@@ -945,11 +956,16 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
     const optimisticId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const optimistic = {
       id: optimisticId,
+      userId: meUser?.id || null,
       user: meUser?.username || 'me',
       side: (meUser?.teams || []).map(t => String(t).split(':').pop()).find(c => c === home.code || c === away.code) || null,
       text,
       time: 'now',
       mine: true,
+      reply_to: replyTo ? {
+        id: replyTo.id, content: replyTo.text,
+        username: replyTo.user, displayName: replyTo.meSnapshot?.displayName || replyTo.user,
+      } : null,
       meSnapshot: meUser ? {
         username: meUser.username,
         displayName: meUser.displayName,
@@ -957,11 +973,14 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
         avatarHue: meUser.avatarHue,
       } : null,
     };
+    const replyId = replyTo?.id || null;
     setMessages(prev => [...prev, optimistic]);
     setDraft('');
     setShowReacts(false);
+    setReplyTo(null);
+    setMentionPicker(null);
     try {
-      const sent = await window.API.sendMessage(convId, text);
+      const sent = await window.API.sendMessage(convId, text, replyId);
       lastMsgAt.current = sent.created_at;
       setMessages(prev => prev.map(m =>
         m.id === optimisticId
@@ -972,11 +991,66 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
       setMessages(prev => prev.filter(m => m.id !== optimisticId));
     }
   };
+
+  // @-mention autocomplete: when the caret follows "@token", show a picker.
+  const handleDraftChange = (value) => {
+    setDraft(value);
+    const el = inputRef.current;
+    const caret = el ? el.selectionStart ?? value.length : value.length;
+    const upTo = value.slice(0, caret);
+    const m = upTo.match(/(?:^|\s)@([a-zA-Z0-9_]{0,20})$/);
+    if (!m || !convId) { setMentionPicker(null); return; }
+    const query = m[1];
+    setMentionPicker({ query, results: [], anchor: caret - m[1].length - 1 });
+    window.API.conversationParticipants(convId, query).then(rows => {
+      setMentionPicker(prev => prev ? { ...prev, results: rows || [] } : prev);
+    }).catch(() => {});
+  };
+  const insertMention = (u) => {
+    const el = inputRef.current;
+    const caret = el ? el.selectionStart ?? draft.length : draft.length;
+    const before = draft.slice(0, caret).replace(/@[a-zA-Z0-9_]*$/, `@${u.username} `);
+    const after = draft.slice(caret);
+    const next = before + after;
+    setDraft(next);
+    setMentionPicker(null);
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        const pos = before.length;
+        try { inputRef.current.setSelectionRange(pos, pos); } catch {}
+      }
+    }, 0);
+  };
+
   const onKeyDown = (e) => {
+    if (e.key === 'Escape' && mentionPicker) { setMentionPicker(null); return; }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       submit();
     }
+  };
+
+  const muteUser = async (m) => {
+    if (!m?.user || m.mine) return;
+    try {
+      await window.API.muteUser(m.user);
+      setMessages(prev => prev.filter(x => x.user !== m.user));
+    } catch {}
+    setActionMsg(null);
+  };
+  const startReply = (m) => { setReplyTo(m); setActionMsg(null); inputRef.current?.focus(); };
+  const startMention = (m) => {
+    if (!m?.user) return;
+    const tag = `@${m.user} `;
+    setDraft(d => d.endsWith(' ') || d.length === 0 ? d + tag : d + ' ' + tag);
+    setActionMsg(null);
+    inputRef.current?.focus();
+  };
+  const openProfile = (m) => {
+    if (!m?.user) return;
+    window.dispatchEvent(new CustomEvent('cntrd:open-user', { detail: { username: m.user } }));
+    setActionMsg(null);
   };
 
   return (
@@ -1035,9 +1109,63 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
             Be the first to chat.
           </div>
         ) : (
-          [...filtered].reverse().map(m => <ChatBubble key={m.id} m={m} />)
+          [...filtered].reverse().map(m => <ChatBubble key={m.id} m={m} onTap={() => setActionMsg(m)} />)
         )}
       </div>
+
+      {actionMsg && (
+        <ChatActionSheet
+          msg={actionMsg}
+          onClose={() => setActionMsg(null)}
+          onReply={() => startReply(actionMsg)}
+          onMention={() => startMention(actionMsg)}
+          onMute={() => muteUser(actionMsg)}
+          onProfile={() => openProfile(actionMsg)}
+        />
+      )}
+
+      {replyTo && (
+        <div style={{
+          padding: '8px 12px', borderTop: '0.5px solid var(--cn-border-s)',
+          background: 'var(--cn-bg-elev2)', display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          <div style={{ width: 3, alignSelf: 'stretch', background: 'var(--cn-accent)', borderRadius: 2 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1 }}>
+              REPLYING TO @{replyTo.user}
+            </div>
+            <div style={{
+              fontSize: 12, color: 'var(--cn-text-dim)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{replyTo.text}</div>
+          </div>
+          <button onClick={() => setReplyTo(null)} style={iconBtnStyle()} title="Cancel reply">
+            <Icon name="x" size={16} stroke="var(--cn-text-dim)" />
+          </button>
+        </div>
+      )}
+
+      {mentionPicker && mentionPicker.results.length > 0 && (
+        <div style={{
+          borderTop: '0.5px solid var(--cn-border-s)',
+          background: 'var(--cn-bg-elev2)', maxHeight: 220, overflowY: 'auto',
+        }}>
+          {mentionPicker.results.map(u => (
+            <button key={u.id} onClick={() => insertMention(u)} style={{
+              width: '100%', padding: '8px 12px',
+              display: 'flex', alignItems: 'center', gap: 10,
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              color: 'var(--cn-text)', textAlign: 'left',
+            }}>
+              <Avatar user={u} size={28} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>{u.displayName}</div>
+                <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>@{u.username}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* quick-react popover */}
       {showReacts && (
@@ -1075,10 +1203,11 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
           <Icon name="plus" size={18} />
         </button>
         <input
+          ref={inputRef}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => handleDraftChange(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="Yell about it..."
+          placeholder={replyTo ? `Reply to @${replyTo.user}` : 'Yell about it...'}
           style={{
             flex: 1, padding: '10px 14px', borderRadius: 10,
             background: 'var(--cn-bg-elev)', border: '0.5px solid var(--cn-border-s)',
@@ -1148,7 +1277,35 @@ function SideTeam({ team, score, reverse, league }) {
   );
 }
 
-function ChatBubble({ m }) {
+// Render text with @-mentions as clickable spans.
+function renderMentions(text, accent) {
+  const out = [];
+  const re = /@([a-zA-Z0-9_]{3,20})/g;
+  let last = 0, i = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    const username = m[1];
+    out.push(
+      <button
+        key={`mention-${i++}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          window.dispatchEvent(new CustomEvent('cntrd:open-user', { detail: { username } }));
+        }}
+        style={{
+          background: 'transparent', border: 'none', padding: 0,
+          color: accent, fontWeight: 700, cursor: 'pointer',
+          font: 'inherit',
+        }}
+      >@{username}</button>
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+function ChatBubble({ m, onTap }) {
   const u = m.meSnapshot || { username: m.user || 'me', displayName: m.user || 'Me' };
   const isMine = m.mine;
   const team = m.side ? TEAMS[m.side] : null;
@@ -1163,6 +1320,7 @@ function ChatBubble({ m }) {
     cursor: clickable ? 'pointer' : 'default',
     color: 'inherit', font: 'inherit',
   };
+  const mentionAccent = isMine ? 'var(--cn-on-accent)' : 'var(--cn-accent)';
   return (
     <div style={{
       display: 'flex', gap: 8,
@@ -1184,19 +1342,37 @@ function ChatBubble({ m }) {
             <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, color: 'var(--cn-text-mute)' }}>{m.time}</span>
           </div>
         )}
-        <div style={{
-          padding: '8px 12px', borderRadius: 14,
-          background: isMine ? 'var(--cn-accent)' : team
-            ? `color-mix(in srgb, ${team.primary} 15%, var(--cn-bg-elev))`
-            : 'var(--cn-bg-elev)',
-          color: isMine ? 'var(--cn-on-accent)' : 'var(--cn-text)',
-          fontSize: 13.5, lineHeight: 1.4,
-          borderLeft: !isMine && team ? `2px solid ${team.primary}` : 'none',
-          borderRadius: isMine ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-        }}>{m.text}</div>
-        {/* Own messages get a discreet timestamp below the bubble so the
-            sender has visual confirmation it was sent — username is
-            redundant on the user's own messages. */}
+        <div
+          onClick={() => onTap?.(m)}
+          style={{
+            padding: '8px 12px', borderRadius: 14,
+            background: isMine ? 'var(--cn-accent)' : team
+              ? `color-mix(in srgb, ${team.primary} 15%, var(--cn-bg-elev))`
+              : 'var(--cn-bg-elev)',
+            color: isMine ? 'var(--cn-on-accent)' : 'var(--cn-text)',
+            fontSize: 13.5, lineHeight: 1.4,
+            borderLeft: !isMine && team ? `2px solid ${team.primary}` : 'none',
+            borderRadius: isMine ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+            cursor: onTap ? 'pointer' : 'default',
+          }}
+        >
+          {m.reply_to && (
+            <div style={{
+              borderLeft: `2px solid ${isMine ? 'var(--cn-on-accent)' : 'var(--cn-accent)'}`,
+              paddingLeft: 6, marginBottom: 4,
+              opacity: 0.85, fontSize: 11.5, lineHeight: 1.3,
+            }}>
+              <div style={{ fontWeight: 700, fontSize: 10, opacity: 0.9 }}>
+                {m.reply_to.displayName || '@' + m.reply_to.username}
+              </div>
+              <div style={{
+                overflow: 'hidden', textOverflow: 'ellipsis',
+                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+              }}>{m.reply_to.content}</div>
+            </div>
+          )}
+          {renderMentions(m.text, mentionAccent)}
+        </div>
         {isMine && m.time && (
           <div style={{
             fontFamily: 'var(--cn-font-mono)', fontSize: 9,
@@ -1209,4 +1385,54 @@ function ChatBubble({ m }) {
   );
 }
 
-Object.assign(window, { LoginScreen, SignupScreen, SettingsScreen, GamedayScreen, passwordChecks, passwordOK, PasswordChecklist });
+function ChatActionSheet({ msg, onClose, onReply, onMention, onMute, onProfile }) {
+  const u = msg.meSnapshot || { username: msg.user, displayName: msg.user };
+  return (
+    <div onClick={onClose} style={{
+      position: 'absolute', inset: 0, zIndex: 50,
+      background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)',
+      display: 'flex', alignItems: 'flex-end',
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        width: '100%', background: 'var(--cn-bg-elev2)',
+        borderTopLeftRadius: 18, borderTopRightRadius: 18,
+        padding: '10px 0 calc(28px + env(safe-area-inset-bottom, 0px))',
+        color: 'var(--cn-text)',
+      }}>
+        <div style={{ padding: '10px 18px 12px', borderBottom: '0.5px solid var(--cn-border-s)' }}>
+          <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1 }}>
+            FROM @{u.username}
+          </div>
+          <div style={{
+            marginTop: 4, fontSize: 13, color: 'var(--cn-text-dim)',
+            overflow: 'hidden', textOverflow: 'ellipsis',
+            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+          }}>{msg.text}</div>
+        </div>
+        <ActionRow icon="reply" label="Reply" onClick={onReply} />
+        {!msg.mine && <ActionRow icon="chat" label={`Mention @${u.username}`} onClick={onMention} />}
+        {!msg.mine && <ActionRow icon="profile" label="View profile" onClick={onProfile} />}
+        {!msg.mine && <ActionRow icon="bell" label="Mute user" onClick={onMute} danger />}
+        <ActionRow icon="x" label="Cancel" onClick={onClose} />
+      </div>
+    </div>
+  );
+}
+
+function ActionRow({ icon, label, onClick, danger }) {
+  return (
+    <button onClick={onClick} style={{
+      width: '100%', padding: '14px 18px',
+      display: 'flex', alignItems: 'center', gap: 12,
+      background: 'transparent', border: 'none', cursor: 'pointer',
+      color: danger ? 'var(--cn-danger)' : 'var(--cn-text)',
+      fontSize: 14, fontWeight: 600, textAlign: 'left',
+      fontFamily: 'var(--cn-font-body)',
+    }}>
+      <Icon name={icon} size={18} stroke={danger ? 'var(--cn-danger)' : 'var(--cn-text)'} />
+      {label}
+    </button>
+  );
+}
+
+Object.assign(window, { LoginScreen, SignupScreen, SettingsScreen, GamedayScreen, passwordChecks, passwordOK, PasswordChecklist, ChatBubble, ChatActionSheet, renderMentions });

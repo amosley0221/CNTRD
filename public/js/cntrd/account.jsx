@@ -21,7 +21,8 @@ function AccountScreen({ tweaks, onNav, me, onMeUpdated }) {
 
       <div style={{
         flex: 1, overflowY: 'auto',
-        padding: '20px 18px calc(120px + env(safe-area-inset-bottom, 0px))',
+        WebkitOverflowScrolling: 'touch',
+        padding: '20px 18px calc(240px + env(safe-area-inset-bottom, 0px))',
         display: 'flex', flexDirection: 'column', gap: 22,
       }}>
         <ProfilePictureCard me={u} onMeUpdated={onMeUpdated} />

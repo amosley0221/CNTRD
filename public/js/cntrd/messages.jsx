@@ -187,7 +187,9 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
   const [sending, setSending] = React.useState(false);
   const [renaming, setRenaming] = React.useState(false);
   const [nameDraft, setNameDraft] = React.useState('');
+  const [replyTo, setReplyTo] = React.useState(null);
   const scrollRef = React.useRef(null);
+  const inputRef = React.useRef(null);
 
   const load = React.useCallback(async () => {
     try {
@@ -229,8 +231,10 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
     if (!text || sending) return;
     setSending(true);
     setDraft('');
+    const replyId = replyTo?.id || null;
+    setReplyTo(null);
     try {
-      const m = await API.sendMessage(conversationId, text);
+      const m = await API.sendMessage(conversationId, text, replyId);
       setMessages(prev => [...prev, m]);
     } catch (e) {
       setErr(e.message || 'Failed to send');
@@ -346,9 +350,32 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
           const mine = m.user.id === me?.id;
           const prev = messages[i - 1];
           const showAuthor = !mine && (!prev || prev.user.id !== m.user.id);
-          return <MessageBubble key={m.id} m={m} mine={mine} showAuthor={showAuthor && conv.is_group} />;
+          return <MessageBubble key={m.id} m={m} mine={mine} showAuthor={showAuthor && conv.is_group} onReply={() => { setReplyTo(m); setTimeout(() => inputRef.current?.focus(), 0); }} />;
         })}
       </div>
+
+      {replyTo && (
+        <div style={{
+          padding: '8px 12px', borderTop: '0.5px solid var(--cn-border-s)',
+          background: 'var(--cn-bg-elev2)', display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          <div style={{ width: 3, alignSelf: 'stretch', background: 'var(--cn-accent)', borderRadius: 2 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1 }}>
+              REPLYING TO @{replyTo.user.username}
+            </div>
+            <div style={{
+              fontSize: 12, color: 'var(--cn-text-dim)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{replyTo.content}</div>
+          </div>
+          <button onClick={() => setReplyTo(null)} style={{
+            background: 'transparent', border: 'none', cursor: 'pointer', padding: 6,
+          }} title="Cancel reply">
+            <Icon name="x" size={16} stroke="var(--cn-text-dim)" />
+          </button>
+        </div>
+      )}
 
       <div style={{
         padding: '10px 12px 14px',
@@ -357,10 +384,11 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
         background: 'var(--cn-bg-elev2)',
       }}>
         <input
+          ref={inputRef}
           value={draft}
           onChange={e => setDraft(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), send())}
-          placeholder="Message…"
+          placeholder={replyTo ? `Reply to @${replyTo.user.username}` : 'Message…'}
           style={{
             flex: 1, padding: '10px 14px', borderRadius: 999,
             background: 'var(--cn-bg-elev)',
@@ -645,7 +673,8 @@ function EventScheduleModal({ onClose, onCreate }) {
   );
 }
 
-function MessageBubble({ m, mine, showAuthor }) {
+function MessageBubble({ m, mine, showAuthor, onReply }) {
+  const [showActions, setShowActions] = React.useState(false);
   return (
     <div style={{
       display: 'flex', flexDirection: mine ? 'row-reverse' : 'row',
@@ -658,17 +687,47 @@ function MessageBubble({ m, mine, showAuthor }) {
             @{m.user.username}
           </div>
         )}
-        <div style={{
-          padding: '8px 12px',
-          background: mine ? 'var(--cn-accent)' : 'var(--cn-bg-elev)',
-          color: mine ? 'var(--cn-on-accent)' : 'var(--cn-text)',
-          borderRadius: mine ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-          fontSize: 13.5, lineHeight: 1.45,
-          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-          border: mine ? 'none' : '0.5px solid var(--cn-border)',
-        }}>{m.content}</div>
-        <div style={{ fontSize: 9, fontFamily: 'var(--cn-font-mono)', color: 'var(--cn-text-mute)', marginTop: 2, textAlign: mine ? 'right' : 'left' }}>
-          {relTime(m.created_at)}
+        <div
+          onClick={() => setShowActions(s => !s)}
+          style={{
+            padding: '8px 12px',
+            background: mine ? 'var(--cn-accent)' : 'var(--cn-bg-elev)',
+            color: mine ? 'var(--cn-on-accent)' : 'var(--cn-text)',
+            borderRadius: mine ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+            fontSize: 13.5, lineHeight: 1.45,
+            whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            border: mine ? 'none' : '0.5px solid var(--cn-border)',
+            cursor: 'pointer',
+          }}
+        >
+          {m.reply_to && (
+            <div style={{
+              borderLeft: `2px solid ${mine ? 'var(--cn-on-accent)' : 'var(--cn-accent)'}`,
+              paddingLeft: 6, marginBottom: 4,
+              opacity: 0.85, fontSize: 11.5, lineHeight: 1.3,
+            }}>
+              <div style={{ fontWeight: 700, fontSize: 10, opacity: 0.9 }}>
+                {m.reply_to.user?.displayName || ('@' + (m.reply_to.user?.username || ''))}
+              </div>
+              <div style={{
+                overflow: 'hidden', textOverflow: 'ellipsis',
+                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+              }}>{m.reply_to.content}</div>
+            </div>
+          )}
+          {typeof window !== 'undefined' && window.renderMentions
+            ? window.renderMentions(m.content, mine ? 'var(--cn-on-accent)' : 'var(--cn-accent)')
+            : m.content}
+        </div>
+        <div style={{ fontSize: 9, fontFamily: 'var(--cn-font-mono)', color: 'var(--cn-text-mute)', marginTop: 2, textAlign: mine ? 'right' : 'left', display: 'flex', gap: 8, justifyContent: mine ? 'flex-end' : 'flex-start', alignItems: 'center' }}>
+          <span>{relTime(m.created_at)}</span>
+          {showActions && onReply && (
+            <button onClick={(e) => { e.stopPropagation(); setShowActions(false); onReply(); }} style={{
+              background: 'transparent', border: 'none', padding: 0,
+              color: 'var(--cn-accent)', fontSize: 10, fontWeight: 700,
+              cursor: 'pointer', fontFamily: 'inherit', textTransform: 'uppercase',
+            }}>Reply</button>
+          )}
         </div>
       </div>
     </div>

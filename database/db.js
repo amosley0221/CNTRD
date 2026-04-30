@@ -233,6 +233,9 @@ try {
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_game_id ON conversations(game_id) WHERE game_id IS NOT NULL`);
 } catch {}
 
+// Threaded replies inside a conversation.
+ensureColumn('messages', 'reply_to_id', "TEXT DEFAULT NULL");
+
 // post type: take | photo | score | poll | clip | box | rumor
 ensureColumn('posts', 'type',  "TEXT DEFAULT 'take'");
 ensureColumn('posts', 'tags',  "TEXT DEFAULT '[]'");      // JSON array of team codes
