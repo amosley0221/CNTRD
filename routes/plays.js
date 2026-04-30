@@ -72,12 +72,22 @@ function visibilityClause(viewerId) {
   };
 }
 
-// List plays — public, recent first, capped at 30.
+// List plays for the feed rail. Signed-in users only see plays from
+// people they follow + their own. Unauthenticated viewers fall back
+// to the same public visibility filter used elsewhere (banned/private
+// excluded).
 router.get('/', optionalAuth, (req, res) => {
-  const v = visibilityClause(req.user?.id);
-  const rows = db.prepare(`${SELECT} WHERE ${v.sql} ORDER BY p.created_at DESC LIMIT 30`)
-    .all(...v.params);
-  res.json(rows.map(p => hydrate(p, req.user?.id)));
+  const viewerId = req.user?.id || null;
+  const v = visibilityClause(viewerId);
+  let sql = `${SELECT} WHERE ${v.sql}`;
+  const params = [...v.params];
+  if (viewerId) {
+    sql += ` AND (p.user_id = ? OR p.user_id IN (SELECT following_id FROM follows WHERE follower_id = ?))`;
+    params.push(viewerId, viewerId);
+  }
+  sql += ` ORDER BY p.created_at DESC LIMIT 30`;
+  const rows = db.prepare(sql).all(...params);
+  res.json(rows.map(p => hydrate(p, viewerId)));
 });
 
 // Plays from a specific user. Same visibility rules — if the viewer is
