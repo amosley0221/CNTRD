@@ -18,7 +18,7 @@ function secondsTilEditDeadline(post) {
   return Math.max(0, Math.ceil((t + EDIT_WINDOW_SEC * 1000 - Date.now()) / 1000));
 }
 
-function PostHeader({ user, time, tags, edited, postId, isMine, canEdit, onEdit, onDelete, onBlock }) {
+function PostHeader({ user, time, tags, edited, postId, isMine, canEdit, onEdit, onDelete, onBlock, onReport }) {
   const u = (typeof user === 'string')
     ? (USERS[user] || USERS.mike_b)
     : (user || USERS.mike_b);
@@ -89,6 +89,7 @@ function PostHeader({ user, time, tags, edited, postId, isMine, canEdit, onEdit,
             onEdit={() => { setMenuOpen(false); onEdit?.(); }}
             onDelete={() => { setMenuOpen(false); onDelete?.(); }}
             onBlock={() => { setMenuOpen(false); onBlock?.(); }}
+            onReport={() => { setMenuOpen(false); onReport?.(); }}
             otherUsername={u.username}
           />
         )}
@@ -97,10 +98,11 @@ function PostHeader({ user, time, tags, edited, postId, isMine, canEdit, onEdit,
   );
 }
 
-function PostActionMenu({ isMine, canEdit, onEdit, onDelete, onBlock, otherUsername }) {
+function PostActionMenu({ isMine, canEdit, onEdit, onDelete, onBlock, onReport, otherUsername }) {
   const items = [];
   if (isMine && canEdit) items.push({ label: 'Edit', onClick: onEdit });
   if (isMine)            items.push({ label: 'Delete post', danger: true, onClick: onDelete });
+  if (!isMine)           items.push({ label: 'Report post', danger: true, onClick: onReport });
   if (!isMine)           items.push({ label: `Block @${otherUsername}`, danger: true, onClick: onBlock });
   if (!items.length)     items.push({ label: 'Nothing here yet', disabled: true });
   return (
@@ -252,6 +254,8 @@ function PostShell({ children, post }) {
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState(null);
   const [secondsLeft, setSecondsLeft] = React.useState(() => secondsTilEditDeadline(post));
+  const [reportOpen, setReportOpen] = React.useState(false);
+  const [reportSent, setReportSent] = React.useState(false);
 
   // Tick every second so the menu auto-disables Edit when the window expires.
   React.useEffect(() => {
@@ -343,6 +347,7 @@ function PostShell({ children, post }) {
         onEdit={beginEdit}
         onDelete={remove}
         onBlock={block}
+        onReport={() => setReportOpen(true)}
       />
       {editing ? (
         <PostEditEditor
@@ -359,6 +364,24 @@ function PostShell({ children, post }) {
         initiallyReposted={post.reposted}
         initiallyBookmarked={post.bookmarked}
       />
+      {reportOpen && (
+        <ReportSheet
+          targetType="post"
+          targetId={post.id}
+          preview={post.content || post.text || ''}
+          onClose={() => setReportOpen(false)}
+          onSubmitted={() => setReportSent(true)}
+        />
+      )}
+      {reportSent && (
+        <div style={{
+          margin: '6px 0 0 46px', padding: '6px 10px',
+          fontFamily: 'var(--cn-font-mono)', fontSize: 11,
+          color: 'var(--cn-accent)',
+        }}>
+          Reported · admins will review.
+        </div>
+      )}
     </article>
   );
 }

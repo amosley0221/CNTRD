@@ -41,8 +41,20 @@ function isOwnerEmail(email) {
 
 // Look up fresh state on every request — JWTs aren't reissued, so a banned
 // user with a still-valid token would otherwise keep posting until expiry.
+// Also clears expired temp bans so a 3-day suspension self-heals once
+// banned_until is in the past.
 function loadFreshUser(id) {
-  return db.prepare('SELECT id, username, email, banned, is_admin, is_owner FROM users WHERE id = ?').get(id);
+  const u = db.prepare('SELECT id, username, email, banned, banned_until, is_admin, is_owner FROM users WHERE id = ?').get(id);
+  if (!u) return null;
+  if (u.banned && u.banned_until) {
+    const t = Date.parse(u.banned_until.includes('T') ? u.banned_until : u.banned_until.replace(' ', 'T') + 'Z');
+    if (Number.isFinite(t) && t < Date.now()) {
+      db.prepare('UPDATE users SET banned = 0, banned_until = NULL WHERE id = ?').run(id);
+      u.banned = 0;
+      u.banned_until = null;
+    }
+  }
+  return u;
 }
 
 function requireAuth(req, res, next) {

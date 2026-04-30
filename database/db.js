@@ -233,6 +233,37 @@ try {
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_game_id ON conversations(game_id) WHERE game_id IS NOT NULL`);
 } catch {}
 
+// Temporary suspensions. Auth middleware treats a user as banned while
+// banned_until > now; auto-clears banned + banned_until once expired.
+ensureColumn('users', 'banned_until', "TEXT DEFAULT NULL");
+
+// User reports for inappropriate content (posts / messages / users).
+// content_snapshot captures the text at report time so the review still
+// has context if the author edits or deletes the content afterwards.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS reports (
+    id TEXT PRIMARY KEY,
+    reporter_id TEXT NOT NULL,
+    target_type TEXT NOT NULL,         -- 'post' | 'message' | 'user'
+    target_id TEXT NOT NULL,
+    target_user_id TEXT,               -- offending author (for ban actions)
+    reason TEXT,
+    content_snapshot TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'resolved' | 'escalated'
+    resolution TEXT,                   -- 'dismiss' | 'remove_content' | 'temp_ban' | 'escalated'
+    resolution_note TEXT,
+    ban_until TEXT,
+    resolved_by TEXT,
+    resolved_at TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (reporter_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (resolved_by) REFERENCES users(id) ON DELETE SET NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_reports_target ON reports(target_type, target_id);
+`);
+
 // Gameday chats auto-close after a 24 h grace period past the game's
 // expected end. closes_at is set once on first access and never moved.
 ensureColumn('conversations', 'closes_at', "TEXT DEFAULT NULL");

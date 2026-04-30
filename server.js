@@ -47,6 +47,7 @@ app.use('/api/pages',  require('./routes/pages'));
 app.use('/api/messages', require('./routes/messages'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/admin',  require('./routes/admin'));
+app.use('/api/reports', require('./routes/reports'));
 app.use('/api/static', require('./routes/static'));
 app.use('/api/search', require('./routes/search'));
 app.use('/api/upload', uploadRouter);

@@ -686,6 +686,127 @@ function ConfirmHost() {
   );
 }
 
+// ─── Report sheet ────────────────────────────────────────────────────
+// Reusable bottom sheet for filing a report on a post / message / user.
+// Captures a copy of the offending content (preview prop) and a short
+// reason from the reporter. The submitted report fans out to all admins
+// and the owner via the server's notifier.
+function ReportSheet({ targetType, targetId, preview = '', onClose, onSubmitted }) {
+  const [reason, setReason] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState(null);
+
+  const submit = async () => {
+    if (busy) return;
+    setBusy(true); setErr(null);
+    try {
+      await window.API.reportSubmit({
+        target_type: targetType,
+        target_id: targetId,
+        reason: reason.trim().slice(0, 500),
+      });
+      onSubmitted?.();
+      onClose?.();
+    } catch (e) {
+      setErr(e.message || 'Could not submit report');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, zIndex: 100,
+      background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)',
+      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        width: '100%', maxWidth: 520,
+        background: 'var(--cn-bg-elev2)',
+        borderTopLeftRadius: 18, borderTopRightRadius: 18,
+        padding: '14px 0 calc(20px + env(safe-area-inset-bottom, 0px))',
+        color: 'var(--cn-text)',
+      }}>
+        <div style={{
+          padding: '4px 18px 14px',
+          borderBottom: '0.5px solid var(--cn-border-s)',
+        }}>
+          <div style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 800, fontSize: 18 }}>
+            Report this {targetType === 'message' ? 'message' : targetType === 'user' ? 'account' : 'post'}
+          </div>
+          <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)', marginTop: 4 }}>
+            Sent to all admins and the owner for review.
+          </div>
+        </div>
+
+        {preview && (
+          <div style={{ padding: '12px 18px 0' }}>
+            <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1 }}>
+              CONTENT BEING REPORTED
+            </div>
+            <div style={{
+              marginTop: 6, padding: '10px 12px', borderRadius: 10,
+              background: 'var(--cn-bg)',
+              border: '0.5px solid var(--cn-border-s)',
+              fontSize: 13, lineHeight: 1.45,
+              maxHeight: 120, overflow: 'auto',
+              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            }}>{preview}</div>
+          </div>
+        )}
+
+        <div style={{ padding: '12px 18px 4px' }}>
+          <label style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 1 }}>
+            WHY ARE YOU REPORTING IT?
+          </label>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value.slice(0, 500))}
+            rows={3}
+            placeholder="Spam, harassment, threats, hate speech…"
+            style={{
+              width: '100%', marginTop: 6,
+              padding: '10px 12px', borderRadius: 10,
+              background: 'var(--cn-bg)',
+              border: '0.5px solid var(--cn-border-s)',
+              color: 'var(--cn-text)', fontSize: 13,
+              outline: 'none', fontFamily: 'var(--cn-font-body)',
+              resize: 'vertical',
+              boxSizing: 'border-box',
+            }}
+          />
+          <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', marginTop: 4, textAlign: 'right' }}>
+            {reason.length}/500
+          </div>
+        </div>
+
+        {err && (
+          <div style={{ padding: '0 18px 6px', fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-danger)' }}>
+            {err}
+          </div>
+        )}
+
+        <div style={{
+          padding: '10px 18px 0',
+          display: 'flex', gap: 10, justifyContent: 'flex-end',
+        }}>
+          <button onClick={onClose} disabled={busy} style={{
+            padding: '10px 16px', borderRadius: 999,
+            background: 'transparent', color: 'var(--cn-text-dim)',
+            border: '0.5px solid var(--cn-border-s)', cursor: 'pointer',
+            fontWeight: 700, fontSize: 12, fontFamily: 'var(--cn-font-body)',
+          }}>Cancel</button>
+          <button onClick={submit} disabled={busy} style={{
+            padding: '10px 18px', borderRadius: 999,
+            background: 'var(--cn-danger)', color: '#fff',
+            border: 'none', cursor: busy ? 'wait' : 'pointer',
+            fontWeight: 700, fontSize: 12, fontFamily: 'var(--cn-font-body)',
+          }}>{busy ? 'Sending…' : 'Submit report'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 Object.assign(window, {
   THEMES, TYPE_PAIRS, DENSITY, applyTheme, pickContrast, resolveTeam,
   TeamPill, TeamTagsRow, Avatar, Icon,
@@ -694,4 +815,5 @@ Object.assign(window, {
   dedupeUclOverlap,
   confirmAction, ConfirmHost,
   RoleBadges, displayHandle,
+  ReportSheet,
 });

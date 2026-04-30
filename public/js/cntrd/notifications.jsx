@@ -137,6 +137,10 @@ function NotificationsScreen({ tweaks, onNav, me, setMessageContext, onUnreadNot
       onNav?.('messages');
       return;
     }
+    if (n.type === 'report_new' || n.type === 'report_resolved' || n.type === 'report_escalated') {
+      onNav?.('admin');
+      return;
+    }
     // Mention or reply: jump to the exact place the user was tagged —
     // the gameday chat, DM thread, or post thread. Falls back to the
     // actor's profile only if no destination is encoded.
@@ -430,6 +434,12 @@ function renderNotifText(n) {
       return { headline: `${actor} invited you to a group`, body: d.name ? `"${d.name}"` : 'Tap to respond' };
     case 'mention':
       return { headline: `${actor} mentioned you`, body: d.preview || '' };
+    case 'report_new':
+      return { headline: `New report to review`, body: d.preview ? `${d.target_type}: "${d.preview}"` : `Tap to open the admin queue` };
+    case 'report_resolved':
+      return { headline: `Report resolved by ${actor}`, body: d.action === 'temp_ban' ? `Temp ban applied` : (d.action || '') };
+    case 'report_escalated':
+      return { headline: `${actor} escalated a report`, body: 'Owner action needed' };
     case 'post': {
       const count = Number(d.count) || 1;
       const headline = count === 1

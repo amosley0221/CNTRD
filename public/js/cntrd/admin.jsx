@@ -9,6 +9,8 @@ function AdminScreen({ tweaks, onNav, me }) {
   const [q, setQ] = React.useState('');
   const [expanded, setExpanded] = React.useState(null);    // user id whose posts are open
   const [postsByUser, setPostsByUser] = React.useState({});
+  const [tab, setTab] = React.useState('users');             // 'users' | 'reports'
+  const [reportsCounts, setReportsCounts] = React.useState({ pending: 0, escalated: 0 });
 
   const load = React.useCallback(async () => {
     setLoading(true); setErr(null);
@@ -24,6 +26,14 @@ function AdminScreen({ tweaks, onNav, me }) {
   }, [q]);
 
   React.useEffect(() => { load(); }, [load]);
+
+  // Refresh report counts whenever the screen loads or the tab flips
+  // back to Users — keeps the badge fresh without polling forever.
+  React.useEffect(() => {
+    let cancelled = false;
+    API.reportsCounts().then(c => { if (!cancelled) setReportsCounts(c || { pending: 0, escalated: 0 }); });
+    return () => { cancelled = true; };
+  }, [tab]);
 
   const ban = async (id) => {
     try { await API.adminBan(id); setUsers(prev => prev.map(u => u.id === id ? { ...u, banned: true } : u)); }
@@ -104,6 +114,39 @@ function AdminScreen({ tweaks, onNav, me }) {
         </div>
       )}
 
+      {/* Tabs */}
+      <div style={{ display: 'flex', padding: '8px 16px 0', gap: 8, borderBottom: '0.5px solid var(--cn-border)' }}>
+        {[
+          { id: 'users',   label: 'Users' },
+          { id: 'reports', label: 'Reports', badge: reportsCounts.pending + reportsCounts.escalated },
+        ].map(t => {
+          const active = tab === t.id;
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              padding: '8px 12px',
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              borderBottom: active ? '2px solid var(--cn-accent)' : '2px solid transparent',
+              color: active ? 'var(--cn-text)' : 'var(--cn-text-mute)',
+              fontWeight: 700, fontSize: 13, fontFamily: 'var(--cn-font-body)',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+            }}>
+              {t.label}
+              {t.badge ? (
+                <span style={{
+                  padding: '0 6px', minWidth: 18, height: 18, borderRadius: 999,
+                  background: 'var(--cn-danger)', color: '#fff',
+                  fontFamily: 'var(--cn-font-mono)', fontSize: 10, fontWeight: 800,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                }}>{t.badge > 99 ? '99+' : t.badge}</span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === 'reports' ? (
+        <ReportsTab me={me} onCounts={setReportsCounts} />
+      ) : (<>
       {/* Search */}
       <div style={{ padding: '10px 16px', borderBottom: '0.5px solid var(--cn-border)' }}>
         <input
@@ -170,8 +213,197 @@ function AdminScreen({ tweaks, onNav, me }) {
           ))
         )}
       </div>
+      </>)}
     </div>
   );
+}
+
+function ReportsTab({ me, onCounts }) {
+  const [filter, setFilter] = React.useState('pending');  // 'pending' | 'escalated' | 'resolved' | 'all'
+  const [reports, setReports] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [err, setErr] = React.useState(null);
+  const [busy, setBusy] = React.useState(null);            // report id while resolving
+
+  const load = React.useCallback(async () => {
+    setLoading(true); setErr(null);
+    try {
+      const list = await API.reportsList(filter);
+      setReports(list || []);
+      const counts = await API.reportsCounts();
+      onCounts?.(counts || { pending: 0, escalated: 0 });
+    } catch (e) {
+      setErr(e.message || 'Failed to load reports');
+    } finally {
+      setLoading(false);
+    }
+  }, [filter, onCounts]);
+  React.useEffect(() => { load(); }, [load]);
+
+  const resolve = async (r, action, days) => {
+    setBusy(r.id);
+    try {
+      const note = action === 'escalate'
+        ? (window.prompt('Add a note for the owner (optional):', '') || '')
+        : '';
+      await API.reportResolve(r.id, { action, days, note });
+      await load();
+    } catch (e) {
+      alert(e.message || 'Action failed');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div style={{ padding: '10px 16px', overflowY: 'auto' }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+        {[
+          { id: 'pending',    label: 'Pending' },
+          { id: 'escalated',  label: 'Escalated' },
+          { id: 'resolved',   label: 'Resolved' },
+          { id: 'all',        label: 'All' },
+        ].map(f => {
+          const active = filter === f.id;
+          return (
+            <button key={f.id} onClick={() => setFilter(f.id)} style={{
+              padding: '6px 12px', borderRadius: 999,
+              background: active ? 'var(--cn-accent)' : 'transparent',
+              color: active ? 'var(--cn-on-accent)' : 'var(--cn-text-dim)',
+              border: `0.5px solid ${active ? 'transparent' : 'var(--cn-border-s)'}`,
+              fontFamily: 'var(--cn-font-body)', fontWeight: 700, fontSize: 11,
+              cursor: 'pointer',
+            }}>{f.label}</button>
+          );
+        })}
+      </div>
+
+      {loading && <div style={{ padding: 24, textAlign: 'center', color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>Loading…</div>}
+      {err && <div style={{ padding: 12, color: 'var(--cn-danger)', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>{err}</div>}
+      {!loading && !err && reports.length === 0 && (
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>
+          Nothing in this queue.
+        </div>
+      )}
+
+      {reports.map(r => (
+        <ReportCard
+          key={r.id}
+          r={r}
+          me={me}
+          busy={busy === r.id}
+          onResolve={resolve}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ReportCard({ r, me, busy, onResolve }) {
+  const isEscalated = r.status === 'escalated';
+  const isResolved = r.status === 'resolved';
+  const lockedToOwner = isEscalated && !me?.is_owner;
+  return (
+    <div style={{
+      padding: 14, marginBottom: 10, borderRadius: 12,
+      background: 'var(--cn-bg-elev)',
+      border: `0.5px solid ${isEscalated ? 'var(--cn-danger)' : 'var(--cn-border)'}`,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <span style={{
+          padding: '2px 8px', borderRadius: 6,
+          background: isEscalated ? 'var(--cn-danger)' : isResolved ? 'var(--cn-bg-elev2)' : 'var(--cn-accent)',
+          color: isEscalated ? '#fff' : isResolved ? 'var(--cn-text-mute)' : 'var(--cn-on-accent)',
+          fontFamily: 'var(--cn-font-mono)', fontSize: 10, fontWeight: 800, letterSpacing: 1,
+          textTransform: 'uppercase',
+        }}>{r.status}</span>
+        <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>
+          {r.target_type} · {relTime(r.created_at)}
+        </span>
+      </div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <strong>@{r.reporter?.username || 'someone'}</strong>
+        <span style={{ color: 'var(--cn-text-mute)' }}> reported </span>
+        {r.target_user
+          ? <strong>@{r.target_user.username}</strong>
+          : <span>{r.target_type}</span>}
+        {r.target_user?.banned && (
+          <span style={{ marginLeft: 6, color: 'var(--cn-danger)', fontFamily: 'var(--cn-font-mono)', fontSize: 10, fontWeight: 800 }}>
+            BANNED{r.target_user.banned_until ? ` · until ${r.target_user.banned_until}` : ''}
+          </span>
+        )}
+      </div>
+      {r.reason && (
+        <div style={{
+          marginTop: 6, padding: '8px 10px', borderRadius: 8,
+          background: 'var(--cn-bg)', fontSize: 12, color: 'var(--cn-text-dim)',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+        }}>{r.reason}</div>
+      )}
+      {r.content_snapshot && (
+        <div style={{
+          marginTop: 6, padding: '8px 10px', borderRadius: 8,
+          background: 'var(--cn-bg)',
+          border: '0.5px solid var(--cn-border-s)',
+          fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text)',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          maxHeight: 160, overflow: 'auto',
+        }}>
+          <div style={{ fontSize: 9, color: 'var(--cn-text-mute)', letterSpacing: 1, marginBottom: 4 }}>SNAPSHOT</div>
+          {r.content_snapshot}
+        </div>
+      )}
+      {isResolved && (
+        <div style={{ marginTop: 8, fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>
+          Resolved by @{r.resolver?.username || '?'} · {r.resolution}
+          {r.ban_until ? ` · ban until ${r.ban_until}` : ''}
+          {r.resolution_note ? ` · "${r.resolution_note}"` : ''}
+        </div>
+      )}
+
+      {!isResolved && (
+        lockedToOwner ? (
+          <div style={{
+            marginTop: 10, fontFamily: 'var(--cn-font-mono)', fontSize: 11,
+            color: 'var(--cn-text-mute)', fontStyle: 'italic',
+          }}>Awaiting owner review</div>
+        ) : (
+          <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <button onClick={() => onResolve(r, 'dismiss')} disabled={busy} style={mini('var(--cn-text-dim)')}>
+              Dismiss
+            </button>
+            <button onClick={() => onResolve(r, 'remove_content')} disabled={busy} style={mini('var(--cn-warn)')}>
+              Remove content
+            </button>
+            <button onClick={() => onResolve(r, 'temp_ban', 1)} disabled={busy || !r.target_user} style={mini('var(--cn-danger)')}>
+              Ban 1d
+            </button>
+            <button onClick={() => onResolve(r, 'temp_ban', 7)} disabled={busy || !r.target_user} style={mini('var(--cn-danger)')}>
+              Ban 7d
+            </button>
+            <button onClick={() => onResolve(r, 'temp_ban', 30)} disabled={busy || !r.target_user} style={mini('var(--cn-danger)')}>
+              Ban 30d
+            </button>
+            {!isEscalated && (
+              <button onClick={() => onResolve(r, 'escalate')} disabled={busy} style={mini('var(--cn-accent)')}>
+                Escalate to owner
+              </button>
+            )}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+function mini(color) {
+  return {
+    padding: '6px 10px', borderRadius: 999,
+    background: 'transparent', color,
+    border: `0.5px solid ${color}`,
+    fontFamily: 'var(--cn-font-body)', fontWeight: 700, fontSize: 11,
+    cursor: 'pointer',
+  };
 }
 
 function AdminStat({ label, value, sub }) {

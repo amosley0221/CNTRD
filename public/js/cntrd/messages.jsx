@@ -339,6 +339,7 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
   const [replyTo, setReplyTo] = React.useState(null);
   const [editing, setEditing] = React.useState(null); // { id, content }
   const [actionMsg, setActionMsg] = React.useState(null);
+  const [reportMsg, setReportMsg] = React.useState(null);
   const [groupInfoOpen, setGroupInfoOpen] = React.useState(false);
   const scrollRef = React.useRef(null);
   const inputRef = React.useRef(null);
@@ -640,6 +641,15 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
           onReply={() => { setReplyTo(actionMsg); setActionMsg(null); setTimeout(() => inputRef.current?.focus(), 0); }}
           onEdit={() => startEdit(actionMsg)}
           onDelete={() => deleteMsg(actionMsg)}
+          onReport={() => { setReportMsg(actionMsg); setActionMsg(null); }}
+        />
+      )}
+      {reportMsg && (
+        <ReportSheet
+          targetType="message"
+          targetId={reportMsg.id}
+          preview={reportMsg.content || ''}
+          onClose={() => setReportMsg(null)}
         />
       )}
 
@@ -1398,7 +1408,7 @@ function AddMemberPanel({ conv, existingIds, onCancel, onAdded }) {
   );
 }
 
-function DmActionSheet({ msg, isMine, onClose, onReply, onEdit, onDelete }) {
+function DmActionSheet({ msg, isMine, onClose, onReply, onEdit, onDelete, onReport }) {
   const u = msg.user || {};
   const preview = msg.deleted ? '(deleted)' : (msg.content || '');
   return (
@@ -1426,6 +1436,7 @@ function DmActionSheet({ msg, isMine, onClose, onReply, onEdit, onDelete }) {
         {!msg.deleted && <DmActionRow icon="reply" label="Reply" onClick={onReply} />}
         {isMine && !msg.deleted && <DmActionRow icon="text" label="Edit" onClick={onEdit} />}
         {isMine && !msg.deleted && <DmActionRow icon="x" label="Delete" onClick={onDelete} danger />}
+        {!isMine && !msg.deleted && <DmActionRow icon="bell" label="Report message" onClick={onReport} danger />}
         <DmActionRow icon="x" label="Cancel" onClick={onClose} />
       </div>
     </div>

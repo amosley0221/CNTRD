@@ -203,6 +203,12 @@ const API = {
   createEvent(id, payload)              { return request('POST', `/api/messages/${id}/events`, payload); },
   deleteEvent(id, eventId)              { return request('DELETE', `/api/messages/${id}/events/${eventId}`); },
 
+  // Reports — anyone signed-in can file; admin/owner manage.
+  reportSubmit(payload)              { return request('POST', '/api/reports', payload); },
+  reportsList(status = 'pending')    { return request('GET',  `/api/reports?status=${encodeURIComponent(status)}`); },
+  reportsCounts()                    { return request('GET',  '/api/reports/counts').catch(() => ({ pending: 0, escalated: 0 })); },
+  reportResolve(id, payload)         { return request('POST', `/api/reports/${id}/resolve`, payload); },
+
   // Admin (server enforces is_admin)
   adminUsers(q)            { return request('GET',  '/api/admin/users' + (q ? '?q=' + encodeURIComponent(q) : '')); },
   adminStats()             { return request('GET',  '/api/admin/stats'); },
