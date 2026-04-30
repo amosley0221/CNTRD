@@ -1,6 +1,20 @@
 // admin.jsx — Admin-only screen: user list, ban/unban, post deletion.
 // Visible only when window.ME.is_admin is true; gated server-side too.
 
+// SQLite stores datetimes as "YYYY-MM-DD HH:MM:SS" UTC. Render a friendly
+// local-time string for the admin user card; falls back to "Never" when
+// the user has not signed in since the column was added.
+function formatLastLogin(s) {
+  if (!s) return 'Never';
+  const t = Date.parse(s.includes('T') ? s : s.replace(' ', 'T') + 'Z');
+  if (!Number.isFinite(t)) return s;
+  const d = new Date(t);
+  return d.toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  });
+}
+
 function AdminScreen({ tweaks, onNav, me }) {
   const [users, setUsers] = React.useState([]);
   const [stats, setStats] = React.useState(null);
@@ -9,7 +23,9 @@ function AdminScreen({ tweaks, onNav, me }) {
   const [q, setQ] = React.useState('');
   const [expanded, setExpanded] = React.useState(null);    // user id whose posts are open
   const [postsByUser, setPostsByUser] = React.useState({});
-  const [tab, setTab] = React.useState('users');             // 'users' | 'reports'
+  // Non-owner admins manage reports only; the Users tab is owner-only,
+  // so default to Reports for them.
+  const [tab, setTab] = React.useState(me?.is_owner ? 'users' : 'reports');
   const [reportsCounts, setReportsCounts] = React.useState({ pending: 0, escalated: 0 });
 
   const load = React.useCallback(async () => {
@@ -114,10 +130,10 @@ function AdminScreen({ tweaks, onNav, me }) {
         </div>
       )}
 
-      {/* Tabs */}
+      {/* Tabs — Users + Watchwords are owner-only; admins see Reports only. */}
       <div style={{ display: 'flex', padding: '8px 16px 0', gap: 8, borderBottom: '0.5px solid var(--cn-border)' }}>
         {[
-          { id: 'users',   label: 'Users' },
+          ...(me?.is_owner ? [{ id: 'users', label: 'Users' }] : []),
           { id: 'reports', label: 'Reports', badge: reportsCounts.pending + reportsCounts.escalated },
           ...(me?.is_owner ? [{ id: 'watchwords', label: 'Watchwords' }] : []),
         ].map(t => {
@@ -149,6 +165,8 @@ function AdminScreen({ tweaks, onNav, me }) {
         <ReportsTab me={me} onCounts={setReportsCounts} />
       ) : tab === 'watchwords' && me?.is_owner ? (
         <WatchwordsTab />
+      ) : !me?.is_owner ? (
+        <ReportsTab me={me} onCounts={setReportsCounts} />
       ) : (<>
       {/* Search */}
       <div style={{ padding: '10px 16px', borderBottom: '0.5px solid var(--cn-border)' }}>
@@ -598,6 +616,9 @@ function AdminUserRow({
           </div>
           <div style={{ fontSize: 11, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             @{user.username} · {user.email} · {user.post_count ?? 0} posts · {joined}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)' }}>
+            Last sign-in: {formatLastLogin(user.last_login_at)}
           </div>
           {(user.team_tags && user.team_tags.length > 0) && (
             <div style={{ marginTop: 4 }}>

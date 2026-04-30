@@ -9,8 +9,8 @@ router.use(requireAuth, requireAdmin);
 
 const ADMIN_USER_COLS =
   'id, username, email, display_name, avatar, avatar_hue, ' +
-  'team_tags, is_admin, is_owner, is_official, is_verified, banned, post_count, follower_count, ' +
-  'following_count, created_at';
+  'team_tags, is_admin, is_owner, is_official, is_verified, banned, banned_until, post_count, follower_count, ' +
+  'following_count, created_at, last_login_at';
 
 function hydrateUser(u) {
   if (!u) return u;
@@ -36,7 +36,8 @@ function rejectIfProtected(actor, target, { adminOnlyForOwner = false } = {}) {
 }
 
 // List all users.
-router.get('/users', (req, res) => {
+// Owner-only — admins manage reports, owner manages user roles + bans.
+router.get('/users', requireOwner, (req, res) => {
   const q = (req.query.q || '').trim();
   let users;
   if (q) {

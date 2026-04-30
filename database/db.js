@@ -237,6 +237,9 @@ try {
 // banned_until > now; auto-clears banned + banned_until once expired.
 ensureColumn('users', 'banned_until', "TEXT DEFAULT NULL");
 
+// Last successful sign-in. Updated by the auth route on login.
+ensureColumn('users', 'last_login_at', "TEXT DEFAULT NULL");
+
 // User reports for inappropriate content (posts / messages / users).
 // content_snapshot captures the text at report time so the review still
 // has context if the author edits or deletes the content afterwards.

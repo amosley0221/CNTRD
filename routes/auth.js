@@ -157,6 +157,8 @@ router.post('/login', (req, res) => {
   }
 
   syncAdminFlag(user);
+  // Stamp the sign-in time so admin / owner tools can show last activity.
+  db.prepare(`UPDATE users SET last_login_at = datetime('now') WHERE id = ?`).run(user.id);
 
   const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '30d' });
   const safe = hydrate(db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`).get(user.id));
