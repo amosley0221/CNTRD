@@ -459,7 +459,12 @@ function SettingsScreen({ tweaks, setTweak, onNav, me, onMeUpdated, unreadNotifs
         <Section title="Appearance">
           <Row label="Dark mode" sub={tweaks.dark ? 'Following the night game' : 'Day game energy'} right={<ToggleSwitch on={tweaks.dark} onChange={v => setTweak('dark', v)} />} />
           <Row label="Accent color" right={
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 200 }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(4, 22px)',
+              gap: 6,
+              justifyContent: 'end',
+            }}>
               {[
                 '#D4FF3A',  // lime (default)
                 '#FF3B30',  // red
