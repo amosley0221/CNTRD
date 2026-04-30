@@ -852,30 +852,36 @@ function EventStrip({ events, me, onCancel }) {
   );
 }
 
-function defaultStartIso(offsetMin = 60) {
+function defaultStartParts(offsetMin = 60) {
   // Round up to the next quarter hour, then pad by offsetMin.
   const d = new Date(Date.now() + offsetMin * 60_000);
   d.setSeconds(0, 0);
   d.setMinutes(d.getMinutes() + ((15 - (d.getMinutes() % 15)) % 15));
-  // datetime-local needs YYYY-MM-DDTHH:MM in *local* time.
   const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return {
+    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+  };
 }
 
 function EventScheduleModal({ onClose, onCreate }) {
+  const initialStart = React.useMemo(() => defaultStartParts(60), []);
   const [title, setTitle] = React.useState('');
   const [description, setDescription] = React.useState('');
-  const [startLocal, setStartLocal] = React.useState(() => defaultStartIso(60));
+  const [startDate, setStartDate] = React.useState(initialStart.date);
+  const [startTime, setStartTime] = React.useState(initialStart.time);
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState(null);
 
+  const ready = !!title.trim() && !!startDate && !!startTime && !busy;
+
   const submit = async () => {
-    if (!title.trim() || !startLocal || busy) return;
+    if (!ready) return;
     setBusy(true); setErr(null);
     try {
-      // Convert the local datetime-local value to a UTC ISO string the
-      // server can store directly.
-      const start = new Date(startLocal);
+      // Combine the separate date + time pickers into a local datetime,
+      // then send as UTC ISO so the server stores a timezone-stable value.
+      const start = new Date(`${startDate}T${startTime}`);
       if (isNaN(start.getTime())) throw new Error('Invalid start time');
       if (start.getTime() < Date.now()) throw new Error('Pick a time in the future');
       await onCreate({
@@ -922,7 +928,6 @@ function EventScheduleModal({ onClose, onCreate }) {
             value={title}
             onChange={e => setTitle(e.target.value.slice(0, 120))}
             autoFocus
-            placeholder="Fight night watch party with the boys"
             style={{
               padding: '10px 12px', borderRadius: 8,
               background: 'var(--cn-bg)',
@@ -931,25 +936,43 @@ function EventScheduleModal({ onClose, onCreate }) {
               fontFamily: 'var(--cn-font-body)',
             }}
           />
-          <label style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 0.6, textTransform: 'uppercase' }}>Starts</label>
-          <input
-            type="datetime-local"
-            value={startLocal}
-            onChange={e => setStartLocal(e.target.value)}
-            style={{
-              padding: '10px 12px', borderRadius: 8,
-              background: 'var(--cn-bg)',
-              border: '0.5px solid var(--cn-border-s)',
-              color: 'var(--cn-text)', fontSize: 14, outline: 'none',
-              fontFamily: 'var(--cn-font-body)',
-            }}
-          />
+          <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 0.6, textTransform: 'uppercase' }}>Date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                style={{
+                  padding: '10px 12px', borderRadius: 8,
+                  background: 'var(--cn-bg)',
+                  border: '0.5px solid var(--cn-border-s)',
+                  color: 'var(--cn-text)', fontSize: 14, outline: 'none',
+                  fontFamily: 'var(--cn-font-body)',
+                }}
+              />
+            </div>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 0.6, textTransform: 'uppercase' }}>Time</label>
+              <input
+                type="time"
+                value={startTime}
+                onChange={e => setStartTime(e.target.value)}
+                style={{
+                  padding: '10px 12px', borderRadius: 8,
+                  background: 'var(--cn-bg)',
+                  border: '0.5px solid var(--cn-border-s)',
+                  color: 'var(--cn-text)', fontSize: 14, outline: 'none',
+                  fontFamily: 'var(--cn-font-body)',
+                }}
+              />
+            </div>
+          </div>
           <label style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', letterSpacing: 0.6, textTransform: 'uppercase' }}>Notes (optional)</label>
           <textarea
             value={description}
             onChange={e => setDescription(e.target.value.slice(0, 500))}
             rows={3}
-            placeholder="Doors at 8, fight starts 9:30…"
             style={{
               padding: '10px 12px', borderRadius: 8,
               background: 'var(--cn-bg)',
@@ -961,9 +984,6 @@ function EventScheduleModal({ onClose, onCreate }) {
           {err && (
             <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-danger)' }}>{err}</div>
           )}
-          <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)', lineHeight: 1.5 }}>
-            Everyone in the group gets a notification 15 minutes before start.
-          </div>
         </div>
         <div style={{ padding: '10px 14px', borderTop: '0.5px solid var(--cn-border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button onClick={onClose} style={{
@@ -972,12 +992,12 @@ function EventScheduleModal({ onClose, onCreate }) {
             border: '0.5px solid var(--cn-border-s)', cursor: 'pointer',
             fontWeight: 600, fontSize: 12, fontFamily: 'var(--cn-font-body)',
           }}>Cancel</button>
-          <button onClick={submit} disabled={!title.trim() || !startLocal || busy} style={{
+          <button onClick={submit} disabled={!ready} style={{
             padding: '8px 14px', borderRadius: 999,
-            background: title.trim() && startLocal && !busy ? 'var(--cn-accent)' : 'var(--cn-bg-elev2)',
-            color:      title.trim() && startLocal && !busy ? 'var(--cn-on-accent)' : 'var(--cn-text-mute)',
+            background: ready ? 'var(--cn-accent)' : 'var(--cn-bg-elev2)',
+            color:      ready ? 'var(--cn-on-accent)' : 'var(--cn-text-mute)',
             border: 'none',
-            cursor: title.trim() && startLocal && !busy ? 'pointer' : 'not-allowed',
+            cursor: ready ? 'pointer' : 'not-allowed',
             fontWeight: 700, fontSize: 12, fontFamily: 'var(--cn-font-body)',
           }}>{busy ? 'Saving…' : 'Schedule'}</button>
         </div>
