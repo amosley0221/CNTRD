@@ -17,7 +17,8 @@ const SELECT_POST = `
          p.type, p.tags, p.extra,
          u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags,
          u.is_admin AS author_is_admin, u.is_owner AS author_is_owner,
-         u.is_official AS author_is_official, u.is_verified AS author_is_verified
+         u.is_official AS author_is_official, u.is_verified AS author_is_verified,
+         u.hide_username AS author_hide_username
   FROM posts p
   JOIN users u ON u.id = p.user_id
 `;
@@ -74,6 +75,7 @@ function hydrate(p) {
       is_owner:    !!p.author_is_owner,
       is_official: !!p.author_is_official,
       is_verified: !!p.author_is_verified,
+      hide_username: !!p.author_hide_username,
     },
   };
 }

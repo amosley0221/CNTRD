@@ -220,6 +220,10 @@ ensureColumn('users', 'tweaks', "TEXT DEFAULT '{}'");
 ensureColumn('users', 'is_owner',    "INTEGER DEFAULT 0");
 ensureColumn('users', 'is_official', "INTEGER DEFAULT 0");
 ensureColumn('users', 'is_verified', "INTEGER DEFAULT 0");
+// Admin / owner privilege: drop the @username from public surfaces so
+// only the display name shows. Routing + login still use the username
+// internally; this only affects what other users see.
+ensureColumn('users', 'hide_username', "INTEGER DEFAULT 0");
 
 // post type: take | photo | score | poll | clip | box | rumor
 ensureColumn('posts', 'type',  "TEXT DEFAULT 'take'");

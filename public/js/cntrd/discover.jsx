@@ -270,9 +270,11 @@ function UserRow({ user }) {
           </span>
           <RoleBadges user={user} size={12} />
         </div>
-        <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>
-          @{user.username}
-        </div>
+        {displayHandle(user) && (
+          <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>
+            {displayHandle(user)}
+          </div>
+        )}
       </div>
       <Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />
     </button>

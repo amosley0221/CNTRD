@@ -181,7 +181,9 @@ function DesktopNav({ onNav, me, screen, unreadMessages, unreadNotifs }) {
         <Avatar user={meUser} size={36} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700 }}>{meUser.displayName}</div>
-          <div style={{ fontSize: 11, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)' }}>@{meUser.username}</div>
+          {displayHandle(meUser) && (
+            <div style={{ fontSize: 11, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)' }}>{displayHandle(meUser)}</div>
+          )}
         </div>
         <button onClick={() => onNav?.('logout')} title="Sign out" style={{
           width: 30, height: 30, borderRadius: 8,
@@ -460,9 +462,11 @@ function DesktopRailSearch({ onNav }) {
                         <div style={{ fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {u.displayName}
                         </div>
-                        <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)' }}>
-                          @{u.username}
-                        </div>
+                        {displayHandle(u) && (
+                          <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: 'var(--cn-text-mute)' }}>
+                            {displayHandle(u)}
+                          </div>
+                        )}
                       </div>
                     </button>
                   ))}

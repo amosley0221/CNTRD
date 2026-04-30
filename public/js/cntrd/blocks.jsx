@@ -51,7 +51,9 @@ function BlockedAccountsScreen({ tweaks, onNav }) {
                 <Avatar user={u} size={36} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 14 }}>{u.displayName}</div>
-                  <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>@{u.username}</div>
+                  {displayHandle(u) && (
+                    <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>{displayHandle(u)}</div>
+                  )}
                 </div>
                 <button onClick={() => unblock(u)} style={{
                   padding: '6px 12px', borderRadius: 999,

@@ -90,6 +90,7 @@ function normalizeMe(u) {
     is_owner: !!u.is_owner,
     is_official: !!u.is_official,
     is_verified: !!u.is_verified,
+    hide_username: !!u.hide_username,
     banned: !!u.banned,
     notificationPrefs: u.notification_prefs || {},
     tweaks: u.tweaks || {},

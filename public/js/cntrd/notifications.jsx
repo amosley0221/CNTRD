@@ -459,7 +459,7 @@ function RequestRow({ req, onAccept, onReject }) {
           <span style={{ fontSize: 14, fontWeight: 700 }}>{req.displayName}</span>
           <RoleBadges user={req} size={12} />
         </div>
-        <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>@{req.username} · {relTime(req.requested_at)}</div>
+        <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>{displayHandle(req) ? displayHandle(req) + ' · ' : ''}{relTime(req.requested_at)}</div>
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
         <button onClick={onAccept} style={{

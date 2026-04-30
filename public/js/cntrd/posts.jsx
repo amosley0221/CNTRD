@@ -63,10 +63,15 @@ function PostHeader({ user, time, tags, edited, postId, isMine, canEdit, onEdit,
           )}
         </div>
         <div style={{ fontSize: 12, color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)' }}>
-          <button onClick={openProfile} disabled={!clickable} style={{ ...linkBtnStyle, fontSize: 'inherit', color: 'inherit', fontFamily: 'inherit' }}>
-            @{u.username}
-          </button>
-          {' · '}{time}{edited ? ' · edited' : ''}
+          {displayHandle(u) && (
+            <>
+              <button onClick={openProfile} disabled={!clickable} style={{ ...linkBtnStyle, fontSize: 'inherit', color: 'inherit', fontFamily: 'inherit' }}>
+                {displayHandle(u)}
+              </button>
+              {' · '}
+            </>
+          )}
+          {time}{edited ? ' · edited' : ''}
         </div>
       </div>
       <div style={{ position: 'relative' }}>

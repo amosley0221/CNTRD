@@ -8,7 +8,8 @@ const { notify } = require('../services/notifier');
 
 const PUBLIC_USER_COLS =
   'id, username, display_name, bio, avatar, banner, team_tags, followed_leagues, ' +
-  'avatar_hue, pronouns, city, is_private, is_admin, is_owner, is_official, is_verified, notification_prefs, ' +
+  'avatar_hue, pronouns, city, is_private, is_admin, is_owner, is_official, is_verified, ' +
+  'hide_username, notification_prefs, ' +
   'follower_count, following_count, post_count, created_at';
 
 const { DEFAULT_PREFS: NOTIF_DEFAULTS } = require('../services/notifier');
@@ -22,6 +23,7 @@ function hydrate(u) {
   u.is_owner         = !!u.is_owner;
   u.is_official      = !!u.is_official;
   u.is_verified      = !!u.is_verified;
+  u.hide_username    = !!u.hide_username;
   let prefs = {};
   try { prefs = JSON.parse(u.notification_prefs || '{}'); } catch {}
   u.notification_prefs = { ...NOTIF_DEFAULTS, ...prefs };
@@ -44,6 +46,7 @@ function lockedView(user) {
     is_owner:    !!user.is_owner,
     is_official: !!user.is_official,
     is_verified: !!user.is_verified,
+    hide_username: !!user.hide_username,
     follower_count: user.follower_count,
     following_count: user.following_count,
     created_at: user.created_at,
@@ -122,6 +125,16 @@ router.patch('/me/profile', requireAuth, (req, res) => {
   if (pronouns !== undefined) { updates.push('pronouns = ?'); values.push(String(pronouns).slice(0, 30)); }
   if (city     !== undefined) { updates.push('city = ?');     values.push(String(city).slice(0, 80)); }
   if (is_private !== undefined) { updates.push('is_private = ?'); values.push(is_private ? 1 : 0); }
+  // Hiding the @username is reserved for admins and owners — regular
+  // accounts can't make themselves anonymous. Silently ignore the field
+  // on a non-privileged account so a legitimate update with other
+  // fields still goes through.
+  if (req.body.hide_username !== undefined) {
+    const me = db.prepare('SELECT is_admin, is_owner FROM users WHERE id = ?').get(req.user.id);
+    if (me && (me.is_admin || me.is_owner)) {
+      updates.push('hide_username = ?'); values.push(req.body.hide_username ? 1 : 0);
+    }
+  }
   if (notification_prefs !== undefined) {
     if (notification_prefs && typeof notification_prefs === 'object' && !Array.isArray(notification_prefs)) {
       const cleaned = {};
@@ -225,7 +238,7 @@ router.get('/me/follow-requests', requireAuth, (req, res) => {
   const rows = db.prepare(`
     SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags,
            u.is_admin, u.is_owner, u.is_official, u.is_verified,
-           fr.created_at
+           u.hide_username, fr.created_at
     FROM follow_requests fr
     JOIN users u ON u.id = fr.requester_id
     WHERE fr.target_id = ?
@@ -242,6 +255,7 @@ router.get('/me/follow-requests', requireAuth, (req, res) => {
     is_owner:    !!u.is_owner,
     is_official: !!u.is_official,
     is_verified: !!u.is_verified,
+    hide_username: !!u.hide_username,
     requested_at: u.created_at,
   })));
 });
@@ -336,7 +350,7 @@ router.get('/:username/followers', requireAuth, (req, res) => {
   if (!target) return res.status(404).json({ error: 'User not found' });
   const followers = db.prepare(`
     SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags,
-           u.is_admin, u.is_owner, u.is_official, u.is_verified,
+           u.is_admin, u.is_owner, u.is_official, u.is_verified, u.hide_username,
            (SELECT 1 FROM follows WHERE follower_id = ? AND following_id = u.id) AS i_follow_them,
            (SELECT 1 FROM mutes   WHERE muter_id    = ? AND muted_id     = u.id) AS i_mute_them,
            (SELECT 1 FROM blocks  WHERE blocker_id  = ? AND blocked_id   = u.id) AS i_block_them
@@ -350,6 +364,7 @@ router.get('/:username/followers', requireAuth, (req, res) => {
     u.is_owner    = !!u.is_owner;
     u.is_official = !!u.is_official;
     u.is_verified = !!u.is_verified;
+    u.hide_username = !!u.hide_username;
     u.i_follow_them = !!u.i_follow_them;
     u.i_mute_them   = !!u.i_mute_them;
     u.i_block_them  = !!u.i_block_them;
@@ -362,7 +377,7 @@ router.get('/:username/following', requireAuth, (req, res) => {
   if (!target) return res.status(404).json({ error: 'User not found' });
   const following = db.prepare(`
     SELECT u.id, u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags,
-           u.is_admin, u.is_owner, u.is_official, u.is_verified,
+           u.is_admin, u.is_owner, u.is_official, u.is_verified, u.hide_username,
            (SELECT 1 FROM follows WHERE follower_id = ? AND following_id = u.id) AS i_follow_them,
            (SELECT 1 FROM mutes   WHERE muter_id    = ? AND muted_id     = u.id) AS i_mute_them,
            (SELECT 1 FROM blocks  WHERE blocker_id  = ? AND blocked_id   = u.id) AS i_block_them
@@ -376,6 +391,7 @@ router.get('/:username/following', requireAuth, (req, res) => {
     u.is_owner    = !!u.is_owner;
     u.is_official = !!u.is_official;
     u.is_verified = !!u.is_verified;
+    u.hide_username = !!u.hide_username;
     u.i_follow_them = !!u.i_follow_them;
     u.i_mute_them   = !!u.i_mute_them;
     u.i_block_them  = !!u.i_block_them;

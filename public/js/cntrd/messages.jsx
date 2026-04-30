@@ -763,7 +763,7 @@ function NewConversationScreen({ onNav, me, onCreated, onCancel }) {
                 border: '0.5px solid var(--cn-accent)',
                 fontSize: 12, fontWeight: 600,
               }}>
-                @{u.username}
+                {displayHandle(u) || u.displayName || u.username}
                 <button onClick={() => togglePick(u)} style={{
                   background: 'transparent', border: 'none', cursor: 'pointer',
                   color: 'var(--cn-text)', padding: 0, display: 'flex',
@@ -804,7 +804,9 @@ function NewConversationScreen({ onNav, me, onCreated, onCancel }) {
               <Avatar user={u} size={36} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 13 }}>{u.displayName}</div>
-                <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>@{u.username}</div>
+                {displayHandle(u) && (
+                  <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>{displayHandle(u)}</div>
+                )}
               </div>
               {sel ? (
                 <span style={{ color: 'var(--cn-accent)', fontWeight: 800 }}>✓</span>

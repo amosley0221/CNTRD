@@ -176,9 +176,11 @@ function FollowListRow({ user, isMe, isMyList, mode, busy, onOpen, onFollowToggl
             </span>
             <RoleBadges user={user} size={12} />
           </div>
-          <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>
-            @{user.username}
-          </div>
+          {displayHandle(user) && (
+            <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>
+              {displayHandle(user)}
+            </div>
+          )}
           {user.team_tags && user.team_tags.length > 0 && (
             <div style={{ marginTop: 4 }}>
               <TeamTagsRow codes={user.team_tags} size="xs" />

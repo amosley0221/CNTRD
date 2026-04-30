@@ -387,6 +387,15 @@ function TeamName({ team, league, fontSize = 14, weight = 600, color }) {
 //   · Owner    — gold / star, single user, indicates platform owner
 //   · Admin    — outlined moderator badge
 //   · Official — blue check, organizational account (team / league)
+// Returns the public @handle for a user, or '' when the user has the
+// hide_username flag set (admin/owner privilege). Use this everywhere
+// we'd render `@${user.username}` so the flag takes effect uniformly.
+function displayHandle(user) {
+  if (!user || user.hide_username) return '';
+  const name = user.username || user.handle;
+  return name ? '@' + name : '';
+}
+
 //   · Verified — accent check, identity-verified individual
 // Owner takes precedence over admin (owner is implicitly admin); only
 // the highest-tier badge renders.
@@ -666,5 +675,5 @@ Object.assign(window, {
   LEAGUE_LOGOS, TeamLogo, TeamName,
   dedupeUclOverlap,
   confirmAction, ConfirmHost,
-  RoleBadges,
+  RoleBadges, displayHandle,
 });

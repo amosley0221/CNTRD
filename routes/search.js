@@ -27,6 +27,7 @@ function safeUser(row) {
     is_owner:    !!row.is_owner,
     is_official: !!row.is_official,
     is_verified: !!row.is_verified,
+    hide_username: !!row.hide_username,
   };
 }
 
@@ -46,6 +47,7 @@ function hydratePost(row, viewerId) {
       is_owner:    !!row.is_owner,
       is_official: !!row.is_official,
       is_verified: !!row.is_verified,
+      hide_username: !!row.hide_username,
     },
     content: row.content,
     text: row.content,
@@ -77,7 +79,7 @@ router.get('/', optionalAuth, (req, res) => {
 
   const users = db.prepare(`
     SELECT id, username, display_name, avatar, avatar_hue,
-           is_admin, is_owner, is_official, is_verified
+           is_admin, is_owner, is_official, is_verified, hide_username
     FROM users
     WHERE banned = 0
       AND (username LIKE ? ESCAPE '\\' OR display_name LIKE ? ESCAPE '\\')
@@ -91,7 +93,7 @@ router.get('/', optionalAuth, (req, res) => {
     SELECT p.id, p.user_id, p.content, p.image, p.type, p.tags, p.extra,
            p.like_count, p.reply_count, p.repost_count, p.created_at, p.edited_at,
            u.username, u.display_name, u.avatar, u.avatar_hue,
-           u.is_admin, u.is_owner, u.is_official, u.is_verified,
+           u.is_admin, u.is_owner, u.is_official, u.is_verified, u.hide_username,
            ${viewerId ? '(SELECT 1 FROM likes WHERE post_id = p.id AND user_id = ?) AS liked,' : '0 AS liked,'}
            ${viewerId ? '(SELECT 1 FROM reposts WHERE post_id = p.id AND user_id = ?) AS reposted,' : '0 AS reposted,'}
            ${viewerId ? '(SELECT 1 FROM bookmarks WHERE post_id = p.id AND user_id = ?) AS bookmarked' : '0 AS bookmarked'}

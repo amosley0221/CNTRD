@@ -1095,7 +1095,7 @@ function ChatBubble({ m }) {
         {!isMine && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
             <button onClick={openProfile} disabled={!clickable} style={{ ...linkBtnStyle, fontSize: 11, fontWeight: 700, color: 'var(--cn-text-dim)' }}>
-              @{u.username}
+              {displayHandle(u) || u.displayName || u.username}
             </button>
             {team && <TeamPill code={team.code} size="xs" />}
             <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 9, color: 'var(--cn-text-mute)' }}>{m.time}</span>

@@ -98,7 +98,7 @@ function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePl
       {/* Top bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderBottom: '0.5px solid var(--cn-border)' }}>
         <button style={iconBtnStyle()} onClick={() => onNav?.('back')}><Icon name="chevron-l" size={22} stroke="var(--cn-text)" /></button>
-        <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 12, color: 'var(--cn-text-dim)' }}>@{u.username}</span>
+        <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 12, color: 'var(--cn-text-dim)' }}>{displayHandle(u) || u.displayName || u.username}</span>
         <button style={iconBtnStyle()} onClick={() => onNav?.('settings')}><Icon name="settings" size={20} stroke="var(--cn-text)" /></button>
       </div>
       <div ref={scrollerRef} style={{ flex: 1, overflowY: 'auto', paddingBottom: 96, overscrollBehaviorY: 'contain' }}>
@@ -123,8 +123,10 @@ function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePl
             <RoleBadges user={u} size={14} />
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 12, color: 'var(--cn-text-dim)' }}>@{u.username}</span>
-            {(u.teams && u.teams.length > 0) && <span style={{ color: 'var(--cn-text-mute)' }}>·</span>}
+            {displayHandle(u) && (
+              <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 12, color: 'var(--cn-text-dim)' }}>{displayHandle(u)}</span>
+            )}
+            {displayHandle(u) && (u.teams && u.teams.length > 0) && <span style={{ color: 'var(--cn-text-mute)' }}>·</span>}
             {dedupeUclOverlap(u.teams || []).map(t => <TeamPill key={t} code={t} size="sm" />)}
           </div>
           {u.bio && (
@@ -435,7 +437,9 @@ function MentionTextarea({ value, onChange, placeholder }) {
               <Avatar user={u} size={26} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>{u.displayName || u.username}</div>
-                <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>@{u.username}</div>
+                {displayHandle(u) && (
+                  <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>{displayHandle(u)}</div>
+                )}
               </div>
             </button>
           ))}
@@ -1432,7 +1436,7 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
         <Avatar user={u} size={32} />
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ fontWeight: 700, fontSize: 13 }}>@{u.username}</span>
+            <span style={{ fontWeight: 700, fontSize: 13 }}>{displayHandle(u) || u.displayName || u.username}</span>
             <TeamPill code={play.team} size="xs" />
             {play.live && <span style={{ background: 'var(--cn-live)', color: '#fff', fontSize: 8, fontWeight: 800, padding: '1.5px 5px', borderRadius: 3, fontFamily: 'var(--cn-font-mono)', letterSpacing: 0.5 }}>LIVE</span>}
           </div>
@@ -1573,10 +1577,12 @@ function PlayReactions({ playId }) {
 // for display — the login form only matches on username/email.
 function EditProfileScreen({ tweaks, onNav, me, onMeUpdated }) {
   const meUser = me || ME;
+  const isStaff = !!meUser.is_admin || !!meUser.is_owner;
   const [displayName, setDisplayName] = React.useState(meUser.displayName || '');
   const [bio, setBio]                 = React.useState(meUser.bio || '');
   const [city, setCity]               = React.useState(meUser.city || '');
   const [pronouns, setPronouns]       = React.useState(meUser.pronouns || '');
+  const [hideUsername, setHideUsername] = React.useState(!!meUser.hide_username);
   const [busy, setBusy]               = React.useState(false);
   const [err, setErr]                 = React.useState(null);
 
@@ -1584,19 +1590,22 @@ function EditProfileScreen({ tweaks, onNav, me, onMeUpdated }) {
     displayName !== (meUser.displayName || '') ||
     bio        !== (meUser.bio         || '') ||
     city       !== (meUser.city        || '') ||
-    pronouns   !== (meUser.pronouns    || '')
+    pronouns   !== (meUser.pronouns    || '') ||
+    (isStaff && hideUsername !== !!meUser.hide_username)
   );
 
   const save = async () => {
     if (!dirty || busy) return;
     setBusy(true); setErr(null);
     try {
-      const updated = await window.API.updateMe({
+      const payload = {
         display_name: displayName.trim().slice(0, 50) || meUser.username,
         bio: bio.slice(0, 160),
         city: city.slice(0, 60),
         pronouns: pronouns.slice(0, 30),
-      });
+      };
+      if (isStaff) payload.hide_username = !!hideUsername;
+      const updated = await window.API.updateMe(payload);
       onMeUpdated?.(updated);
       onNav?.('profile');
     } catch (e) {
@@ -1633,12 +1642,39 @@ function EditProfileScreen({ tweaks, onNav, me, onMeUpdated }) {
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 80px' }}>
         <EditProfileField
           label="Name"
-          help="Your display name. Shown alongside @username. Doesn't have to be unique and isn't used to log in."
+          help="Your display name."
           value={displayName}
           onChange={setDisplayName}
           maxLength={50}
           placeholder={meUser.username}
         />
+        {isStaff && (
+          <div style={{
+            margin: '4px 0 18px', padding: '12px',
+            background: 'var(--cn-bg-elev)',
+            border: '0.5px solid var(--cn-border-s)',
+            borderRadius: 8,
+            display: 'flex', alignItems: 'center', gap: 12,
+          }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>Hide my @username</div>
+              <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)', marginTop: 2, lineHeight: 1.45 }}>
+                Other users see only your display name. Available for admins and owners. Login still uses your username.
+              </div>
+            </div>
+            <button onClick={() => setHideUsername(v => !v)} style={{
+              position: 'relative', width: 44, height: 26, border: 'none',
+              borderRadius: 999, background: hideUsername ? 'var(--cn-accent)' : 'var(--cn-border-s)',
+              cursor: 'pointer', padding: 0, flexShrink: 0,
+            }}>
+              <span style={{
+                position: 'absolute', top: 3, left: hideUsername ? 21 : 3,
+                width: 20, height: 20, borderRadius: '50%', background: '#fff',
+                transition: 'left 0.18s', boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+              }} />
+            </button>
+          </div>
+        )}
         <EditProfileField
           label="Bio"
           help="A short line about you. 160 characters max."
@@ -1815,6 +1851,7 @@ function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0
     is_owner:    !!user.is_owner,
     is_official: !!user.is_official,
     is_verified: !!user.is_verified,
+    hide_username: !!user.hide_username,
     is_following: !!user.is_following,
     request_pending: !!user.request_pending,
     locked: !!user.is_private && !user.is_following && !isMe,
@@ -1827,7 +1864,7 @@ function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderBottom: '0.5px solid var(--cn-border)' }}>
         <button style={iconBtnStyle()} onClick={() => onNav?.('back')}><Icon name="chevron-l" size={22} stroke="var(--cn-text)" /></button>
-        <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 12, color: 'var(--cn-text-dim)' }}>@{username || ''}</span>
+        <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 12, color: 'var(--cn-text-dim)' }}>{view ? (displayHandle(view) || view.displayName) : (username ? '@' + username : '')}</span>
         <span style={{ width: 32 }} />
       </div>
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 96 }}>
@@ -1869,8 +1906,10 @@ function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0
                 <RoleBadges user={view} size={14} />
               </div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
-                <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 12, color: 'var(--cn-text-dim)' }}>@{view.username}</span>
-                {view.teams.length > 0 && <span style={{ color: 'var(--cn-text-mute)' }}>·</span>}
+                {displayHandle(view) && (
+                  <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 12, color: 'var(--cn-text-dim)' }}>{displayHandle(view)}</span>
+                )}
+                {displayHandle(view) && view.teams.length > 0 && <span style={{ color: 'var(--cn-text-mute)' }}>·</span>}
                 {dedupeUclOverlap(view.teams).map(t => <TeamPill key={t} code={t} size="sm" />)}
               </div>
               {view.bio && (
