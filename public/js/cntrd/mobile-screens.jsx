@@ -1565,20 +1565,33 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
       <div onClick={goPrev} style={{ position: 'absolute', left: 0, top: 0, bottom: 60, width: '40%', zIndex: 1, cursor: 'pointer' }} />
       <div onClick={goNext} style={{ position: 'absolute', right: 0, top: 0, bottom: 60, width: '40%', zIndex: 1, cursor: 'pointer' }} />
 
-      {/* progress bars */}
-      <div style={{ position: 'absolute', top: 56, left: 12, right: 12, display: 'flex', gap: 4, zIndex: 5 }}>
-        {list.map((_, i) => (
-          <div key={i} style={{ flex: 1, height: 2, borderRadius: 2, background: 'rgba(255,255,255,0.2)', overflow: 'hidden' }}>
-            <div style={{
-              width: i < idx ? '100%'
-                  : i === idx ? Math.round(progress * 100) + '%'
-                  : '0%',
-              height: '100%', background: '#fff',
-              transition: i === idx ? 'width 0.1s linear' : 'none',
-            }} />
+      {/* Progress bars — scoped to the current author so the segments
+          reset to "this user's Plays only" instead of stretching the
+          whole global list across multiple users. */}
+      {(() => {
+        const sameUser = (p) => {
+          const pu = typeof p.user === 'string' ? USERS[p.user] : p.user;
+          return pu && u && pu.id === u.id;
+        };
+        const userIndices = [];
+        for (let i = 0; i < list.length; i++) if (sameUser(list[i])) userIndices.push(i);
+        const localIdx = userIndices.indexOf(idx);
+        return (
+          <div style={{ position: 'absolute', top: 56, left: 12, right: 12, display: 'flex', gap: 4, zIndex: 5 }}>
+            {userIndices.map((globalI, lI) => (
+              <div key={globalI} style={{ flex: 1, height: 2, borderRadius: 2, background: 'rgba(255,255,255,0.2)', overflow: 'hidden' }}>
+                <div style={{
+                  width: lI < localIdx ? '100%'
+                      : lI === localIdx ? Math.round(progress * 100) + '%'
+                      : '0%',
+                  height: '100%', background: '#fff',
+                  transition: lI === localIdx ? 'width 0.1s linear' : 'none',
+                }} />
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        );
+      })()}
       {/* user header */}
       <div style={{ position: 'absolute', top: 70, left: 16, right: 16, display: 'flex', alignItems: 'center', gap: 10, zIndex: 5, color: '#fff' }}>
         <Avatar user={u} size={32} />
