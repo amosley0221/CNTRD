@@ -579,6 +579,7 @@ function SettingsScreen({ tweaks, setTweak, onNav, me, onMeUpdated, unreadNotifs
 function GamedayList({ tweaks, onNav, games, me, onPick, unreadMessages = 0 }) {
   const allLive     = games?.live     || [];
   const allUpcoming = games?.upcoming || [];
+  const allRecent   = games?.recent   || [];
 
   const favSet = React.useMemo(() => new Set(me?.teams || []), [me]);
   const matches = (g) => {
@@ -603,6 +604,17 @@ function GamedayList({ tweaks, onNav, games, me, onPick, unreadMessages = 0 }) {
 
   const relevantLive     = allLive.filter(isRelevant);
   const relevantUpcoming = allUpcoming.filter(isRelevant);
+  // Recent finals: only games that ended within the chat's 24 h grace
+  // window are joinable. We approximate "ended" as game_start + 3 h, so
+  // the chat is still open while game_start + 27 h > now → game_start
+  // must be > now - 27 h. Practically: keep games started in the last
+  // 27 hours (anything older is past close anyway).
+  const recentCutoffMs = Date.now() - 27 * 3600 * 1000;
+  const relevantRecent = allRecent.filter(g => {
+    if (!isRelevant(g)) return false;
+    const startMs = Date.parse(g.date || '');
+    return Number.isFinite(startMs) && startMs > recentCutoffMs;
+  });
 
   // League filter — shows every league the user follows or has a team
   // in, even when there's nothing scheduled today, so the user can
@@ -625,9 +637,9 @@ function GamedayList({ tweaks, onNav, games, me, onPick, unreadMessages = 0 }) {
     const seen = new Set();
     for (const l of followedLeagues) seen.add(l);
     for (const l of teamLeagues) seen.add(l);
-    for (const g of [...relevantLive, ...relevantUpcoming]) if (g?.league) seen.add(g.league);
+    for (const g of [...relevantLive, ...relevantUpcoming, ...relevantRecent]) if (g?.league) seen.add(g.league);
     return Array.from(seen).sort();
-  }, [followedLeagues, teamLeagues, relevantLive, relevantUpcoming]);
+  }, [followedLeagues, teamLeagues, relevantLive, relevantUpcoming, relevantRecent]);
   // Drop a stale filter if the league disappears from the selectable set.
   React.useEffect(() => {
     if (leagueFilter !== 'all' && !availableLeagues.includes(leagueFilter)) {
@@ -638,6 +650,7 @@ function GamedayList({ tweaks, onNav, games, me, onPick, unreadMessages = 0 }) {
   const inLeague = (g) => leagueFilter === 'all' || g.league === leagueFilter;
   const live     = relevantLive.filter(inLeague);
   const upcoming = relevantUpcoming.filter(inLeague);
+  const recent   = relevantRecent.filter(inLeague);
 
   // Partition each group; "your teams" combines live+upcoming favorites,
   // live ones rendered first.
@@ -646,8 +659,10 @@ function GamedayList({ tweaks, onNav, games, me, onPick, unreadMessages = 0 }) {
   const yours        = [...yourLive, ...yourUpcoming];
   const otherLive    = live.filter(g => !matches(g));
   const otherUpcoming = upcoming.filter(g => !matches(g));
+  const yourRecent   = recent.filter(matches);
+  const otherRecent  = recent.filter(g => !matches(g));
 
-  const empty = !live.length && !upcoming.length;
+  const empty = !live.length && !upcoming.length && !recent.length;
   // Distinguish "no games at all" from "you follow nothing yet" so the
   // empty state can prompt setup instead of "no games right now".
   const followsNothing = !followedLeagues.size && !favSet.size;
@@ -728,8 +743,10 @@ function GamedayList({ tweaks, onNav, games, me, onPick, unreadMessages = 0 }) {
                 onPick={onPick}
               />
             )}
-            {otherLive.length > 0    && <GamedayGroup label={yours.length ? 'OTHER LIVE NOW' : 'LIVE NOW'} live items={otherLive} onPick={onPick} />}
+            {otherLive.length > 0     && <GamedayGroup label={yours.length ? 'OTHER LIVE NOW' : 'LIVE NOW'} live items={otherLive} onPick={onPick} />}
             {otherUpcoming.length > 0 && <GamedayGroup label={yours.length ? 'OTHER UP NEXT' : 'UP NEXT'} items={otherUpcoming} onPick={onPick} />}
+            {yourRecent.length > 0    && <GamedayGroup label="YOUR RECENT FINALS" accent items={yourRecent} onPick={onPick} />}
+            {otherRecent.length > 0   && <GamedayGroup label={yourRecent.length ? 'OTHER RECENT FINALS' : 'RECENT FINALS'} items={otherRecent} onPick={onPick} />}
           </>
         )}
       </div>
@@ -800,7 +817,7 @@ function GamedayRow({ game, live, favorite, onClick }) {
           {aggText && <span> · {aggText}</span>}
         </div>
       </div>
-      {live ? (
+      {live || game.state === 'final' ? (
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', fontVariantNumeric: 'tabular-nums' }}>
           <span style={{ fontSize: 22 }}>{game.awayScore}</span>
           <span style={{ color: 'var(--cn-text-mute)', fontSize: 14 }}>·</span>
