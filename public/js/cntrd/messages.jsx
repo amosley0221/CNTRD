@@ -35,6 +35,7 @@ function MessagesRoot({ tweaks, onNav, me, messageContext, setMessageContext, on
 // ─── List of conversations ────────────────────────────────────────────
 function MessagesListScreen({ onNav, me, onOpenThread, onCompose, onUnread, unreadMessages = 0 }) {
   const [convs, setConvs] = React.useState([]);
+  const [invites, setInvites] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState(null);
   const [confirmDelete, setConfirmDelete] = React.useState(null);
@@ -42,8 +43,12 @@ function MessagesListScreen({ onNav, me, onOpenThread, onCompose, onUnread, unre
   const load = React.useCallback(async () => {
     setErr(null);
     try {
-      const list = await API.conversations();
+      const [list, pendingInvites] = await Promise.all([
+        API.conversations(),
+        API.groupInvites().catch(() => []),
+      ]);
       setConvs(list);
+      setInvites(pendingInvites || []);
       onUnread?.((list || []).reduce((n, c) => n + (c.unread || 0), 0));
     } catch (e) {
       setErr(e.message || 'Failed to load conversations');
@@ -56,6 +61,19 @@ function MessagesListScreen({ onNav, me, onOpenThread, onCompose, onUnread, unre
     setConvs(prev => prev.filter(c => c.id !== conv.id));
     setConfirmDelete(null);
     try { await API.leaveConversation(conv.id); }
+    catch { load(); }
+  };
+
+  const acceptInvite = async (invite) => {
+    setInvites(prev => prev.filter(i => i.conversation_id !== invite.conversation_id));
+    try {
+      await API.acceptGroupInvite(invite.conversation_id);
+      onOpenThread(invite.conversation_id);
+    } catch { load(); }
+  };
+  const rejectInvite = async (invite) => {
+    setInvites(prev => prev.filter(i => i.conversation_id !== invite.conversation_id));
+    try { await API.rejectGroupInvite(invite.conversation_id); }
     catch { load(); }
   };
 
@@ -83,9 +101,28 @@ function MessagesListScreen({ onNav, me, onOpenThread, onCompose, onUnread, unre
         }
       />
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 96 }}>
+        {invites.length > 0 && (
+          <div>
+            <div style={{
+              padding: '12px 16px 6px',
+              fontFamily: 'var(--cn-font-mono)', fontSize: 10, letterSpacing: 1,
+              color: 'var(--cn-accent)', fontWeight: 800,
+            }}>
+              GROUP INVITES · {invites.length}
+            </div>
+            {invites.map(inv => (
+              <InviteRow
+                key={inv.conversation_id}
+                invite={inv}
+                onAccept={() => acceptInvite(inv)}
+                onReject={() => rejectInvite(inv)}
+              />
+            ))}
+          </div>
+        )}
         {loading ? <Empty>Loading…</Empty>
           : err ? <Empty danger>{err}</Empty>
-          : convs.length === 0 ? <EmptyState onCompose={onCompose} />
+          : convs.length === 0 && invites.length === 0 ? <EmptyState onCompose={onCompose} />
           : convs.map(c => <ConversationRow key={c.id} conv={c} me={me} onClick={() => onOpenThread(c.id)} onDelete={() => setConfirmDelete(c)} />)}
       </div>
       <BottomNav active="messages" onChange={onNav} unreadMessages={unreadMessages} />
@@ -97,6 +134,40 @@ function MessagesListScreen({ onNav, me, onOpenThread, onCompose, onUnread, unre
           onConfirm={() => removeConv(confirmDelete)}
         />
       )}
+    </div>
+  );
+}
+
+function InviteRow({ invite, onAccept, onReject }) {
+  const inviter = invite.invited_by || {};
+  const name = invite.name || `Group with ${inviter.displayName || 'someone'}`;
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: '12px 16px', borderBottom: '0.5px solid var(--cn-border)',
+      background: 'color-mix(in srgb, var(--cn-accent) 6%, transparent)',
+    }}>
+      <Avatar user={inviter} size={42} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {name}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--cn-text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          @{inviter.username} invited you · {invite.member_count} {invite.member_count === 1 ? 'member' : 'members'}
+        </div>
+      </div>
+      <button onClick={onReject} style={{
+        padding: '6px 10px', borderRadius: 999,
+        background: 'transparent', color: 'var(--cn-text-dim)',
+        border: '0.5px solid var(--cn-border-s)', cursor: 'pointer',
+        fontFamily: 'var(--cn-font-body)', fontWeight: 700, fontSize: 11,
+      }}>Reject</button>
+      <button onClick={onAccept} style={{
+        padding: '6px 12px', borderRadius: 999,
+        background: 'var(--cn-accent)', color: 'var(--cn-on-accent)',
+        border: 'none', cursor: 'pointer',
+        fontFamily: 'var(--cn-font-body)', fontWeight: 700, fontSize: 11,
+      }}>Accept</button>
     </div>
   );
 }
@@ -268,6 +339,7 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
   const [replyTo, setReplyTo] = React.useState(null);
   const [editing, setEditing] = React.useState(null); // { id, content }
   const [actionMsg, setActionMsg] = React.useState(null);
+  const [groupInfoOpen, setGroupInfoOpen] = React.useState(false);
   const scrollRef = React.useRef(null);
   const inputRef = React.useRef(null);
   const lastTypingPulse = React.useRef(0);
@@ -442,15 +514,19 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <button
-                  onClick={openOther}
-                  disabled={conv.is_group || !conv.other?.username}
+                  onClick={() => {
+                    if (conv.is_group) setGroupInfoOpen(true);
+                    else openOther();
+                  }}
+                  disabled={!conv.is_group && !conv.other?.username}
                   style={{
                     background: 'transparent', border: 'none', padding: 0, margin: 0,
-                    cursor: !conv.is_group && conv.other?.username ? 'pointer' : 'default',
+                    cursor: (conv.is_group || conv.other?.username) ? 'pointer' : 'default',
                     color: 'inherit', fontWeight: 700, fontSize: 14,
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     fontFamily: 'inherit',
                   }}
+                  title={conv.is_group ? 'Group info' : (conv.other?.username ? `View @${conv.other.username}` : '')}
                 >{title}</button>
                 {conv.is_group && (
                   <button onClick={() => { setRenaming(true); setNameDraft(conv.name || ''); }} style={{
@@ -648,6 +724,13 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
               setEventOpen(false);
             } catch (e) { alert(e.message || 'Could not create'); }
           }}
+        />
+      )}
+      {groupInfoOpen && (
+        <GroupInfoSheet
+          conv={conv}
+          me={me}
+          onClose={() => setGroupInfoOpen(false)}
         />
       )}
     </div>
@@ -904,6 +987,18 @@ function EventScheduleModal({ onClose, onCreate }) {
 }
 
 function MessageBubble({ m, mine, showAuthor, showSeen, onTap, onReply }) {
+  if (m.is_system) {
+    return (
+      <div style={{
+        textAlign: 'center', padding: '4px 12px',
+        fontFamily: 'var(--cn-font-mono)', fontSize: 10.5,
+        color: 'var(--cn-text-mute)', letterSpacing: 0.4,
+      }}>
+        <span>{m.content}</span>
+        <span style={{ marginLeft: 6, opacity: 0.7 }}>· {relTime(m.created_at)}</span>
+      </div>
+    );
+  }
   const isDeleted = !!m.deleted;
   const isEdited = !!m.edited_at && !isDeleted;
   const openAuthor = (e) => {
@@ -979,6 +1074,87 @@ function MessageBubble({ m, mine, showAuthor, showSeen, onTap, onReply }) {
           <span>{relTime(m.created_at)}</span>
           {isEdited && <span>· edited</span>}
           {showSeen && <span style={{ color: 'var(--cn-accent)', fontWeight: 700 }}>· seen</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GroupInfoSheet({ conv, me, onClose }) {
+  const members = conv?.members || [];
+  const sorted = [...members].sort((a, b) => {
+    if (a.id === me?.id) return -1;
+    if (b.id === me?.id) return 1;
+    return (a.displayName || '').localeCompare(b.displayName || '');
+  });
+  const openProfile = (u) => {
+    if (!u?.username || u.id === me?.id) return;
+    window.dispatchEvent(new CustomEvent('cntrd:open-user', { detail: { username: u.username } }));
+    onClose?.();
+  };
+  return (
+    <div onClick={onClose} style={{
+      position: 'absolute', inset: 0, zIndex: 50,
+      background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)',
+      display: 'flex', alignItems: 'flex-end',
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        width: '100%', maxHeight: '80%', overflowY: 'auto',
+        background: 'var(--cn-bg-elev2)',
+        borderTopLeftRadius: 18, borderTopRightRadius: 18,
+        padding: '14px 0 calc(20px + env(safe-area-inset-bottom, 0px))',
+        color: 'var(--cn-text)',
+      }}>
+        <div style={{
+          padding: '4px 18px 14px',
+          borderBottom: '0.5px solid var(--cn-border-s)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+        }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 800, fontSize: 18, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {conv.name || 'Group'}
+            </div>
+            <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)', marginTop: 2 }}>
+              {members.length} {members.length === 1 ? 'member' : 'members'}
+              {conv.created_at ? ` · created ${relTime(conv.created_at)}` : ''}
+            </div>
+          </div>
+          <button onClick={onClose} style={{
+            background: 'transparent', border: 'none', padding: 6, cursor: 'pointer',
+          }} title="Close">
+            <Icon name="x" size={18} stroke="var(--cn-text-dim)" />
+          </button>
+        </div>
+        <div>
+          {sorted.map(u => {
+            const isMe = u.id === me?.id;
+            return (
+              <button
+                key={u.id}
+                onClick={() => openProfile(u)}
+                disabled={isMe || !u.username}
+                style={{
+                  width: '100%', padding: '12px 18px',
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  background: 'transparent', border: 'none',
+                  borderBottom: '0.5px solid var(--cn-border-s)',
+                  cursor: (isMe || !u.username) ? 'default' : 'pointer',
+                  color: 'var(--cn-text)', textAlign: 'left',
+                  fontFamily: 'var(--cn-font-body)',
+                }}
+              >
+                <Avatar user={u} size={36} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>
+                    {u.displayName || u.username}
+                    {isMe && <span style={{ color: 'var(--cn-text-mute)', fontWeight: 400, fontSize: 12, marginLeft: 6 }}>· you</span>}
+                  </div>
+                  <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-text-mute)' }}>@{u.username}</div>
+                </div>
+                {!isMe && u.username && <Icon name="chevron-r" size={14} stroke="var(--cn-text-mute)" />}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

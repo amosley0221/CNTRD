@@ -21,6 +21,7 @@ const NOTIF_PREF_GROUPS = [
       { key: 'follow_accept',   label: 'Follow accepted',     sub: 'Someone accepted your request' },
       { key: 'message',         label: 'New messages',        sub: 'Someone sent you a DM' },
       { key: 'mention',         label: 'Mentions',            sub: 'Someone @ed you in a post' },
+      { key: 'group_invite',    label: 'Group invites',       sub: 'Someone added you to a group chat' },
       { key: 'event_alert',     label: 'Group events',        sub: '15-minute heads-up before a group event starts' },
     ],
   },

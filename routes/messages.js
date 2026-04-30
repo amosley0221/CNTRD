@@ -183,16 +183,95 @@ router.post('/', (req, res) => {
     db.prepare(`
       INSERT INTO conversations (id, name, is_group, created_by) VALUES (?, ?, ?, ?)
     `).run(convId, name, isGroup ? 1 : 0, req.user.id);
-    // Creator gets last_read_at = now (they've seen everything so far).
-    // Other members start at the epoch so any later message is unread.
+    // Creator is always an immediate member.
     db.prepare(`INSERT INTO conversation_members (conversation_id, user_id, last_read_at) VALUES (?, ?, datetime('now'))`).run(convId, req.user.id);
-    const insertOther = db.prepare(`INSERT INTO conversation_members (conversation_id, user_id, last_read_at) VALUES (?, ?, '1970-01-01 00:00:00')`);
-    for (const uid of validIds) insertOther.run(convId, uid);
+    if (!isGroup) {
+      // 1:1 DMs: the recipient is auto-added — we treat opening a thread
+      // as implicit consent (otherwise a one-message DM would never deliver).
+      db.prepare(`INSERT INTO conversation_members (conversation_id, user_id, last_read_at) VALUES (?, ?, '1970-01-01 00:00:00')`)
+        .run(convId, validIds[0]);
+    } else {
+      // Groups: every other recipient becomes a pending invite. They
+      // appear as members + see the chat only after accepting.
+      const insertInvite = db.prepare(`INSERT OR IGNORE INTO conversation_invites (conversation_id, user_id, invited_by) VALUES (?, ?, ?)`);
+      for (const uid of validIds) insertInvite.run(convId, uid, req.user.id);
+    }
   });
   tx();
 
+  // Fan out group_invite notifications outside the txn (notifier writes).
+  if (isGroup) {
+    for (const uid of validIds) {
+      notify({
+        userId: uid, type: 'group_invite', actorId: req.user.id,
+        data: { conversation_id: convId, name: name || '' },
+        dedupeKey: `invite:${convId}:${uid}`,
+      });
+    }
+  }
+
   const conv = db.prepare('SELECT * FROM conversations WHERE id = ?').get(convId);
   res.status(201).json(hydrateConversation(conv, req.user.id));
+});
+
+// List my pending group invites.
+router.get('/invites', (req, res) => {
+  const rows = db.prepare(`
+    SELECT i.conversation_id, i.created_at, i.invited_by,
+           c.name, c.is_group,
+           u.username AS inviter_username, u.display_name AS inviter_display_name,
+           u.avatar AS inviter_avatar, u.avatar_hue AS inviter_avatar_hue,
+           (SELECT COUNT(*) FROM conversation_members WHERE conversation_id = c.id) AS member_count
+    FROM conversation_invites i
+    JOIN conversations c ON c.id = i.conversation_id
+    JOIN users u ON u.id = i.invited_by
+    WHERE i.user_id = ? AND c.is_group = 1
+    ORDER BY i.created_at DESC
+  `).all(req.user.id);
+  res.json(rows.map(r => ({
+    conversation_id: r.conversation_id,
+    name: r.name,
+    member_count: r.member_count,
+    created_at: r.created_at,
+    invited_by: {
+      id: r.invited_by,
+      username: r.inviter_username,
+      displayName: r.inviter_display_name || r.inviter_username,
+      avatar: r.inviter_avatar,
+      avatarHue: r.inviter_avatar_hue ?? 200,
+    },
+  })));
+});
+
+// Accept a pending invite — moves caller from invites → members.
+router.post('/invites/:convId/accept', (req, res) => {
+  const inv = db.prepare('SELECT 1 FROM conversation_invites WHERE conversation_id = ? AND user_id = ?')
+    .get(req.params.convId, req.user.id);
+  if (!inv) return res.status(404).json({ error: 'Invite not found' });
+  const conv = db.prepare('SELECT * FROM conversations WHERE id = ?').get(req.params.convId);
+  if (!conv) return res.status(404).json({ error: 'Conversation not found' });
+
+  let systemMsgId;
+  db.transaction(() => {
+    db.prepare(`INSERT OR IGNORE INTO conversation_members (conversation_id, user_id, last_read_at)
+                VALUES (?, ?, '1970-01-01 00:00:00')`).run(conv.id, req.user.id);
+    db.prepare('DELETE FROM conversation_invites WHERE conversation_id = ? AND user_id = ?')
+      .run(conv.id, req.user.id);
+    systemMsgId = uuidv4();
+    db.prepare(`INSERT INTO messages (id, conversation_id, user_id, content, is_system) VALUES (?, ?, ?, ?, 1)`)
+      .run(systemMsgId, conv.id, req.user.id, `${req.user.username} joined the group`);
+    db.prepare(`UPDATE conversations SET last_message_at = datetime('now') WHERE id = ?`).run(conv.id);
+  })();
+
+  res.json(hydrateConversation(conv, req.user.id));
+});
+
+// Reject a pending invite.
+router.post('/invites/:convId/reject', (req, res) => {
+  const result = db.prepare('DELETE FROM conversation_invites WHERE conversation_id = ? AND user_id = ?')
+    .run(req.params.convId, req.user.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Invite not found' });
+  res.json({ ok: true });
 });
 
 // Single conversation detail.
@@ -205,6 +284,8 @@ router.get('/:id', (req, res) => {
 });
 
 // Rename a group (only group conversations and only members can rename).
+// Posts a system message announcing the change so every member sees who
+// renamed it, when, and what the new name is.
 router.patch('/:id', (req, res) => {
   const conv = db.prepare('SELECT * FROM conversations WHERE id = ?').get(req.params.id);
   if (!conv) return res.status(404).json({ error: 'Conversation not found' });
@@ -212,11 +293,25 @@ router.patch('/:id', (req, res) => {
   if (!member) return res.status(403).json({ error: 'Not a member' });
   if (!conv.is_group) return res.status(400).json({ error: 'Only groups can be renamed' });
   const name = String(req.body?.name || '').trim().slice(0, 80) || null;
-  db.prepare('UPDATE conversations SET name = ? WHERE id = ?').run(name, conv.id);
+  if (name === conv.name) {
+    return res.json(hydrateConversation(conv, req.user.id));
+  }
+
+  db.transaction(() => {
+    db.prepare('UPDATE conversations SET name = ? WHERE id = ?').run(name, conv.id);
+    const announcement = name
+      ? `${req.user.username} renamed the group to "${name}"`
+      : `${req.user.username} cleared the group name`;
+    db.prepare(`INSERT INTO messages (id, conversation_id, user_id, content, is_system) VALUES (?, ?, ?, ?, 1)`)
+      .run(uuidv4(), conv.id, req.user.id, announcement);
+    db.prepare(`UPDATE conversations SET last_message_at = datetime('now') WHERE id = ?`).run(conv.id);
+  })();
+
   res.json(hydrateConversation({ ...conv, name }, req.user.id));
 });
 
-// Add a member to a group.
+// Invite a user to a group. They receive a group_invite notification and
+// only become a member once they accept.
 router.post('/:id/members', (req, res) => {
   const conv = db.prepare('SELECT * FROM conversations WHERE id = ?').get(req.params.id);
   if (!conv || !conv.is_group) return res.status(404).json({ error: 'Group not found' });
@@ -225,10 +320,21 @@ router.post('/:id/members', (req, res) => {
   const userId = String(req.body?.user_id || '');
   const target = db.prepare('SELECT id FROM users WHERE id = ? AND banned = 0').get(userId);
   if (!target) return res.status(400).json({ error: 'Invalid user' });
-  db.prepare(`
-    INSERT OR IGNORE INTO conversation_members (conversation_id, user_id, last_read_at)
-    VALUES (?, ?, '1970-01-01 00:00:00')
-  `).run(conv.id, userId);
+  // Already a member? No-op.
+  const already = db.prepare('SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?').get(conv.id, userId);
+  if (already) return res.json(hydrateConversation(conv, req.user.id));
+
+  const result = db.prepare(`
+    INSERT OR IGNORE INTO conversation_invites (conversation_id, user_id, invited_by)
+    VALUES (?, ?, ?)
+  `).run(conv.id, userId, req.user.id);
+  if (result.changes > 0) {
+    notify({
+      userId, type: 'group_invite', actorId: req.user.id,
+      data: { conversation_id: conv.id, name: conv.name || '' },
+      dedupeKey: `invite:${conv.id}:${userId}`,
+    });
+  }
   res.json(hydrateConversation(conv, req.user.id));
 });
 
@@ -249,6 +355,7 @@ function hydrateMessageRow(r) {
     created_at: r.created_at,
     edited_at: r.edited_at || null,
     deleted: isDeleted,
+    is_system: !!r.is_system,
     user: {
       id: r.user_id,
       username: r.username,
@@ -375,7 +482,7 @@ router.get('/gameday/:gameId', (req, res) => {
   }
 
   const rows = db.prepare(`
-    SELECT m.id, m.user_id, m.content, m.created_at, m.reply_to_id, m.edited_at, m.deleted_at,
+    SELECT m.id, m.user_id, m.content, m.created_at, m.reply_to_id, m.edited_at, m.deleted_at, m.is_system,
            u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
     FROM messages m JOIN users u ON u.id = m.user_id
     WHERE m.conversation_id = ?
@@ -405,7 +512,7 @@ router.get('/:id/messages', (req, res) => {
   const before = req.query.before;
   const after  = req.query.after;
   const params = [req.params.id];
-  let q = `SELECT m.id, m.user_id, m.content, m.created_at, m.reply_to_id, m.edited_at, m.deleted_at,
+  let q = `SELECT m.id, m.user_id, m.content, m.created_at, m.reply_to_id, m.edited_at, m.deleted_at, m.is_system,
                   u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
            FROM messages m JOIN users u ON u.id = m.user_id
            WHERE m.conversation_id = ?`;
@@ -515,7 +622,7 @@ router.post('/:id/messages', (req, res) => {
   }
 
   const row = db.prepare(`
-    SELECT m.id, m.user_id, m.content, m.created_at, m.reply_to_id, m.edited_at, m.deleted_at,
+    SELECT m.id, m.user_id, m.content, m.created_at, m.reply_to_id, m.edited_at, m.deleted_at, m.is_system,
            u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
     FROM messages m JOIN users u ON u.id = m.user_id
     WHERE m.id = ?
@@ -551,7 +658,7 @@ router.patch('/:id/messages/:msgId', (req, res) => {
     .run(content, msg.id);
 
   const row = db.prepare(`
-    SELECT m.id, m.user_id, m.content, m.created_at, m.reply_to_id, m.edited_at, m.deleted_at,
+    SELECT m.id, m.user_id, m.content, m.created_at, m.reply_to_id, m.edited_at, m.deleted_at, m.is_system,
            u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
     FROM messages m JOIN users u ON u.id = m.user_id
     WHERE m.id = ?

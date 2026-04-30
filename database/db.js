@@ -243,10 +243,30 @@ ensureColumn('messages', 'reply_to_id', "TEXT DEFAULT NULL");
 // Edit / soft-delete metadata for chat messages. Both null when untouched.
 ensureColumn('messages', 'edited_at',  "TEXT DEFAULT NULL");
 ensureColumn('messages', 'deleted_at', "TEXT DEFAULT NULL");
+// System-generated messages (e.g. "Alice renamed the group to …") render
+// differently than user posts; flag them so the client can centre and
+// dim them, and so the server can skip mention/reply notifications.
+ensureColumn('messages', 'is_system',  "INTEGER DEFAULT 0");
 
 // Typing indicator: each member pings this column while composing; readers
 // poll the conversation and surface anyone whose typing_until > now.
 ensureColumn('conversation_members', 'typing_until', "TEXT DEFAULT NULL");
+
+// Group-chat invitations. Adding someone to a group now creates a
+// pending invite; they're only added to conversation_members on accept.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS conversation_invites (
+    conversation_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    invited_by TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (conversation_id, user_id),
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id)         REFERENCES users(id)         ON DELETE CASCADE,
+    FOREIGN KEY (invited_by)      REFERENCES users(id)         ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_conv_invites_user ON conversation_invites(user_id);
+`);
 
 // post type: take | photo | score | poll | clip | box | rumor
 ensureColumn('posts', 'type',  "TEXT DEFAULT 'take'");

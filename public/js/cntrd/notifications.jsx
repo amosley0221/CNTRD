@@ -131,6 +131,12 @@ function NotificationsScreen({ tweaks, onNav, me, setMessageContext, onUnreadNot
       return;
     }
     if (n.type === 'follow_request') { setTab('requests'); return; }
+    if (n.type === 'group_invite') {
+      // Land on the messages list so the user sees the Accept/Reject row.
+      setMessageContext?.({ mode: 'list' });
+      onNav?.('messages');
+      return;
+    }
     // New follower / accepted follow / @mention all carry an actor —
     // route to that user's profile so the user can follow back, etc.
     if ((n.type === 'follow' || n.type === 'follow_accept' || n.type === 'mention') && n.actor?.username) {
@@ -401,6 +407,8 @@ function renderNotifText(n) {
       return { headline: `${actor} accepted your follow request`, body: '' };
     case 'message':
       return { headline: `${actor} sent a message`, body: d.preview || '' };
+    case 'group_invite':
+      return { headline: `${actor} invited you to a group`, body: d.name ? `"${d.name}"` : 'Tap to respond' };
     case 'mention':
       return { headline: `${actor} mentioned you`, body: d.preview || '' };
     case 'post': {
