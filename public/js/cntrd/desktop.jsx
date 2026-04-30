@@ -201,6 +201,28 @@ function DesktopNav({ onNav, me, screen, unreadMessages, unreadNotifs }) {
 function DesktopFeed({ tweaks, onNav, posts, plays, query, onOpenPlay }) {
   const allItems = (posts && posts.length ? posts : POSTS);
   const playList = (plays && plays.length ? plays : PLAYS);
+  // Group plays by author so the rail shows one bubble per user
+  // (Instagram-style "story" pattern). Live groups bumped to the front,
+  // then ordered by most recent activity.
+  const groupedPlays = React.useMemo(() => {
+    const byUser = new Map();
+    for (const p of playList) {
+      const uid = (typeof p.user === 'string' ? p.user : p.user?.id) || p.user_id || 'anon';
+      const existing = byUser.get(uid);
+      if (!existing || (p.created_at || '') > (existing.lead.created_at || '')) {
+        byUser.set(uid, { lead: p, plays: [...(existing?.plays || []), p] });
+      } else {
+        existing.plays.push(p);
+        byUser.set(uid, existing);
+      }
+    }
+    return Array.from(byUser.values()).sort((a, b) => {
+      const aLive = a.plays.some(p => p.live) ? 1 : 0;
+      const bLive = b.plays.some(p => p.live) ? 1 : 0;
+      if (aLive !== bLive) return bLive - aLive;
+      return (b.lead.created_at || '').localeCompare(a.lead.created_at || '');
+    });
+  }, [playList]);
   const q = (query || '').trim().toLowerCase();
   const items = q
     ? allItems.filter(p => {
@@ -252,7 +274,7 @@ function DesktopFeed({ tweaks, onNav, posts, plays, query, onOpenPlay }) {
         </div>
         <div style={{ display: 'flex', gap: 14 }}>
           <PlayBubble add onClick={() => onNav?.('playsCreator')} />
-          {playList.map(p => <PlayBubble key={p.id} play={p} onClick={() => (onOpenPlay ? onOpenPlay(p) : onNav?.('plays'))} />)}
+          {groupedPlays.map(g => <PlayBubble key={g.lead.id} play={g.lead} onClick={() => (onOpenPlay ? onOpenPlay(g.lead) : onNav?.('plays'))} />)}
         </div>
       </div>
 
