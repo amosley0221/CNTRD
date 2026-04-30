@@ -384,7 +384,7 @@ function ReportCard({ r, me, busy, onResolve }) {
             <button onClick={() => onResolve(r, 'temp_ban', 30)} disabled={busy || !r.target_user} style={mini('var(--cn-danger)')}>
               Ban 30d
             </button>
-            {!isEscalated && (
+            {!isEscalated && !me?.is_owner && (
               <button onClick={() => onResolve(r, 'escalate')} disabled={busy} style={mini('var(--cn-accent)')}>
                 Escalate to owner
               </button>

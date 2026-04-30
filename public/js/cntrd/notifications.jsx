@@ -6,10 +6,12 @@
 //               we add a queueing concept)
 
 const SCORE_TYPES    = new Set(['live_game', 'score', 'period_end', 'final']);
-const ACTIVITY_TYPES = new Set(['follow', 'follow_accept', 'message', 'post', 'event_alert', 'mention']);
+const ACTIVITY_TYPES = new Set(['follow', 'follow_accept', 'message', 'post', 'event_alert', 'mention', 'group_invite']);
+const REVIEW_TYPES   = new Set(['report_new', 'report_resolved', 'report_escalated']);
 
 function categorizeNotif(n) {
   if (SCORE_TYPES.has(n.type))    return 'scores';
+  if (REVIEW_TYPES.has(n.type))   return 'reviews';
   if (ACTIVITY_TYPES.has(n.type)) return 'activity';
   if (n.type === 'follow_request') return 'requests';
   return 'activity';
@@ -76,7 +78,7 @@ function NotificationsScreen({ tweaks, onNav, me, setMessageContext, onUnreadNot
   // so we deliberately skip follow_request notifications in the loop to
   // avoid double-counting them once the request is also pending.
   const counts = React.useMemo(() => {
-    const out = { scores: 0, activity: 0, requests: 0 };
+    const out = { scores: 0, activity: 0, requests: 0, reviews: 0 };
     for (const n of notifs) {
       if (n.read) continue;
       if (n.type === 'follow_request') continue;
@@ -86,6 +88,8 @@ function NotificationsScreen({ tweaks, onNav, me, setMessageContext, onUnreadNot
     out.requests = requests.length;
     return out;
   }, [notifs, requests]);
+
+  const isStaff = !!(me?.is_admin || me?.is_owner);
 
   const filtered = notifs.filter(n => categorizeNotif(n) === tab);
 
@@ -212,12 +216,13 @@ function NotificationsScreen({ tweaks, onNav, me, setMessageContext, onUnreadNot
         ) : <span style={{ width: 32 }} />}
       </div>
 
-      {/* Tabs */}
+      {/* Tabs — Reviews tab only renders for admins / owner. */}
       <div style={{ display: 'flex', borderBottom: '0.5px solid var(--cn-border)' }}>
         {[
           { id: 'scores',   label: 'Scores',   count: counts.scores },
           { id: 'activity', label: 'Activity', count: counts.activity },
           { id: 'requests', label: 'Requests', count: counts.requests },
+          ...(isStaff ? [{ id: 'reviews', label: 'Reviews', count: counts.reviews }] : []),
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             flex: 1, padding: '12px 0',
@@ -269,6 +274,8 @@ function NotificationsScreen({ tweaks, onNav, me, setMessageContext, onUnreadNot
             <NotifEmpty>{
               tab === 'scores'
                 ? 'No game updates yet. Notifications fire for leagues you follow + teams you favorite.'
+                : tab === 'reviews'
+                ? 'Nothing in the review queue. Reports and ban requests will show up here.'
                 : 'Nothing here. Follows, replies, and DMs will show up.'
             }</NotifEmpty>
           ) : (
