@@ -346,10 +346,16 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
 
   const load = React.useCallback(async () => {
     try {
-      const [c, ms] = await Promise.all([
-        API.conversation(conversationId),
-        API.conversationMessages(conversationId),
-      ]);
+      const c = await API.conversation(conversationId);
+      // Gameday chat rooms are not real DM threads — they live behind
+      // the gameday screen. If a notification or stale link landed us
+      // here, redirect to the gameday chat for that game and bail.
+      if (c?.game_id) {
+        window.dispatchEvent(new CustomEvent('cntrd:open-gameday-by-id', { detail: { gameId: c.game_id } }));
+        onBack?.();
+        return;
+      }
+      const ms = await API.conversationMessages(conversationId);
       setConv(c);
       setMessages(ms);
       onUnread?.(0);            // we just opened it; clear unread badge optimistically
@@ -365,7 +371,7 @@ function ConversationScreen({ onNav, me, conversationId, onBack, onUnread }) {
     } catch (e) {
       setErr(e.message || 'Failed to load');
     }
-  }, [conversationId, onUnread]);
+  }, [conversationId, onUnread, onBack]);
 
   React.useEffect(() => {
     load();

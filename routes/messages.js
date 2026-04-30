@@ -77,6 +77,8 @@ function hydrateConversation(conv, viewerId) {
     id: conv.id,
     name: conv.name,
     is_group: !!conv.is_group,
+    game_id: conv.game_id || null,
+    closes_at: conv.closes_at || null,
     created_at: conv.created_at,
     last_message_at: conv.last_message_at,
     members,
