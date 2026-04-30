@@ -459,8 +459,17 @@ function SettingsScreen({ tweaks, setTweak, onNav, me, onMeUpdated, unreadNotifs
         <Section title="Appearance">
           <Row label="Dark mode" sub={tweaks.dark ? 'Following the night game' : 'Day game energy'} right={<ToggleSwitch on={tweaks.dark} onChange={v => setTweak('dark', v)} />} />
           <Row label="Accent color" right={
-            <div style={{ display: 'flex', gap: 6 }}>
-              {['#D4FF3A','#FF3B30','#3B82F6','#FB923C','#A855F7'].map(c => (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 200 }}>
+              {[
+                '#D4FF3A',  // lime (default)
+                '#FF3B30',  // red
+                '#3B82F6',  // blue
+                '#FB923C',  // orange
+                '#A855F7',  // purple
+                '#EC4899',  // pink
+                '#22C55E',  // green
+                '#FACC15',  // yellow
+              ].map(c => (
                 <button key={c} onClick={() => setTweak('accent', c)} style={{
                   width: 22, height: 22, borderRadius: '50%', background: c, border: tweaks.accent === c ? '2px solid var(--cn-text)' : '0.5px solid var(--cn-border-s)', cursor: 'pointer',
                 }} />
