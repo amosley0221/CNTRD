@@ -126,6 +126,28 @@ function DetailContextBanner({ data }) {
   // not playoffs and shouldn't read "Playoff series".
   const isPostseason = Number(data?.season_type) === 3;
   if (isPostseason && data.series && (data.series.summary || data.series.bestOf)) {
+    // Compose a "BOS leads series 3-2" line from homeWins/awayWins +
+    // team codes when ESPN's raw summary is empty. Falls back to the
+    // raw summary string when one is provided.
+    const hw = Number(data.series.homeWins);
+    const aw = Number(data.series.awayWins);
+    const homeCode = (data.home?.code || '').toUpperCase();
+    const awayCode = (data.away?.code || '').toUpperCase();
+    let standing = data.series.summary || '';
+    if (!standing && Number.isFinite(hw) && Number.isFinite(aw) && (hw + aw) > 0) {
+      const winsToClinch = data.series.bestOf ? Math.ceil(data.series.bestOf / 2) : Infinity;
+      if (hw >= winsToClinch) {
+        standing = `${homeCode || 'Home'} wins series ${hw}-${aw}`;
+      } else if (aw >= winsToClinch) {
+        standing = `${awayCode || 'Away'} wins series ${aw}-${hw}`;
+      } else if (hw > aw) {
+        standing = `${homeCode || 'Home'} leads series ${hw}-${aw}`;
+      } else if (aw > hw) {
+        standing = `${awayCode || 'Away'} leads series ${aw}-${hw}`;
+      } else {
+        standing = `Tied ${hw}-${aw}`;
+      }
+    }
     return (
       <div style={{
         marginTop: 10, padding: '10px 14px',
@@ -138,8 +160,9 @@ function DetailContextBanner({ data }) {
       }}>
         <span>Playoff series</span>
         <span style={{ color: 'var(--cn-text)', fontWeight: 800 }}>
-          {data.series.summary || ''}
-          {data.series.bestOf ? ` · best of ${data.series.bestOf}` : ''}
+          {standing}
+          {standing && data.series.bestOf ? ' · ' : ''}
+          {data.series.bestOf ? `best of ${data.series.bestOf}` : ''}
         </span>
       </div>
     );
