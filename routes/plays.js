@@ -8,7 +8,7 @@ const { isValidTeamCode } = require('../data/teams');
 const SELECT = `
   SELECT p.id, p.user_id, p.team_code, p.label, p.hue, p.live,
          p.media_url, p.media_kind, p.caption, p.score_sticker, p.filter, p.created_at,
-         u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
+         u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags, u.hide_username
   FROM plays p JOIN users u ON u.id = p.user_id
 `;
 
@@ -51,6 +51,7 @@ function hydrate(p, viewerId) {
       avatar: p.avatar,
       avatarHue: p.avatar_hue ?? 200,
       teams: userTeams,
+      hide_username: !!p.hide_username,
     },
   };
 }

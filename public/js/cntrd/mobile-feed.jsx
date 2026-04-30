@@ -124,7 +124,7 @@ function PlayBubble({ play, add, unwatched = true, onClick }) {
         fontSize: 10, marginTop: 6,
         color: 'var(--cn-text-dim)', fontFamily: 'var(--cn-font-mono)',
         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-      }}>{u.username}</div>
+      }}>{u.hide_username ? (u.displayName || '') : u.username}</div>
     </div>
   );
 }
