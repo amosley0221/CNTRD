@@ -274,7 +274,14 @@ function DesktopFeed({ tweaks, onNav, posts, plays, query, onOpenPlay }) {
         </div>
         <div style={{ display: 'flex', gap: 14 }}>
           <PlayBubble add onClick={() => onNav?.('playsCreator')} />
-          {groupedPlays.map(g => <PlayBubble key={g.lead.id} play={g.lead} onClick={() => (onOpenPlay ? onOpenPlay(g.lead) : onNav?.('plays'))} />)}
+          {groupedPlays.map(g => (
+            <PlayBubble
+              key={g.lead.id}
+              play={g.lead}
+              unwatched={g.plays.some(p => p.viewed === false)}
+              onClick={() => (onOpenPlay ? onOpenPlay(g.lead) : onNav?.('plays'))}
+            />
+          ))}
         </div>
       </div>
 

@@ -283,6 +283,25 @@ ensureColumn('plays', 'caption',    "TEXT DEFAULT NULL");
 // moment the play was published. Stored as JSON so the viewer can render
 // the live scoreboard the play was tagged with even after the game ends.
 ensureColumn('plays', 'score_sticker', "TEXT DEFAULT NULL");
+// Optional CSS filter preset applied to the photo/video (mono, warm,
+// cool, fade, vivid). Stored as a short token; the client maps it to
+// a real filter string at render time.
+ensureColumn('plays', 'filter', "TEXT DEFAULT NULL");
+
+// Per-viewer watched state for plays — used to render the accent ring
+// on a profile avatar when there's an unwatched recent play, and to
+// flip the ring off once everything has been watched.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS play_views (
+    user_id TEXT NOT NULL,
+    play_id TEXT NOT NULL,
+    viewed_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, play_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (play_id) REFERENCES plays(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_play_views_user ON play_views(user_id);
+`);
 
 // Seed Terms / Privacy / About if they don't exist yet. Admins can edit
 // them from the admin console at /api/pages/:slug.

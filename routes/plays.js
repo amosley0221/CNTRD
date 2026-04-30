@@ -7,12 +7,14 @@ const { isValidTeamCode } = require('../data/teams');
 
 const SELECT = `
   SELECT p.id, p.user_id, p.team_code, p.label, p.hue, p.live,
-         p.media_url, p.media_kind, p.caption, p.score_sticker, p.created_at,
+         p.media_url, p.media_kind, p.caption, p.score_sticker, p.filter, p.created_at,
          u.username, u.display_name, u.avatar, u.avatar_hue, u.team_tags
   FROM plays p JOIN users u ON u.id = p.user_id
 `;
 
-function hydrate(p) {
+const ALLOWED_FILTERS = new Set(['none', 'mono', 'warm', 'cool', 'fade', 'vivid']);
+
+function hydrate(p, viewerId) {
   if (!p) return p;
   let userTeams = [];
   try { userTeams = JSON.parse(p.team_tags || '[]'); } catch {}
@@ -20,17 +22,28 @@ function hydrate(p) {
   if (p.score_sticker) {
     try { scoreSticker = JSON.parse(p.score_sticker); } catch {}
   }
+  let viewed = false;
+  if (viewerId) {
+    if (viewerId === p.user_id) {
+      viewed = true;  // your own plays are always "watched"
+    } else {
+      viewed = !!db.prepare('SELECT 1 FROM play_views WHERE user_id = ? AND play_id = ?')
+        .get(viewerId, p.id);
+    }
+  }
   return {
     id: p.id,
     team: p.team_code,
     label: p.label,
     caption: p.caption || '',
     score_sticker: scoreSticker,
+    filter: p.filter && ALLOWED_FILTERS.has(p.filter) ? p.filter : 'none',
     hue: p.hue ?? 200,
     live: !!p.live,
     media_url: p.media_url || null,
     media_kind: p.media_kind || null,    // 'image' | 'video' | null
     created_at: p.created_at,
+    viewed,
     user: {
       id: p.user_id,
       username: p.username,
@@ -63,7 +76,7 @@ router.get('/', optionalAuth, (req, res) => {
   const v = visibilityClause(req.user?.id);
   const rows = db.prepare(`${SELECT} WHERE ${v.sql} ORDER BY p.created_at DESC LIMIT 30`)
     .all(...v.params);
-  res.json(rows.map(hydrate));
+  res.json(rows.map(p => hydrate(p, req.user?.id)));
 });
 
 // Plays from a specific user. Same visibility rules — if the viewer is
@@ -88,14 +101,25 @@ router.get('/user/:username', optionalAuth, (req, res) => {
   }
   const rows = db.prepare(`${SELECT} WHERE p.user_id = ? AND u.banned = 0 ORDER BY p.created_at DESC LIMIT 30`)
     .all(owner.id);
-  res.json(rows.map(hydrate));
+  res.json(rows.map(p => hydrate(p, viewerId)));
+});
+
+// Mark a play as viewed by the caller. Idempotent (PRIMARY KEY collision
+// just keeps the original viewed_at). Used to flip the avatar ring from
+// "unwatched" to "all watched".
+router.post('/:id/view', requireAuth, (req, res) => {
+  const exists = db.prepare('SELECT 1 FROM plays WHERE id = ?').get(req.params.id);
+  if (!exists) return res.status(404).json({ error: 'Play not found' });
+  db.prepare(`INSERT OR IGNORE INTO play_views (user_id, play_id) VALUES (?, ?)`)
+    .run(req.user.id, req.params.id);
+  res.json({ ok: true });
 });
 
 // Create a play. Optional media (photo or short clip ≤30s) — duration is
 // enforced client-side at upload time; we just store whatever URL was
 // returned by /api/upload/media.
 router.post('/', requireAuth, (req, res) => {
-  const { team_code, label, hue, live, media_url, media_kind, caption, score_sticker } = req.body;
+  const { team_code, label, hue, live, media_url, media_kind, caption, score_sticker, filter } = req.body;
 
   if (!label || !label.trim()) return res.status(400).json({ error: 'label is required' });
   if (label.length > 80) return res.status(400).json({ error: 'label must be 80 characters or fewer' });
@@ -122,6 +146,10 @@ router.post('/', requireAuth, (req, res) => {
     if (trimmed.length > 0) cap = trimmed;
   }
 
+  // Filter token — must be one of the allowed presets, otherwise null.
+  const filterToken = (typeof filter === 'string' && ALLOWED_FILTERS.has(filter) && filter !== 'none')
+    ? filter : null;
+
   // Score sticker snapshot — frozen at publish time so the play renders
   // its scoreboard even after the game ends.
   let stickerJson = null;
@@ -139,12 +167,12 @@ router.post('/', requireAuth, (req, res) => {
   }
 
   db.prepare(`
-    INSERT INTO plays (id, user_id, team_code, label, hue, live, media_url, media_kind, caption, score_sticker)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, req.user.id, team, label.trim(), h, liveFlag, url, kind, cap, stickerJson);
+    INSERT INTO plays (id, user_id, team_code, label, hue, live, media_url, media_kind, caption, score_sticker, filter)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, req.user.id, team, label.trim(), h, liveFlag, url, kind, cap, stickerJson, filterToken);
 
   const row = db.prepare(`${SELECT} WHERE p.id = ?`).get(id);
-  res.status(201).json(hydrate(row));
+  res.status(201).json(hydrate(row, req.user.id));
 });
 
 // Delete a play (own only). Also tries to remove the underlying file from

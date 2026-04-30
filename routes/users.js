@@ -105,6 +105,19 @@ function hasRecentPlay(userId) {
   return !!r;
 }
 
+// True if the profile owner has any recent play that the viewer hasn't
+// watched yet. Used to drive the bright vs. muted avatar ring.
+function hasUnwatchedPlay(ownerId, viewerId) {
+  if (!viewerId || viewerId === ownerId) return false;
+  const r = db.prepare(`
+    SELECT 1 FROM plays
+    WHERE user_id = ? AND created_at > datetime('now', '-24 hours')
+      AND id NOT IN (SELECT play_id FROM play_views WHERE user_id = ?)
+    LIMIT 1
+  `).get(ownerId, viewerId);
+  return !!r;
+}
+
 // Get user by username
 router.get('/:username', optionalAuth, (req, res) => {
   const user = hydrate(db.prepare(`SELECT ${PUBLIC_USER_COLS} FROM users WHERE username = ?`).get(req.params.username));
@@ -127,9 +140,14 @@ router.get('/:username', optionalAuth, (req, res) => {
   // Lock the response if private and the viewer isn't allowed in.
   const allowed = isApprovedFollower(req.user?.id, user.id);
   if (user.is_private && !allowed) {
-    return res.json({ ...lockedView(user), is_following: false, request_pending, has_recent_play: false });
+    return res.json({ ...lockedView(user), is_following: false, request_pending, has_recent_play: false, has_unwatched_play: false });
   }
-  res.json({ ...user, is_following, request_pending, has_recent_play: hasRecentPlay(user.id) });
+  res.json({
+    ...user,
+    is_following, request_pending,
+    has_recent_play: hasRecentPlay(user.id),
+    has_unwatched_play: hasUnwatchedPlay(user.id, req.user?.id),
+  });
 });
 
 const { KNOWN_TYPES: NOTIF_TYPES } = require('../services/notifier');

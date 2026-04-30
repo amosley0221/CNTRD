@@ -709,6 +709,27 @@ function ComposerScreen({ tweaks, onNav, onPost, me, replyTo }) {
 const PLAY_VIDEO_MAX_SEC = 30;
 const PLAY_PHOTO_DURATION_MS = 10_000;
 
+// Filter presets for Plays. Token persists with the play so the viewer
+// renders the same look as the creator preview.
+const PLAY_FILTERS = [
+  { id: 'none',   label: 'Original' },
+  { id: 'mono',   label: 'Mono' },
+  { id: 'warm',   label: 'Warm' },
+  { id: 'cool',   label: 'Cool' },
+  { id: 'fade',   label: 'Fade' },
+  { id: 'vivid',  label: 'Vivid' },
+];
+function playFilterCss(token) {
+  switch (token) {
+    case 'mono':  return 'grayscale(1) contrast(1.05)';
+    case 'warm':  return 'sepia(0.4) saturate(1.2) brightness(1.04)';
+    case 'cool':  return 'hue-rotate(180deg) saturate(0.9) brightness(0.98)';
+    case 'fade':  return 'contrast(0.85) brightness(1.1) saturate(0.85)';
+    case 'vivid': return 'saturate(1.6) contrast(1.05)';
+    default:      return 'none';
+  }
+}
+
 // Read a video file's duration in the browser before sending it up. Resolves
 // to NaN if the file isn't a video or metadata can't be read.
 async function getVideoDuration(file) {
@@ -736,6 +757,7 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me, games }) {
   const [stickerGame, setStickerGame] = React.useState(null);
   const [picker, setPicker] = React.useState(null);     // 'score' opens the live-game picker
   const [caption, setCaption] = React.useState('');     // free-form text added before posting
+  const [filter, setFilter] = React.useState('none');   // CSS filter preset
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState(null);
 
@@ -892,12 +914,16 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me, games }) {
       if (onCreate) {
         await onCreate({
           team_code: overlayTeam?.code || overlay || null,
+          // Label is no longer rendered as a giant overlay — kept on the
+          // model for analytics + back-compat. The user's caption is the
+          // only text shown on the play itself.
           label: overlayTeam ? `My ${overlayTeam.name}` : 'My play',
           hue: meUser.avatarHue ?? 200,
           media_url: url,
           media_kind: kind,
           caption: caption.trim(),
           score_sticker: snapshot,
+          filter,
         });
       }
       onNav?.('home');
@@ -928,11 +954,13 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me, games }) {
           <video src={preview.url} autoPlay loop muted playsInline style={{
             position: 'absolute', inset: 0, width: '100%', height: '100%',
             objectFit: 'contain', background: '#000',
+            filter: playFilterCss(filter),
           }} />
         ) : (
           <img src={preview.url} alt="" style={{
             position: 'absolute', inset: 0, width: '100%', height: '100%',
             objectFit: 'contain', background: '#000',
+            filter: playFilterCss(filter),
           }} />
         )
       ) : mode === 'camera' ? (
@@ -1153,6 +1181,27 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me, games }) {
         ) : (
           // Preview controls
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{
+              display: 'flex', gap: 6, overflowX: 'auto',
+              padding: '2px 0',
+              scrollbarWidth: 'none', msOverflowStyle: 'none',
+            }}>
+              {PLAY_FILTERS.map(f => {
+                const active = filter === f.id;
+                return (
+                  <button key={f.id} onClick={() => setFilter(f.id)} style={{
+                    padding: '6px 12px', borderRadius: 999,
+                    background: active ? '#fff' : 'rgba(0,0,0,0.5)',
+                    backdropFilter: active ? 'none' : 'blur(10px)',
+                    border: active ? 'none' : '0.5px solid rgba(255,255,255,0.25)',
+                    color: active ? '#000' : '#fff',
+                    fontWeight: 700, fontSize: 11, cursor: 'pointer',
+                    fontFamily: 'var(--cn-font-mono)', letterSpacing: 0.6,
+                    textTransform: 'uppercase', whiteSpace: 'nowrap',
+                  }}>{f.label}</button>
+                );
+              })}
+            </div>
             <input
               value={caption}
               onChange={e => setCaption(e.target.value.slice(0, 280))}
@@ -1402,6 +1451,13 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
     return () => clearInterval(id);
   }, [play?.id, isVideo]);
 
+  // Mark this play as viewed for the caller. The server makes it idempotent,
+  // so we can fire on every play change without dedupe.
+  React.useEffect(() => {
+    if (!play?.id || isMine) return;
+    window.API?.markPlayViewed?.(play.id);
+  }, [play?.id, isMine]);
+
   const goNext = React.useCallback(() => {
     setIdx(i => {
       if (i >= list.length - 1) {
@@ -1507,12 +1563,14 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
             style={{
               position: 'absolute', inset: 0, width: '100%', height: '100%',
               objectFit: 'contain', background: '#000',
+              filter: playFilterCss(play.filter),
             }}
           />
         ) : (
-          <img src={play.media_url} alt={play.label || ''} style={{
+          <img src={play.media_url} alt="" style={{
             position: 'absolute', inset: 0, width: '100%', height: '100%',
             objectFit: 'contain', background: '#000',
+            filter: playFilterCss(play.filter),
           }} />
         )
       ) : (
@@ -1525,23 +1583,18 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
         </>
       )}
 
-      {/* Caption overlay (big label) — keeps the design's brand even with
-          real media underneath. */}
+      {/* User caption — only rendered when the user typed one. The old
+          team-derived "MY <TEAM>." giant overlay is gone. */}
       <div style={{
         position: 'absolute', left: 24, right: 80, bottom: 110,
         zIndex: 3, pointerEvents: 'none',
         textShadow: '0 4px 20px rgba(0,0,0,0.6)',
       }}>
-        <div style={{
-          fontFamily: 'var(--cn-font-display)', fontWeight: 800,
-          fontSize: 32, lineHeight: 0.95,
-          color: '#fff', textTransform: 'uppercase',
-        }}>{play.label}.</div>
         {play.caption && (
           <div style={{
-            marginTop: 8, fontSize: 15, lineHeight: 1.35, color: '#fff',
-            fontFamily: 'var(--cn-font-body)', fontWeight: 500,
-            display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical',
+            fontSize: 17, lineHeight: 1.35, color: '#fff',
+            fontFamily: 'var(--cn-font-body)', fontWeight: 600,
+            display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical',
             overflow: 'hidden', textOverflow: 'ellipsis',
           }}>{play.caption}</div>
         )}
@@ -1947,6 +2000,7 @@ function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0
     locked: !!user.is_private && !user.is_following && !isMe,
     blocked_by_owner: !!user.blocked_by_owner,
     has_recent_play: !!user.has_recent_play,
+    has_unwatched_play: !!user.has_unwatched_play,
     joined: user.created_at
       ? 'Joined ' + new Date(user.created_at.replace(' ', 'T') + 'Z').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
       : '',
@@ -2006,6 +2060,7 @@ function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0
                   user={view}
                   size={88}
                   hasRecentPlay={view.has_recent_play}
+                  hasUnwatchedPlay={view.has_unwatched_play}
                   onTap={() => setAvatarSheetOpen(true)}
                 />
                 {!isMe && (
@@ -2138,10 +2193,14 @@ function UserProfileScreen({ tweaks, onNav, me, viewUsername, unreadMessages = 0
 }
 
 // Avatar wrapper that shows an accent ring when the user has posted a
-// Play in the last 24 hours (Instagram-style "story" indicator). Tapping
-// the avatar fires the action sheet.
-function ProfileAvatar({ user, size = 88, hasRecentPlay, onTap }) {
+// Play in the last 24 hours. Bright multi-stop ring while there's an
+// unwatched play; flat dimmed ring once the viewer has watched
+// everything from this user. Tapping fires the action sheet.
+function ProfileAvatar({ user, size = 88, hasRecentPlay, hasUnwatchedPlay, onTap }) {
   const ring = hasRecentPlay ? 4 : 0;
+  const ringFill = hasUnwatchedPlay
+    ? 'conic-gradient(from 0deg, var(--cn-accent), #ff4d8a, #ffb74d, var(--cn-accent))'
+    : (hasRecentPlay ? 'var(--cn-text-mute)' : 'transparent');
   return (
     <button
       onClick={onTap}
@@ -2151,12 +2210,17 @@ function ProfileAvatar({ user, size = 88, hasRecentPlay, onTap }) {
         width: size + ring * 2, height: size + ring * 2,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}
-      title={hasRecentPlay ? 'View profile picture or latest Play' : 'View profile picture'}
+      title={
+        hasUnwatchedPlay ? 'New Play available · tap for options' :
+        hasRecentPlay   ? 'You\'ve watched this user\'s Plays' :
+        'View profile picture'
+      }
     >
       {hasRecentPlay && (
         <span style={{
           position: 'absolute', inset: 0, borderRadius: '50%',
-          background: 'conic-gradient(from 0deg, var(--cn-accent), #ff4d8a, #ffb74d, var(--cn-accent))',
+          background: ringFill,
+          opacity: hasUnwatchedPlay ? 1 : 0.45,
         }} />
       )}
       <span style={{

@@ -142,6 +142,7 @@ const API = {
   userPlays(username)      { return request('GET',  `/api/plays/user/${encodeURIComponent(username)}`); },
   createPlay(payload)      { return request('POST', '/api/plays', payload); },
   deletePlay(id)           { return request('DELETE', `/api/plays/${id}`); },
+  markPlayViewed(id)       { return request('POST', `/api/plays/${id}/view`).catch(() => null); },
 
   // Static pages (terms / privacy / about)
   pages()                  { return request('GET',  '/api/pages'); },

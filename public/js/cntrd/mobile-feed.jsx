@@ -54,13 +54,20 @@ function PlaysRail({ playsLabel = 'PLAYS', onPlay, onAdd, plays }) {
       }}>
         {/* Add new play */}
         <PlayBubble add onClick={onAdd} />
-        {grouped.map(g => <PlayBubble key={g.lead.id} play={g.lead} onClick={onPlay} />)}
+        {grouped.map(g => (
+          <PlayBubble
+            key={g.lead.id}
+            play={g.lead}
+            unwatched={g.plays.some(p => p.viewed === false)}
+            onClick={onPlay}
+          />
+        ))}
       </div>
     </div>
   );
 }
 
-function PlayBubble({ play, add, onClick }) {
+function PlayBubble({ play, add, unwatched = true, onClick }) {
   if (add) {
     return (
       <div onClick={onClick} style={{ flexShrink: 0, width: 64, textAlign: 'center', cursor: onClick ? 'pointer' : 'default' }}>
@@ -90,7 +97,10 @@ function PlayBubble({ play, add, onClick }) {
         padding: 2,
         background: play.live
           ? `conic-gradient(from 0deg, var(--cn-live), ${team.primary}, var(--cn-live))`
-          : `conic-gradient(from 0deg, ${team.primary}, ${team.accent}, ${team.primary})`,
+          : (unwatched
+            ? `conic-gradient(from 0deg, ${team.primary}, ${team.accent}, ${team.primary})`
+            : 'var(--cn-text-mute)'),
+        opacity: unwatched ? 1 : 0.55,
       }}>
         <div style={{
           width: '100%', height: '100%', borderRadius: '50%',
