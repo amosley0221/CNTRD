@@ -87,6 +87,15 @@ async function request(method, path, body) {
     err.data = data;
     throw err;
   }
+  // Safari/iOS caps JS-set cookies at 7 days under ITP, regardless of the
+  // declared expiry. Refresh the cookie + localStorage on every successful
+  // authed request so an active user stays signed in indefinitely.
+  if (token) {
+    _writeCookie(TOKEN_KEY, token, COOKIE_DAYS);
+    try { if (localStorage.getItem(TOKEN_KEY) !== token && !sessionStorage.getItem(TOKEN_KEY)) {
+      localStorage.setItem(TOKEN_KEY, token);
+    }} catch {}
+  }
   return data;
 }
 

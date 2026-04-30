@@ -5,6 +5,18 @@
 
 function AccountScreen({ tweaks, onNav, me, onMeUpdated }) {
   const u = me || ME;
+  const [view, setView] = React.useState('list'); // list | avatar | username | email | password
+
+  const headerLabel = {
+    list: 'ACCOUNT',
+    avatar: 'PROFILE PICTURE',
+    username: 'USERNAME',
+    email: 'EMAIL',
+    password: 'CHANGE PASSWORD',
+  }[view];
+
+  const back = () => view === 'list' ? onNav?.('back') : setView('list');
+
   return (
     <div style={{ width: '100%', height: '100%', background: 'var(--cn-bg-elev2)', color: 'var(--cn-text)', display: 'flex', flexDirection: 'column' }}>
       <div style={{
@@ -12,10 +24,10 @@ function AccountScreen({ tweaks, onNav, me, onMeUpdated }) {
         padding: '10px 12px', borderBottom: '0.5px solid var(--cn-border)',
         background: 'var(--cn-bg)',
       }}>
-        <button style={iconBtnStyle()} onClick={() => onNav?.('back')}>
+        <button style={iconBtnStyle()} onClick={back}>
           <Icon name="chevron-l" size={22} stroke="var(--cn-text)" />
         </button>
-        <span style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 16 }}>ACCOUNT</span>
+        <span style={{ fontFamily: 'var(--cn-font-display)', fontWeight: 'var(--cn-display-weight)', textTransform: 'var(--cn-display-case)', letterSpacing: 'var(--cn-display-spacing)', fontSize: 16 }}>{headerLabel}</span>
         <span style={{ width: 32 }} />
       </div>
 
@@ -25,12 +37,61 @@ function AccountScreen({ tweaks, onNav, me, onMeUpdated }) {
         padding: '20px 18px calc(240px + env(safe-area-inset-bottom, 0px))',
         display: 'flex', flexDirection: 'column', gap: 22,
       }}>
-        <ProfilePictureCard me={u} onMeUpdated={onMeUpdated} />
-        <UsernameCard me={u} onMeUpdated={onMeUpdated} />
-        <EmailCard    me={u} onMeUpdated={onMeUpdated} />
-        <PasswordCard onMeUpdated={onMeUpdated} />
+        {view === 'list' && (
+          <AccountList me={u} onPick={setView} />
+        )}
+        {view === 'avatar'   && <ProfilePictureCard me={u} onMeUpdated={onMeUpdated} />}
+        {view === 'username' && <UsernameCard me={u} onMeUpdated={onMeUpdated} />}
+        {view === 'email'    && <EmailCard    me={u} onMeUpdated={onMeUpdated} />}
+        {view === 'password' && <PasswordCard onMeUpdated={onMeUpdated} />}
       </div>
     </div>
+  );
+}
+
+function AccountList({ me, onPick }) {
+  const rows = [
+    { id: 'avatar',   label: 'Profile picture', value: me.avatar ? 'Custom photo' : 'Generated avatar' },
+    { id: 'username', label: 'Username',        value: me.username || '' },
+    { id: 'email',    label: 'Email',           value: me.email || '' },
+    { id: 'password', label: 'Password',        value: '••••••••' },
+  ];
+  return (
+    <section style={{
+      borderRadius: 12,
+      background: 'var(--cn-bg-elev)',
+      border: '0.5px solid var(--cn-border)',
+      overflow: 'hidden',
+    }}>
+      {rows.map((r, i) => (
+        <button
+          key={r.id}
+          onClick={() => onPick(r.id)}
+          style={{
+            width: '100%', padding: '14px 16px',
+            display: 'flex', alignItems: 'center', gap: 10,
+            background: 'transparent',
+            border: 'none',
+            borderTop: i === 0 ? 'none' : '0.5px solid var(--cn-border)',
+            cursor: 'pointer', color: 'var(--cn-text)',
+            fontFamily: 'var(--cn-font-body)', textAlign: 'left',
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              fontFamily: 'var(--cn-font-mono)', fontSize: 10,
+              color: 'var(--cn-text-mute)', letterSpacing: 1,
+              textTransform: 'uppercase',
+            }}>{r.label}</div>
+            <div style={{
+              marginTop: 2, fontSize: 14,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{r.value}</div>
+          </div>
+          <Icon name="chevron-r" size={16} stroke="var(--cn-text-mute)" />
+        </button>
+      ))}
+    </section>
   );
 }
 
