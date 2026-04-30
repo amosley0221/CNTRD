@@ -255,24 +255,40 @@ function CNTRDApp() {
     return () => { cancelled = true; };
   }, [authed, bootstrapped]);
 
-  // Poll for new posts in the background. We don't merge them into `posts`
-  // automatically — the user opts in by tapping the "X new posts" pill, so
-  // they don't lose their scroll position.
+  // Poll for new posts + plays every 20 seconds. New posts go into a
+  // pending pile so the user opts in (via the "X new posts" pill) and
+  // doesn't lose their scroll position. New plays auto-merge into the
+  // rail since the rail sits above the timeline and new bubbles don't
+  // shift the user's scroll.
   React.useEffect(() => {
     if (!bootstrapped) return;
     let cancelled = false;
     const tick = async () => {
       try {
-        const fresh = await (authed ? API.feed() : API.explore());
+        const [freshPosts, freshPlays] = await Promise.all([
+          authed ? API.feed() : API.explore(),
+          API.plays(),
+        ]);
         if (cancelled) return;
-        const knownIds = new Set(posts.map(p => p.id));
-        const additions = (fresh || [])
-          .filter(p => p && p.id && !knownIds.has(p.id))
+
+        const knownPostIds = new Set(posts.map(p => p.id));
+        const newPosts = (freshPosts || [])
+          .filter(p => p && p.id && !knownPostIds.has(p.id))
           .map(normalizePost);
-        if (additions.length) setPendingFeed(additions);
+        if (newPosts.length) {
+          setPendingFeed(prev => {
+            const seen = new Set(prev.map(p => p.id));
+            const merged = newPosts.filter(p => !seen.has(p.id));
+            return merged.length ? [...merged, ...prev] : prev;
+          });
+        }
+
+        // Plays: replace the list with the server's view so the rail
+        // reflects watched / unwatched state and ordering live.
+        setPlays((freshPlays || []).map(normalizePlay));
       } catch { /* ignore */ }
     };
-    const id = setInterval(tick, 60 * 1000);
+    const id = setInterval(tick, 20 * 1000);
     return () => { cancelled = true; clearInterval(id); };
   }, [authed, bootstrapped, posts]);
 

@@ -56,7 +56,21 @@ function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePl
   const [tab, setTab] = React.useState('posts');
   const [bookmarks, setBookmarks] = React.useState(null);
   const [bookmarksErr, setBookmarksErr] = React.useState(null);
+  const [avatarSheetOpen, setAvatarSheetOpen] = React.useState(false);
+  const [avatarFullOpen, setAvatarFullOpen] = React.useState(false);
   const scrollerRef = React.useRef(null);
+
+  // Plays the current user has posted in the last 24h drive the
+  // ring + the "View your Plays" entry on the avatar action sheet.
+  const myRecentPlays = React.useMemo(() => {
+    if (!plays || !u?.id) return [];
+    const cutoff = Date.now() - 24 * 3600 * 1000;
+    return plays.filter(p =>
+      (p.user?.id === u.id || (typeof p.user === 'string' && p.user === u.username))
+      && (Date.parse(p.created_at) || 0) >= cutoff
+    );
+  }, [plays, u?.id, u?.username]);
+  const hasRecentPlay = myRecentPlays.length > 0;
 
   const loadBookmarks = React.useCallback(async () => {
     try {
@@ -105,7 +119,13 @@ function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePl
         <PullIndicator distance={pullDistance} refreshing={pullRefreshing} />
         <div style={{ padding: '20px 16px 0' }}>
           <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 12 }}>
-            <Avatar user={u} size={88} ring />
+            <ProfileAvatar
+              user={u}
+              size={88}
+              hasRecentPlay={hasRecentPlay}
+              hasUnwatchedPlay={false}
+              onTap={() => setAvatarSheetOpen(true)}
+            />
             <button onClick={() => onNav?.('editProfile')} style={{
               padding: '8px 16px', borderRadius: 999,
               background: 'var(--cn-accent)', color: 'var(--cn-on-accent)',
@@ -204,6 +224,25 @@ function ProfileScreen({ tweaks, onNav, me, posts, plays, onOpenPlay, onDeletePl
           {tab === 'likes' && <div style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--cn-text-mute)', fontFamily: 'var(--cn-font-mono)', fontSize: 12 }}>Likes are private to you.</div>}
         </div>
       </div>
+      {avatarSheetOpen && (
+        <AvatarChoiceSheet
+          user={u}
+          hasRecentPlay={hasRecentPlay}
+          onClose={() => setAvatarSheetOpen(false)}
+          onViewPicture={() => { setAvatarSheetOpen(false); setAvatarFullOpen(true); }}
+          onViewPlay={() => {
+            setAvatarSheetOpen(false);
+            const latest = myRecentPlays[0];
+            if (latest && onOpenPlay) onOpenPlay(latest);
+            else if (u?.username) {
+              window.dispatchEvent(new CustomEvent('cntrd:open-user-plays', { detail: { username: u.username } }));
+            }
+          }}
+        />
+      )}
+      {avatarFullOpen && (
+        <FullAvatarViewer user={u} onClose={() => setAvatarFullOpen(false)} />
+      )}
       <BottomNav active="profile" onChange={onNav} unreadMessages={unreadMessages} />
     </div>
   );
