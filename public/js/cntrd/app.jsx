@@ -298,16 +298,21 @@ function CNTRDApp() {
     } catch { /* leave existing posts in place */ }
   }, [authed]);
 
-  // Refetch Plays whenever the user lands on the Feed screen so new
-  // posts from people they follow show up in the rail without a manual
-  // pull-to-refresh.
+  // Refetch Plays + posts whenever the user lands on the Feed screen so
+  // new content (theirs or from people they follow) shows up without a
+  // manual pull-to-refresh.
   React.useEffect(() => {
     if (!bootstrapped) return;
     if (screen !== 'home') return;
     let cancelled = false;
-    API.plays().then(list => {
+    Promise.all([
+      authed ? API.feed() : API.explore(),
+      API.plays(),
+    ]).then(([freshPosts, freshPlays]) => {
       if (cancelled) return;
-      setPlays((list || []).map(normalizePlay));
+      setPosts((freshPosts || []).map(normalizePost));
+      setPlays((freshPlays || []).map(normalizePlay));
+      setPendingFeed([]);
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [screen, bootstrapped, authed]);
