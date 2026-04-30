@@ -599,7 +599,13 @@ router.post('/:id/messages', (req, res) => {
       }
       notify({
         userId: u.id, type: 'mention', actorId: req.user.id,
-        data: { conversation_id: req.params.id, preview: content.slice(0, 140), gameday: isGameday },
+        data: {
+          conversation_id: req.params.id,
+          preview: content.slice(0, 140),
+          gameday: isGameday,
+          game_id: isGameday ? conv.game_id : undefined,
+          message_id: id,
+        },
         dedupeKey: `mention:${id}:${u.id}`,
       });
     }
@@ -614,7 +620,13 @@ router.post('/:id/messages', (req, res) => {
       if (!muted) {
         notify({
           userId: parent.user_id, type: 'message_reply', actorId: req.user.id,
-          data: { conversation_id: req.params.id, message_id: id, preview: content.slice(0, 140), gameday: isGameday },
+          data: {
+            conversation_id: req.params.id,
+            message_id: id,
+            preview: content.slice(0, 140),
+            gameday: isGameday,
+            game_id: isGameday ? conv.game_id : undefined,
+          },
           dedupeKey: `reply:${id}`,
         });
       }

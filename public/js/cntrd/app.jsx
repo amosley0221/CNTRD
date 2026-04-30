@@ -570,6 +570,32 @@ function CNTRDApp() {
     return () => window.removeEventListener('cntrd:open-post-thread', handler);
   }, [goTo]);
 
+  // Open a gameday chat by game id. Mention/reply notifications use this
+  // to deep-link straight into the chat where you were tagged. If the
+  // game isn't in the cached lists (very old finals), fall back to the
+  // gameday list — the chat there is probably closed anyway.
+  React.useEffect(() => {
+    const handler = (e) => {
+      const gameId = e.detail?.gameId;
+      if (!gameId) return;
+      const all = [
+        ...((games?.live)     || []),
+        ...((games?.upcoming) || []),
+        ...((games?.recent)   || []),
+      ];
+      const game = all.find(g => String(g.id) === String(gameId));
+      if (game) {
+        setGamedayPick(game);
+        goTo('chat');
+      } else {
+        setGamedayPick(null);
+        goTo('chat');
+      }
+    };
+    window.addEventListener('cntrd:open-gameday-by-id', handler);
+    return () => window.removeEventListener('cntrd:open-gameday-by-id', handler);
+  }, [games, goTo]);
+
   // Inline rail search → "See all results" / Enter routes to the
   // Discover screen with the query pre-filled.
   React.useEffect(() => {

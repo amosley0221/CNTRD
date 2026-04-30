@@ -137,8 +137,27 @@ function NotificationsScreen({ tweaks, onNav, me, setMessageContext, onUnreadNot
       onNav?.('messages');
       return;
     }
-    // New follower / accepted follow / @mention all carry an actor —
-    // route to that user's profile so the user can follow back, etc.
+    // Mention or reply: jump to the exact place the user was tagged —
+    // the gameday chat, DM thread, or post thread. Falls back to the
+    // actor's profile only if no destination is encoded.
+    if (n.type === 'mention' || n.type === 'message_reply') {
+      const d = n.data || {};
+      if (d.gameday && d.game_id) {
+        window.dispatchEvent(new CustomEvent('cntrd:open-gameday-by-id', { detail: { gameId: d.game_id } }));
+        return;
+      }
+      if (d.conversation_id) {
+        setMessageContext?.({ mode: 'thread', selectedId: d.conversation_id });
+        onNav?.('messages');
+        return;
+      }
+      if (d.post_id) {
+        window.dispatchEvent(new CustomEvent('cntrd:open-post-thread', { detail: { postId: d.post_id } }));
+        return;
+      }
+      // Fall through to profile fallback below.
+    }
+    // New follower / accepted follow fall through to actor profile.
     if ((n.type === 'follow' || n.type === 'follow_accept' || n.type === 'mention') && n.actor?.username) {
       window.dispatchEvent(new CustomEvent('cntrd:open-user', { detail: { username: n.actor.username } }));
       return;
