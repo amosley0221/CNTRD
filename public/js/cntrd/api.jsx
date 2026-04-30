@@ -164,7 +164,13 @@ const API = {
   conversation(id)                      { return request('GET',  `/api/messages/${id}`); },
   conversationMessages(id, before)      { return request('GET',  `/api/messages/${id}/messages${before ? '?before=' + encodeURIComponent(before) : ''}`); },
   conversationMessagesAfter(id, after)  { return request('GET',  `/api/messages/${id}/messages?after=${encodeURIComponent(after)}`); },
-  gamedayConversation(gameId)           { return request('GET',  `/api/messages/gameday/${encodeURIComponent(gameId)}`); },
+  gamedayConversation(gameId, opts = {}) {
+    const params = new URLSearchParams();
+    if (opts.state) params.set('state', String(opts.state));
+    if (opts.date)  params.set('date',  String(opts.date));
+    const qs = params.toString();
+    return request('GET', `/api/messages/gameday/${encodeURIComponent(gameId)}${qs ? '?' + qs : ''}`);
+  },
   sendMessage(id, content, replyToId)   { return request('POST', `/api/messages/${id}/messages`, replyToId ? { content, reply_to_id: replyToId } : { content }); },
   conversationParticipants(id, q)       { return request('GET',  `/api/messages/${id}/participants${q ? '?q=' + encodeURIComponent(q) : ''}`); },
   createConversation(payload)           { return request('POST', '/api/messages', payload); },

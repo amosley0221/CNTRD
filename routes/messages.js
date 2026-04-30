@@ -265,26 +265,87 @@ const GAMEDAY_MUTE_WHERE = `AND m.user_id NOT IN (
   SELECT muter_id FROM mutes WHERE muted_id = ?
 )`;
 
-// Find-or-create the shared gameday chat room for a game. Auto-joins caller.
+// SQLite stores datetimes as "YYYY-MM-DD HH:MM:SS" UTC. Convert to ms.
+function sqliteToMs(s) {
+  if (!s) return null;
+  const t = Date.parse(s.includes('T') ? s : s.replace(' ', 'T') + 'Z');
+  return Number.isFinite(t) ? t : null;
+}
+function msToSqlite(ms) {
+  return new Date(ms).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
+}
+
+// Compute when a gameday chat should close: 24 h after the game ends.
+// The game's end is unknown to us, so we estimate it as start_date + 3 h
+// (covers most sports; OT runs a little long but the 24 h grace absorbs
+// the slop). If state==='final' we know it ended recently, so just use
+// now + 24 h. Returns ms or null if we can't reasonably bound it.
+function calcCloseMs({ state, date }) {
+  const nowMs = Date.now();
+  if (state === 'final') return nowMs + 24 * 3600 * 1000;
+  if (date) {
+    const startMs = Date.parse(date);
+    if (Number.isFinite(startMs)) {
+      const candidate = startMs + 27 * 3600 * 1000;
+      // Reject "ancient" dates that would put the chat closed-on-arrival —
+      // the client probably passed a bad value; treat as no-info.
+      if (candidate > nowMs - 24 * 3600 * 1000) return candidate;
+    }
+  }
+  return null;
+}
+
+// Find-or-create the shared gameday chat room for a game. Auto-joins caller
+// unless the chat has already closed (24 h after game end).
 // Must be defined before GET /:id so Express doesn't treat "gameday" as an id.
 router.get('/gameday/:gameId', (req, res) => {
   const gameId = String(req.params.gameId || '').trim().slice(0, 80);
   if (!gameId) return res.status(400).json({ error: 'Invalid game ID' });
 
-  const convId = db.transaction(() => {
-    let conv = db.prepare('SELECT id FROM conversations WHERE game_id = ?').get(gameId);
+  const state = String(req.query.state || '').trim().toLowerCase();
+  const date  = String(req.query.date || '').trim();
+
+  const result = db.transaction(() => {
+    let conv = db.prepare('SELECT id, closes_at FROM conversations WHERE game_id = ?').get(gameId);
     if (!conv) {
       const newId = uuidv4();
-      db.prepare(`INSERT INTO conversations (id, name, is_group, created_by, game_id) VALUES (?, ?, 1, ?, ?)`)
-        .run(newId, `gameday:${gameId}`, req.user.id, gameId);
-      conv = { id: newId };
+      const closeMs = calcCloseMs({ state, date });
+      const closesAt = closeMs ? msToSqlite(closeMs) : null;
+      db.prepare(`INSERT INTO conversations (id, name, is_group, created_by, game_id, closes_at) VALUES (?, ?, 1, ?, ?, ?)`)
+        .run(newId, `gameday:${gameId}`, req.user.id, gameId, closesAt);
+      conv = { id: newId, closes_at: closesAt };
+    } else if (!conv.closes_at) {
+      // First time we have enough info to set the close time.
+      const closeMs = calcCloseMs({ state, date });
+      if (closeMs) {
+        const closesAt = msToSqlite(closeMs);
+        db.prepare('UPDATE conversations SET closes_at = ? WHERE id = ? AND closes_at IS NULL')
+          .run(closesAt, conv.id);
+        conv.closes_at = closesAt;
+      }
     }
-    db.prepare(`INSERT OR IGNORE INTO conversation_members (conversation_id, user_id, last_read_at)
-                VALUES (?, ?, datetime('now'))`).run(conv.id, req.user.id);
-    db.prepare(`UPDATE conversation_members SET last_read_at = datetime('now')
-                WHERE conversation_id = ? AND user_id = ?`).run(conv.id, req.user.id);
-    return conv.id;
+
+    const closedMs = sqliteToMs(conv.closes_at);
+    const closed = !!closedMs && closedMs < Date.now();
+    const isMember = !!db.prepare('SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?').get(conv.id, req.user.id);
+
+    // Closed chat: existing members get read-only access; new joiners are blocked.
+    if (closed && !isMember) {
+      return { closed: true, closes_at: conv.closes_at };
+    }
+
+    if (!closed) {
+      db.prepare(`INSERT OR IGNORE INTO conversation_members (conversation_id, user_id, last_read_at)
+                  VALUES (?, ?, datetime('now'))`).run(conv.id, req.user.id);
+      db.prepare(`UPDATE conversation_members SET last_read_at = datetime('now')
+                  WHERE conversation_id = ? AND user_id = ?`).run(conv.id, req.user.id);
+    }
+    return { convId: conv.id, closes_at: conv.closes_at, closed };
   })();
+
+  if (result.closed && !result.convId) {
+    return res.status(410).json({ closed: true, closes_at: result.closes_at });
+  }
 
   const rows = db.prepare(`
     SELECT m.id, m.user_id, m.content, m.created_at, m.reply_to_id,
@@ -293,13 +354,15 @@ router.get('/gameday/:gameId', (req, res) => {
     WHERE m.conversation_id = ?
     ${GAMEDAY_MUTE_WHERE}
     ORDER BY m.created_at DESC LIMIT 50
-  `).all(convId, req.user.id, req.user.id);
+  `).all(result.convId, req.user.id, req.user.id);
 
   const now = db.prepare("SELECT datetime('now') AS t").get().t;
 
   res.json({
-    convId,
+    convId: result.convId,
     now,
+    closes_at: result.closes_at,
+    closed: result.closed,
     messages: rows.reverse().map(hydrateMessageRow),
   });
 });
@@ -341,6 +404,16 @@ router.post('/:id/messages', (req, res) => {
   const member = db.prepare('SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!member) return res.status(404).json({ error: 'Conversation not found' });
 
+  // Reject sends after a gameday room's grace window has expired.
+  const conv = db.prepare('SELECT game_id, closes_at FROM conversations WHERE id = ?').get(req.params.id);
+  const isGameday = !!conv?.game_id;
+  if (isGameday && conv.closes_at) {
+    const closesMs = sqliteToMs(conv.closes_at);
+    if (closesMs && closesMs < Date.now()) {
+      return res.status(410).json({ error: 'Gameday chat closed', closed: true, closes_at: conv.closes_at });
+    }
+  }
+
   const content = String(req.body?.content || '').trim();
   if (!content) return res.status(400).json({ error: 'Message cannot be empty' });
   if (content.length > 2000) return res.status(400).json({ error: 'Message too long' });
@@ -358,9 +431,6 @@ router.post('/:id/messages', (req, res) => {
   db.prepare(`UPDATE conversations SET last_message_at = datetime('now') WHERE id = ?`).run(req.params.id);
   db.prepare(`UPDATE conversation_members SET last_read_at = datetime('now')
               WHERE conversation_id = ? AND user_id = ?`).run(req.params.id, req.user.id);
-
-  const conv = db.prepare('SELECT game_id FROM conversations WHERE id = ?').get(req.params.id);
-  const isGameday = !!conv?.game_id;
 
   if (!isGameday) {
     const others = db.prepare(`

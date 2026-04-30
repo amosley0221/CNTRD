@@ -871,6 +871,8 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
   const [actionMsg, setActionMsg] = React.useState(null);
   const [replyTo, setReplyTo] = React.useState(null);
   const [mentionPicker, setMentionPicker] = React.useState(null);
+  const [closedAt, setClosedAt] = React.useState(null);
+  const [closedFully, setClosedFully] = React.useState(false);
   const inputRef = React.useRef(null);
   const lastMsgAt = React.useRef(null);
   const pollRef = React.useRef(null);
@@ -886,6 +888,8 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
     setShowReacts(false);
     setSide('all');
     setConvId(null);
+    setClosedAt(null);
+    setClosedFully(false);
     lastMsgAt.current = null;
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
 
@@ -899,17 +903,20 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
 
     let active = true;
     setChatLoading(true);
-    window.API.gamedayConversation(gameId)
-      .then(({ convId: cid, messages: msgs, now }) => {
+    window.API.gamedayConversation(gameId, { state: game.state, date: game.date })
+      .then(({ convId: cid, messages: msgs, now, closes_at, closed }) => {
         if (!active) return;
         setConvId(cid);
+        setClosedAt(closes_at || null);
+        setClosedFully(!!closed);
         const mapped = msgs.map(m => mapGameMsg(m, me, home.code, away.code));
         setMessages(mapped);
-        // Polling cursor: use the latest message's timestamp if any, else
-        // the server's current time so brand-new messages still get caught.
         lastMsgAt.current = msgs.length > 0
           ? msgs[msgs.length - 1].created_at
           : (now || new Date().toISOString().replace('T', ' ').replace(/\.\d+Z$/, ''));
+
+        // No live polling once the chat is closed — content is static.
+        if (closed) return;
 
         pollRef.current = setInterval(async () => {
           if (!active) return;
@@ -929,7 +936,13 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
           } catch {}
         }, 2500);
       })
-      .catch(() => {})
+      .catch((e) => {
+        if (e?.status === 410) {
+          // Chat closed and caller was never a member.
+          setClosedFully(true);
+          setClosedAt(e.data?.closes_at || null);
+        }
+      })
       .finally(() => { if (active) setChatLoading(false); });
 
     return () => {
@@ -951,7 +964,7 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
 
   const submit = async () => {
     const text = draft.trim();
-    if (!text || !convId) return;
+    if (!text || !convId || closedFully) return;
     const meUser = me || (typeof window !== 'undefined' && window.ME);
     const optimisticId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const optimistic = {
@@ -987,8 +1000,12 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
           ? mapGameMsg(sent, meUser, home.code, away.code)
           : m
       ));
-    } catch {
+    } catch (e) {
       setMessages(prev => prev.filter(m => m.id !== optimisticId));
+      if (e?.status === 410) {
+        setClosedFully(true);
+        setClosedAt(e.data?.closes_at || null);
+      }
     }
   };
 
@@ -1062,8 +1079,10 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
             <Icon name="chevron-l" size={22} stroke="var(--cn-text)" />
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: isLive ? 'var(--cn-live)' : 'var(--cn-text-mute)', animation: isLive ? 'cn-pulse 1.5s ease-in-out infinite' : 'none' }} />
-            <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: isLive ? 'var(--cn-live)' : 'var(--cn-text-mute)', fontWeight: 800, letterSpacing: 1 }}>{isLive ? 'GAMEDAY · LIVE' : 'GAMEDAY · UPCOMING'}</span>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: closedFully ? 'var(--cn-text-mute)' : (isLive ? 'var(--cn-live)' : 'var(--cn-text-mute)'), animation: !closedFully && isLive ? 'cn-pulse 1.5s ease-in-out infinite' : 'none' }} />
+            <span style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 10, color: closedFully ? 'var(--cn-text-mute)' : (isLive ? 'var(--cn-live)' : 'var(--cn-text-mute)'), fontWeight: 800, letterSpacing: 1 }}>
+              {closedFully ? 'GAMEDAY · CLOSED' : (isLive ? 'GAMEDAY · LIVE' : 'GAMEDAY · UPCOMING')}
+            </span>
           </div>
           <button onClick={() => onNav?.('notifications')} style={iconBtnStyle()} title="Notifications">
             <Icon name="bell" size={18} stroke="var(--cn-text-dim)" />
@@ -1186,48 +1205,65 @@ function GamedayScreen({ tweaks, onNav, games, gamedayPick, setGamedayPick, me, 
         </div>
       )}
 
-      {/* input */}
-      <div style={{ padding: '10px 12px 28px', borderTop: '0.5px solid var(--cn-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button
-          onClick={() => setShowReacts(s => !s)}
-          title={showReacts ? 'Hide reactions' : 'Quick reactions'}
-          style={{
-            width: 36, height: 36, borderRadius: 10,
-            background: showReacts ? 'var(--cn-accent)' : 'var(--cn-bg-elev)',
-            color: showReacts ? 'var(--cn-on-accent)' : 'var(--cn-text-dim)',
-            border: '0.5px solid var(--cn-border-s)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer',
-          }}
-        >
-          <Icon name="plus" size={18} />
-        </button>
-        <input
-          ref={inputRef}
-          value={draft}
-          onChange={(e) => handleDraftChange(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder={replyTo ? `Reply to @${replyTo.user}` : 'Yell about it...'}
-          style={{
-            flex: 1, padding: '10px 14px', borderRadius: 10,
-            background: 'var(--cn-bg-elev)', border: '0.5px solid var(--cn-border-s)',
-            color: 'var(--cn-text)', fontSize: 13, outline: 'none',
-            fontFamily: 'var(--cn-font-body)',
-          }}
-        />
-        <button
-          onClick={submit}
-          disabled={!draft.trim() || !convId}
-          style={{
-            padding: '8px 14px', borderRadius: 10,
-            background: draft.trim() && convId ? 'var(--cn-accent)' : 'var(--cn-bg-elev2)',
-            color: draft.trim() && convId ? 'var(--cn-on-accent)' : 'var(--cn-text-mute)',
-            border: 'none', fontWeight: 700, fontSize: 13,
-            cursor: draft.trim() && convId ? 'pointer' : 'not-allowed',
-            fontFamily: 'var(--cn-font-body)',
-          }}
-        >Send</button>
-      </div>
+      {closedFully ? (
+        <div style={{
+          padding: '14px 18px calc(28px + env(safe-area-inset-bottom, 0px))',
+          borderTop: '0.5px solid var(--cn-border)',
+          background: 'var(--cn-bg-elev2)',
+          textAlign: 'center',
+        }}>
+          <div style={{
+            fontFamily: 'var(--cn-font-mono)', fontSize: 11,
+            color: 'var(--cn-text-mute)', letterSpacing: 1,
+            textTransform: 'uppercase', marginBottom: 4,
+          }}>CHAT CLOSED</div>
+          <div style={{ fontSize: 12, color: 'var(--cn-text-dim)', lineHeight: 1.4 }}>
+            This gameday chat closed 24 hours after the game ended.
+          </div>
+        </div>
+      ) : (
+        <div style={{ padding: '10px 12px 28px', borderTop: '0.5px solid var(--cn-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            onClick={() => setShowReacts(s => !s)}
+            title={showReacts ? 'Hide reactions' : 'Quick reactions'}
+            style={{
+              width: 36, height: 36, borderRadius: 10,
+              background: showReacts ? 'var(--cn-accent)' : 'var(--cn-bg-elev)',
+              color: showReacts ? 'var(--cn-on-accent)' : 'var(--cn-text-dim)',
+              border: '0.5px solid var(--cn-border-s)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer',
+            }}
+          >
+            <Icon name="plus" size={18} />
+          </button>
+          <input
+            ref={inputRef}
+            value={draft}
+            onChange={(e) => handleDraftChange(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder={replyTo ? `Reply to @${replyTo.user}` : 'Yell about it...'}
+            style={{
+              flex: 1, padding: '10px 14px', borderRadius: 10,
+              background: 'var(--cn-bg-elev)', border: '0.5px solid var(--cn-border-s)',
+              color: 'var(--cn-text)', fontSize: 13, outline: 'none',
+              fontFamily: 'var(--cn-font-body)',
+            }}
+          />
+          <button
+            onClick={submit}
+            disabled={!draft.trim() || !convId}
+            style={{
+              padding: '8px 14px', borderRadius: 10,
+              background: draft.trim() && convId ? 'var(--cn-accent)' : 'var(--cn-bg-elev2)',
+              color: draft.trim() && convId ? 'var(--cn-on-accent)' : 'var(--cn-text-mute)',
+              border: 'none', fontWeight: 700, fontSize: 13,
+              cursor: draft.trim() && convId ? 'pointer' : 'not-allowed',
+              fontFamily: 'var(--cn-font-body)',
+            }}
+          >Send</button>
+        </div>
+      )}
     </div>
   );
 }

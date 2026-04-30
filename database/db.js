@@ -233,6 +233,10 @@ try {
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_game_id ON conversations(game_id) WHERE game_id IS NOT NULL`);
 } catch {}
 
+// Gameday chats auto-close after a 24 h grace period past the game's
+// expected end. closes_at is set once on first access and never moved.
+ensureColumn('conversations', 'closes_at', "TEXT DEFAULT NULL");
+
 // Threaded replies inside a conversation.
 ensureColumn('messages', 'reply_to_id', "TEXT DEFAULT NULL");
 
