@@ -6,7 +6,7 @@
 //               we add a queueing concept)
 
 const SCORE_TYPES    = new Set(['live_game', 'score', 'period_end', 'final']);
-const ACTIVITY_TYPES = new Set(['follow', 'follow_accept', 'message', 'post', 'event_alert', 'mention', 'group_invite']);
+const ACTIVITY_TYPES = new Set(['follow', 'follow_accept', 'message', 'post', 'event_alert', 'mention', 'group_invite', 'reaction']);
 const REVIEW_TYPES   = new Set(['report_new', 'report_resolved', 'report_escalated']);
 
 function categorizeNotif(n) {
@@ -441,6 +441,8 @@ function renderNotifText(n) {
       return { headline: `${actor} invited you to a group`, body: d.name ? `"${d.name}"` : 'Tap to respond' };
     case 'mention':
       return { headline: `${actor} mentioned you`, body: d.preview || '' };
+    case 'reaction':
+      return { headline: `${actor} reacted ${d.emoji || ''} to your Play`, body: '' };
     case 'report_new':
       return { headline: `New report to review`, body: d.preview ? `${d.target_type}: "${d.preview}"` : `Tap to open the admin queue` };
     case 'report_resolved':

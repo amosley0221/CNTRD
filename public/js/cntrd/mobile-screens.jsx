@@ -1710,7 +1710,11 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
       {/* reactions — local only for now; counts start at 0 and bump
           when this viewer taps. (Server-backed reactions need a play
           reactions table; UI is ready for that.) */}
-      <PlayReactions playId={play.id} />
+      <PlayReactions
+        playId={play.id}
+        initialCounts={play.reactions || {}}
+        initialMine={play.my_reactions || []}
+      />
 
       {/* Identity hand-off overlay — flashes when the auto-advance
           crosses into a different author's plays. */}
@@ -1771,36 +1775,56 @@ function PlaysViewerScreen({ tweaks, onNav, plays, selectedPlay, me, onDeletePla
   );
 }
 
-// Per-viewer local reaction tally. Tapping toggles the user's reaction
-// for this play; counts go up/down with each tap. Persists across plays
-// in this session via a local Map keyed by play id.
-const _PLAY_REACTION_STATE = new Map();
-function PlayReactions({ playId }) {
+// Server-backed reaction tally. Initial state seeds from what the play
+// hydrator returned; tapping fires API.togglePlayReaction which returns
+// the fresh counts + the viewer's reactions. Optimistic so the count
+// changes the moment you tap.
+function PlayReactions({ playId, initialCounts, initialMine }) {
   const REACTS = ['🔥', '🏀', '😤', '👀', '🤝'];
-  const [, force] = React.useState(0);
-  const state = (() => {
-    let s = _PLAY_REACTION_STATE.get(playId);
-    if (!s) {
-      s = { counts: Object.fromEntries(REACTS.map(e => [e, 0])), mine: new Set() };
-      _PLAY_REACTION_STATE.set(playId, s);
-    }
-    return s;
-  })();
-  const toggle = (e) => {
-    if (state.mine.has(e)) {
-      state.mine.delete(e);
-      state.counts[e] = Math.max(0, state.counts[e] - 1);
-    } else {
-      state.mine.add(e);
-      state.counts[e] = (state.counts[e] || 0) + 1;
-    }
-    force(x => x + 1);
+  const [counts, setCounts] = React.useState(() => ({ ...(initialCounts || {}) }));
+  const [mine, setMine]     = React.useState(() => new Set(initialMine || []));
+
+  // When the play changes (auto-advance), reseed from the new initials.
+  React.useEffect(() => {
+    setCounts({ ...(initialCounts || {}) });
+    setMine(new Set(initialMine || []));
+  }, [playId]);
+
+  const toggle = (emoji) => {
+    const had = mine.has(emoji);
+    // Optimistic update so the UI reacts immediately.
+    setMine(prev => {
+      const next = new Set(prev);
+      if (had) next.delete(emoji); else next.add(emoji);
+      return next;
+    });
+    setCounts(prev => ({
+      ...prev,
+      [emoji]: Math.max(0, (prev[emoji] || 0) + (had ? -1 : 1)),
+    }));
+    window.API?.togglePlayReaction?.(playId, emoji)
+      .then((r) => {
+        if (r?.reactions) setCounts(r.reactions);
+        if (r?.my_reactions) setMine(new Set(r.my_reactions));
+      })
+      .catch(() => {
+        // Revert if the server rejected.
+        setMine(prev => {
+          const next = new Set(prev);
+          if (had) next.add(emoji); else next.delete(emoji);
+          return next;
+        });
+        setCounts(prev => ({
+          ...prev,
+          [emoji]: Math.max(0, (prev[emoji] || 0) + (had ? 1 : -1)),
+        }));
+      });
   };
   return (
     <div style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', display: 'flex', flexDirection: 'column', gap: 14, zIndex: 5 }}>
       {REACTS.map(e => {
-        const picked = state.mine.has(e);
-        const count = state.counts[e] || 0;
+        const picked = mine.has(e);
+        const count = counts[e] || 0;
         return (
           <button key={e} onClick={() => toggle(e)} style={{
             width: 44, height: 44, borderRadius: '50%',

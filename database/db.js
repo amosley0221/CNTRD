@@ -284,6 +284,36 @@ db.exec(`
   );
 `);
 
+// Persisted reactions on Plays — each viewer can toggle one or more
+// emojis per play. PK on (play_id, user_id, emoji) makes toggle
+// idempotent and per-emoji.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS play_reactions (
+    play_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    emoji   TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (play_id, user_id, emoji),
+    FOREIGN KEY (play_id) REFERENCES plays(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_play_reactions_play ON play_reactions(play_id);
+`);
+
+// Persisted emoji reactions on posts. Same shape as play_reactions.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS post_reactions (
+    post_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    emoji   TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (post_id, user_id, emoji),
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_post_reactions_post ON post_reactions(post_id);
+`);
+
 // Gameday chats auto-close after a 24 h grace period past the game's
 // expected end. closes_at is set once on first access and never moved.
 ensureColumn('conversations', 'closes_at', "TEXT DEFAULT NULL");

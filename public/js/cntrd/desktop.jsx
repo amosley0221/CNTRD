@@ -198,7 +198,7 @@ function DesktopNav({ onNav, me, screen, unreadMessages, unreadNotifs }) {
   );
 }
 
-function DesktopFeed({ tweaks, onNav, posts, plays, query, onOpenPlay }) {
+function DesktopFeed({ tweaks, onNav, posts, plays, query, onOpenPlay, feedPending = 0, onRefreshFeed }) {
   const allItems = (posts && posts.length ? posts : POSTS);
   const playList = (plays && plays.length ? plays : PLAYS);
   // Group plays by author so the rail shows one bubble per user
@@ -250,6 +250,18 @@ function DesktopFeed({ tweaks, onNav, posts, plays, query, onOpenPlay }) {
           letterSpacing: 'var(--cn-display-spacing)',
           fontSize: 18,
         }}>{q ? `RESULTS · "${query}"` : 'YOUR FEED'}</span>
+        {feedPending > 0 && (
+          <button onClick={onRefreshFeed} style={{
+            padding: '6px 14px', borderRadius: 999,
+            background: 'var(--cn-accent)', color: 'var(--cn-on-accent)',
+            border: 'none', cursor: 'pointer',
+            fontFamily: 'var(--cn-font-body)', fontWeight: 700, fontSize: 12,
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+          }}>
+            <span aria-hidden style={{ fontSize: 13, lineHeight: 1 }}>↑</span>
+            {feedPending} new {feedPending === 1 ? 'post' : 'posts'}
+          </button>
+        )}
         <div style={{ display: 'flex', gap: 4, padding: 3, borderRadius: 8, background: 'var(--cn-bg-elev)' }}>
           {['For you', 'Following', 'Live'].map((t, i) => (
             <button key={t} style={{

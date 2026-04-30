@@ -31,6 +31,14 @@ function hydrate(p, viewerId) {
         .get(viewerId, p.id);
     }
   }
+  // Reaction tally per emoji + which ones the viewer has tapped.
+  const counts = {};
+  const rxRows = db.prepare(`SELECT emoji, COUNT(*) AS n FROM play_reactions WHERE play_id = ? GROUP BY emoji`).all(p.id);
+  for (const r of rxRows) counts[r.emoji] = r.n;
+  let mine = [];
+  if (viewerId) {
+    mine = db.prepare(`SELECT emoji FROM play_reactions WHERE play_id = ? AND user_id = ?`).all(p.id, viewerId).map(r => r.emoji);
+  }
   return {
     id: p.id,
     team: p.team_code,
@@ -44,6 +52,8 @@ function hydrate(p, viewerId) {
     media_kind: p.media_kind || null,    // 'image' | 'video' | null
     created_at: p.created_at,
     viewed,
+    reactions: counts,
+    my_reactions: mine,
     user: {
       id: p.user_id,
       username: p.username,
@@ -218,6 +228,48 @@ router.delete('/:id', requireAuth, (req, res) => {
     } catch {}
   }
   res.json({ success: true });
+});
+
+// Toggle a reaction emoji on a play. Idempotent — second tap removes
+// the reaction. The play author gets a 'reaction' notification on the
+// add direction (deduped per play+actor+day).
+router.post('/:id/reactions', requireAuth, (req, res) => {
+  const emoji = String(req.body?.emoji || '').trim();
+  if (!emoji || emoji.length > 8) return res.status(400).json({ error: 'Invalid emoji' });
+  const play = db.prepare('SELECT id, user_id FROM plays WHERE id = ?').get(req.params.id);
+  if (!play) return res.status(404).json({ error: 'Play not found' });
+
+  const existing = db.prepare(
+    'SELECT 1 FROM play_reactions WHERE play_id = ? AND user_id = ? AND emoji = ?'
+  ).get(play.id, req.user.id, emoji);
+
+  let added = false;
+  if (existing) {
+    db.prepare('DELETE FROM play_reactions WHERE play_id = ? AND user_id = ? AND emoji = ?')
+      .run(play.id, req.user.id, emoji);
+  } else {
+    db.prepare('INSERT INTO play_reactions (play_id, user_id, emoji) VALUES (?, ?, ?)')
+      .run(play.id, req.user.id, emoji);
+    added = true;
+  }
+
+  if (added && play.user_id !== req.user.id) {
+    const { notify } = require('../services/notifier');
+    const dayKey = new Date().toISOString().slice(0, 10);
+    notify({
+      userId: play.user_id, type: 'reaction', actorId: req.user.id,
+      data: { play_id: play.id, emoji },
+      dedupeKey: `react:${play.id}:${req.user.id}:${dayKey}`,
+    });
+  }
+
+  // Return fresh counts + my list.
+  const counts = {};
+  for (const r of db.prepare(`SELECT emoji, COUNT(*) AS n FROM play_reactions WHERE play_id = ? GROUP BY emoji`).all(play.id)) {
+    counts[r.emoji] = r.n;
+  }
+  const mine = db.prepare(`SELECT emoji FROM play_reactions WHERE play_id = ? AND user_id = ?`).all(play.id, req.user.id).map(r => r.emoji);
+  res.json({ reactions: counts, my_reactions: mine });
 });
 
 module.exports = router;
