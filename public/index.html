@@ -68,14 +68,12 @@
       font-family: var(--cn-font-body);
     }
     #root {
-      /* Pin to the actual viewport. In iOS PWA standalone mode, 100vh
-         and 100dvh sometimes resolve to a smaller-than-screen value
-         (the engine still reserves space for chrome that isn't there),
-         leaving a phantom gap at the bottom. position: fixed + inset: 0
-         locks the element to the visible viewport edges no matter what
-         the viewport units report. */
-      position: fixed;
-      inset: 0;
+      /* Regular browser tabs: use viewport units. The dvh override
+         lets iOS Safari shrink the page when its URL bar shows up so
+         the bottom nav doesn't end up hidden behind the chrome. */
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
       overflow: hidden;
       /* In iOS standalone mode (Add to Home Screen → "open as app"), the
          status bar / Dynamic Island overlays the page. Pad the root by
@@ -83,6 +81,18 @@
          clock and signal icons. In normal browser tabs these env values
          are 0, so this is a no-op outside of installed mode. */
       padding-top: env(safe-area-inset-top);
+    }
+    /* Installed PWA: 100dvh on iOS occasionally resolves to a smaller-
+       than-screen value, leaving a phantom gap below the bottom nav.
+       Pin the root to the actual viewport edges instead — there's no
+       URL bar to dodge in standalone mode, so this is safe. */
+    @media (display-mode: standalone) {
+      #root {
+        position: fixed;
+        inset: 0;
+        width: auto;
+        height: auto;
+      }
     }
     a { color: inherit; text-decoration: none; }
     button { font-family: inherit; }
