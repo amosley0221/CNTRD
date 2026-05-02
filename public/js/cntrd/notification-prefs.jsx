@@ -97,6 +97,8 @@ function NotificationPrefsScreen({ tweaks, onNav, me, onMeUpdated }) {
         {err && <div style={{ padding: '0 16px 8px', fontSize: 12, color: 'var(--cn-danger)', fontFamily: 'var(--cn-font-mono)' }}>{err}</div>}
         {ok  && <div style={{ padding: '0 16px 8px', fontSize: 12, color: 'var(--cn-success)', fontFamily: 'var(--cn-font-mono)' }}>{ok}</div>}
 
+        <PushSection />
+
         {NOTIF_PREF_GROUPS.map(group => (
           <div key={group.title} style={{ marginTop: 14 }}>
             <div style={{
@@ -150,6 +152,184 @@ function PrefRow({ label, sub, on, onChange, last }) {
       </button>
     </div>
   );
+}
+
+// System push notifications. Walks the user through enabling them — on
+// iOS this only works when CNTRD is launched from the home screen, so
+// the section nudges them to install first.
+function PushSection() {
+  const [permission, setPermission] = React.useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
+  const [subscribed, setSubscribed] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState(null);
+  const [info, setInfo] = React.useState(null);
+
+  const supported = typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window;
+  const isStandalone = typeof window !== 'undefined' && (
+    window.matchMedia?.('(display-mode: standalone)').matches ||
+    window.navigator?.standalone === true
+  );
+  const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/i.test(navigator.userAgent);
+  const iosNeedsInstall = isIOS && !isStandalone;
+
+  // On mount, see if this browser already has a live subscription so the
+  // toggle reflects reality (rather than just the OS permission state).
+  React.useEffect(() => {
+    if (!supported) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (!cancelled) setSubscribed(!!sub);
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [supported]);
+
+  const enable = async () => {
+    if (!supported || busy) return;
+    setBusy(true); setErr(null); setInfo(null);
+    try {
+      const perm = await Notification.requestPermission();
+      setPermission(perm);
+      if (perm !== 'granted') throw new Error('Permission was not granted.');
+
+      const { publicKey } = await API.pushVapidPublic();
+      if (!publicKey) throw new Error('Server is missing VAPID keys.');
+
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        });
+      }
+      await API.pushSubscribe(sub.toJSON());
+      setSubscribed(true);
+      setInfo('System notifications enabled on this device.');
+    } catch (e) {
+      setErr(e.message || 'Could not enable');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disable = async () => {
+    if (!supported || busy) return;
+    setBusy(true); setErr(null); setInfo(null);
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        try { await API.pushUnsubscribe(sub.endpoint); } catch { /* keep going */ }
+        await sub.unsubscribe();
+      }
+      setSubscribed(false);
+      setInfo('System notifications turned off on this device.');
+    } catch (e) {
+      setErr(e.message || 'Could not disable');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendTest = async () => {
+    setBusy(true); setErr(null); setInfo(null);
+    try {
+      await API.pushTest();
+      setInfo('Test sent — should appear in a few seconds.');
+    } catch (e) {
+      setErr(e.message || 'Test failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div style={{
+        padding: '0 16px 6px',
+        fontFamily: 'var(--cn-font-mono)', fontSize: 10,
+        letterSpacing: 1, textTransform: 'uppercase',
+        color: 'var(--cn-text-mute)',
+      }}>System notifications</div>
+      <div style={{
+        margin: '0 16px', padding: 14, borderRadius: 12,
+        background: 'var(--cn-bg-elev)',
+        border: '0.5px solid var(--cn-border)',
+        display: 'flex', flexDirection: 'column', gap: 10,
+      }}>
+        {!supported ? (
+          <div style={{ fontSize: 13, color: 'var(--cn-text-dim)', lineHeight: 1.45 }}>
+            This browser doesn't support web push notifications. Try Chrome, Firefox, Edge, or Safari (iOS 16.4+).
+          </div>
+        ) : iosNeedsInstall ? (
+          <>
+            <div style={{ fontSize: 13, color: 'var(--cn-text-dim)', lineHeight: 1.45 }}>
+              On iPhone, system notifications only work when CNTRD is installed to your home screen.
+            </div>
+            <ol style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: 'var(--cn-text)', lineHeight: 1.6 }}>
+              <li>Tap the <strong>Share</strong> icon in Safari</li>
+              <li>Choose <strong>Add to Home Screen</strong></li>
+              <li>Open CNTRD from the new icon, then come back here</li>
+            </ol>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 13, color: 'var(--cn-text-dim)', lineHeight: 1.45 }}>
+              Get a system notification on this device when someone messages you, mentions you, or your team scores. Pushes follow the per-type toggles below — turn one off and it stops both in-app and on the lock screen.
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {subscribed ? (
+                <>
+                  <button onClick={disable} disabled={busy} style={pushBtn('var(--cn-text-dim)')}>
+                    {busy ? '…' : 'Turn off on this device'}
+                  </button>
+                  <button onClick={sendTest} disabled={busy} style={pushBtn('var(--cn-accent)')}>
+                    Send test push
+                  </button>
+                </>
+              ) : (
+                <button onClick={enable} disabled={busy || permission === 'denied'} style={pushBtn(permission === 'denied' ? 'var(--cn-text-mute)' : 'var(--cn-accent)')}>
+                  {busy ? '…' : permission === 'denied' ? 'Permission blocked' : 'Turn on system notifications'}
+                </button>
+              )}
+            </div>
+            {permission === 'denied' && (
+              <div style={{ fontSize: 12, color: 'var(--cn-text-mute)', lineHeight: 1.4 }}>
+                Notifications are blocked at the browser level. Re-enable them from your browser's site settings, then come back.
+              </div>
+            )}
+          </>
+        )}
+        {err  && <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-danger)' }}>{err}</div>}
+        {info && <div style={{ fontFamily: 'var(--cn-font-mono)', fontSize: 11, color: 'var(--cn-success)' }}>{info}</div>}
+      </div>
+    </div>
+  );
+}
+
+function pushBtn(color) {
+  return {
+    padding: '8px 14px', borderRadius: 999,
+    background: 'transparent', color,
+    border: `0.5px solid ${color}`,
+    cursor: 'pointer',
+    fontWeight: 700, fontSize: 12, fontFamily: 'var(--cn-font-body)',
+  };
+}
+
+// Convert the server's VAPID public key (base64url) to the Uint8Array
+// pushManager.subscribe expects.
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; ++i) out[i] = raw.charCodeAt(i);
+  return out;
 }
 
 Object.assign(window, { NotificationPrefsScreen });

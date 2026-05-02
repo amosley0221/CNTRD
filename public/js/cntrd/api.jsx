@@ -215,6 +215,12 @@ const API = {
   watchwordsAdd(word)                { return request('POST',   '/api/admin/watchwords', { word }); },
   watchwordsRemove(id)               { return request('DELETE', `/api/admin/watchwords/${id}`); },
 
+  // Web Push.
+  pushVapidPublic()                  { return request('GET',  '/api/push/vapid-public'); },
+  pushSubscribe(subscription)        { return request('POST', '/api/push/subscribe', { subscription }); },
+  pushUnsubscribe(endpoint)          { return request('POST', '/api/push/unsubscribe', { endpoint }); },
+  pushTest()                         { return request('POST', '/api/push/test'); },
+
   // Admin (server enforces is_admin)
   adminUsers(q)            { return request('GET',  '/api/admin/users' + (q ? '?q=' + encodeURIComponent(q) : '')); },
   adminStats()             { return request('GET',  '/api/admin/stats'); },

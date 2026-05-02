@@ -65,6 +65,24 @@ function notify({ userId, type, actorId = null, data = null, dedupeKey = null, b
       INSERT INTO notifications (id, user_id, type, actor_id, data, dedupe_key)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(id, userId, type, actorId, payload, dedupeKey);
+    // Fan out a Web Push to every device this user has subscribed.
+    // Lazy-loaded so the require chain doesn't break if web-push isn't
+    // installed yet. fire-and-forget — pushes never block the in-app
+    // write path.
+    try {
+      const push = require('./push');
+      const actor = actorId
+        ? db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(actorId)
+        : null;
+      const actorClean = actor ? {
+        id: actor.id, username: actor.username,
+        displayName: actor.display_name || actor.username,
+      } : null;
+      push.sendToUser(userId, { type, actor: actorClean, data: data || {} })
+        .catch((e) => console.warn('[push] dispatch failed:', e?.message || e));
+    } catch (e) {
+      // services/push.js missing or web-push not installed yet — fine.
+    }
     return id;
   } catch (e) {
     if (String(e.message || '').includes('UNIQUE')) return null;   // race; treat as success

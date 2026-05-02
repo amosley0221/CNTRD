@@ -5,6 +5,7 @@ database/cntrd.db-wal
 public/uploads/*
 !public/uploads/.gitkeep
 .env
+.vapid.json
 *.log
 screenshot.js
 screenshots/
