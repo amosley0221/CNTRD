@@ -62,8 +62,24 @@ function ensureConfigured() {
     }
   }
 
-  const subject = process.env.VAPID_SUBJECT || 'mailto:admin@cntrd.local';
-  wp.setVapidDetails(subject, pub, priv);
+  // VAPID subject must be a real https:// URL or a mailto: with a
+  // resolvable domain. Apple's WebPush server in particular rejects
+  // anything else with `BadJwtToken`. Prefer (in order):
+  //   1. VAPID_SUBJECT env var
+  //   2. Render's RENDER_EXTERNAL_URL (auto-set on Render)
+  //   3. APP_URL env var
+  //   4. A safe public mailto fallback
+  const subject = process.env.VAPID_SUBJECT
+    || process.env.RENDER_EXTERNAL_URL
+    || process.env.APP_URL
+    || 'mailto:noreply@example.com';
+  try {
+    wp.setVapidDetails(subject, pub, priv);
+  } catch (e) {
+    // Bad subject format — fall back to a guaranteed-valid placeholder.
+    console.warn('[push] VAPID subject rejected, falling back:', e.message);
+    wp.setVapidDetails('mailto:noreply@example.com', pub, priv);
+  }
   publicKey = pub;
   configured = true;
 
