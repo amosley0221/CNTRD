@@ -201,4 +201,24 @@ router.delete('/watchwords/:id', requireOwner, (req, res) => {
   res.json({ ok: true });
 });
 
+// Reveal the currently-active VAPID keypair so the owner can stash
+// it as Render environment variables (keys persist in app_settings,
+// but env vars are the canonical place for prod). Owner-only —
+// admins can't read this, and the response is never logged.
+router.get('/vapid', requireOwner, (req, res) => {
+  const rows = db.prepare("SELECT key, value FROM app_settings WHERE key IN ('vapid_public', 'vapid_private', 'vapid_public_active')").all();
+  const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    publicKey:  map.vapid_public  || null,
+    privateKey: map.vapid_private || null,
+    activeOnServer: map.vapid_public_active || null,
+    subject: process.env.VAPID_SUBJECT
+      || process.env.RENDER_EXTERNAL_URL
+      || process.env.APP_URL
+      || null,
+    note: 'Copy these into Render env vars (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY) so subscriptions survive disk resets.',
+  });
+});
+
 module.exports = router;
