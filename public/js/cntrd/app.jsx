@@ -233,6 +233,61 @@ function CNTRDApp() {
     return () => { cancelled = true; };
   }, []);
 
+  // Deep-linking from a tapped push notification. The service worker
+  // opens the app at /?conv=… / ?play=… / ?game=… etc.; we map the
+  // params here to the screen they should land on, then strip them
+  // from the URL so a refresh doesn't re-trigger.
+  React.useEffect(() => {
+    if (!bootstrapped || !authed) return;
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (![...params.keys()].length) return;
+
+    const conv     = params.get('conv');
+    const play     = params.get('play');
+    const post     = params.get('post');
+    const gameSpec = params.get('game');     // "<league>:<id>"
+    const gameday  = params.get('gameday');  // game id
+    const userArg  = params.get('user');
+    const messages = params.get('messages');
+    const notifs   = params.get('notifs');
+    const admin    = params.get('admin');
+
+    setTimeout(() => {
+      if (conv) {
+        setMessageContext?.({ mode: 'thread', selectedId: conv });
+        goTo('messages');
+      } else if (messages) {
+        goTo('messages');
+      } else if (gameday) {
+        window.dispatchEvent(new CustomEvent('cntrd:open-gameday-by-id', { detail: { gameId: gameday } }));
+      } else if (gameSpec) {
+        const [league, id] = gameSpec.split(':');
+        if (league && id) {
+          window.dispatchEvent(new CustomEvent('cntrd:open-game-from-notif', { detail: { league, id } }));
+        }
+      } else if (play) {
+        // Open the play viewer focused on this play. Reuses the
+        // user-plays event with a synthetic detail; the handler picks
+        // the latest play, which is what we want for a reaction notif.
+        window.dispatchEvent(new CustomEvent('cntrd:open-play-by-id', { detail: { playId: play } }));
+      } else if (post) {
+        window.dispatchEvent(new CustomEvent('cntrd:open-post-thread', { detail: { postId: post } }));
+      } else if (userArg) {
+        window.dispatchEvent(new CustomEvent('cntrd:open-user', { detail: { username: userArg } }));
+      } else if (notifs) {
+        goTo('notifications');
+      } else if (admin) {
+        goTo('admin');
+      }
+    }, 0);
+
+    // Strip the routing params so refresh / share-the-URL doesn't
+    // re-fire the deep link.
+    const clean = window.location.pathname + window.location.hash;
+    try { window.history.replaceState({}, '', clean); } catch {}
+  }, [bootstrapped, authed]);
+
   // Load feed + plays whenever auth state changes.
   React.useEffect(() => {
     if (!bootstrapped) return;
@@ -530,6 +585,29 @@ function CNTRDApp() {
     window.addEventListener('cntrd:open-user-plays', handler);
     return () => window.removeEventListener('cntrd:open-user-plays', handler);
   }, [goTo]);
+
+  // "Open this exact Play" — used by reaction push notifications. Looks
+  // in the cached plays list first, falls back to a fetch.
+  React.useEffect(() => {
+    const handler = async (e) => {
+      const playId = e.detail?.playId;
+      if (!playId) return;
+      let target = (plays || []).find(p => p.id === playId);
+      if (!target) {
+        try {
+          const list = await API.plays();
+          target = (list || []).find(p => p.id === playId);
+          if (list) setPlays(list.map(normalizePlay));
+        } catch {}
+      }
+      if (target) {
+        setSelectedPlay(target);
+        goTo('plays');
+      }
+    };
+    window.addEventListener('cntrd:open-play-by-id', handler);
+    return () => window.removeEventListener('cntrd:open-play-by-id', handler);
+  }, [plays, goTo]);
 
   const handleDeletePlay = React.useCallback(async (id) => {
     if (!id) return;

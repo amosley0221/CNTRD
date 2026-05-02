@@ -109,6 +109,16 @@ function getPublicKey() {
 function summarize({ type, actor, data }) {
   const who = actor?.displayName || actor?.username || 'Someone';
   const d = data || {};
+  // Helper for game-flavored notifs — pulls the matchup string + score.
+  const matchupText = () => {
+    const home = d.home_name || d.home || '';
+    const away = d.away_name || d.away || '';
+    return home && away ? `${away} @ ${home}` : (home || away || '');
+  };
+  const scoreText = () => {
+    if (d.away_score == null || d.home_score == null) return '';
+    return `${d.away_score}–${d.home_score}`;
+  };
   switch (type) {
     case 'follow':          return { title: `${who} started following you` };
     case 'follow_request':  return { title: `${who} requested to follow you`, body: 'Open Requests to respond' };
@@ -119,10 +129,34 @@ function summarize({ type, actor, data }) {
     case 'reaction':        return { title: `${who} reacted ${d.emoji || ''} to your Play` };
     case 'group_invite':    return { title: `${who} invited you to a group`, body: d.name ? `"${d.name}"` : '' };
     case 'event_alert':     return { title: 'Group event starting soon', body: d.title || '' };
-    case 'live_game':       return { title: 'Game starting',  body: d.matchup || '' };
-    case 'score':           return { title: 'Score update',   body: d.matchup ? `${d.matchup}${d.score ? ' · ' + d.score : ''}` : '' };
-    case 'period_end':      return { title: 'Period over',    body: d.matchup || '' };
-    case 'final':           return { title: 'Final score',    body: d.matchup ? `${d.matchup}${d.score ? ' · ' + d.score : ''}` : '' };
+    case 'live_game': {
+      const m = matchupText();
+      return { title: m ? `${m} is live` : 'Game starting', body: d.period || '' };
+    }
+    case 'score': {
+      const m = matchupText();
+      const s = scoreText();
+      return {
+        title: m && s ? `${m} · ${s}` : (m || 'Score update'),
+        body: [d.play_text, d.play_period].filter(Boolean).join(' · '),
+      };
+    }
+    case 'period_end': {
+      const m = matchupText();
+      const s = scoreText();
+      return {
+        title: m && s ? `${m} · ${s}` : (m || 'Period over'),
+        body: d.period || 'End of period',
+      };
+    }
+    case 'final': {
+      const m = matchupText();
+      const s = scoreText();
+      return {
+        title: m && s ? `Final · ${m}` : 'Final score',
+        body: s || (d.period || ''),
+      };
+    }
     case 'post':            return { title: `${who} posted`,  body: d.preview || '' };
     case 'report_new':      return { title: 'New report to review', body: d.preview || '' };
     case 'report_resolved': return { title: 'Report resolved' };
@@ -131,14 +165,47 @@ function summarize({ type, actor, data }) {
   }
 }
 
-// Best-effort URL the SW should open when the user taps the notification.
-// The client-side notif click handler already routes by type, so we
-// just route to the Notifications screen — the existing handler picks
-// up from there when the app loads.
+// Best-effort URL the SW opens when the user taps the notification.
+// The client maps these query params to actual screens on boot.
 function deeplinkUrl({ type, data }) {
-  // Anchor on / so the SPA boots, then `#notif=…` lets a future hand-off
-  // grab the type if needed. For now we just open the app.
-  return '/?n=' + encodeURIComponent(type || '');
+  const d = data || {};
+  const enc = (v) => encodeURIComponent(String(v));
+  switch (type) {
+    case 'message':
+    case 'message_reply':
+    case 'event_alert':
+      return d.conversation_id ? `/?conv=${enc(d.conversation_id)}` : '/?messages=1';
+    case 'mention':
+      if (d.gameday && d.game_id) return `/?gameday=${enc(d.game_id)}`;
+      if (d.conversation_id)      return `/?conv=${enc(d.conversation_id)}`;
+      if (d.post_id)              return `/?post=${enc(d.post_id)}`;
+      return '/';
+    case 'reaction':
+      return d.play_id ? `/?play=${enc(d.play_id)}` : '/';
+    case 'live_game':
+    case 'score':
+    case 'period_end':
+    case 'final':
+      return d.league && d.game_id
+        ? `/?game=${enc(d.league)}:${enc(d.game_id)}`
+        : '/';
+    case 'follow':
+    case 'follow_accept':
+      return actorRoute(d.actor_username) || '/';
+    case 'follow_request':  return '/?notifs=requests';
+    case 'group_invite':    return '/?messages=1';
+    case 'post':            return d.post_id ? `/?post=${enc(d.post_id)}` : '/';
+    case 'report_new':
+    case 'report_resolved':
+    case 'report_escalated':
+      return '/?admin=reports';
+    default:                return '/';
+  }
+}
+
+function actorRoute(username) {
+  if (!username) return null;
+  return '/?user=' + encodeURIComponent(username);
 }
 
 function listSubscriptions(userId) {

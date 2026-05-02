@@ -44,31 +44,46 @@ function notify({ userId, type, actorId = null, data = null, dedupeKey = null, b
   if (!userId || !type) return null;
   if (!userWantsType(userId, type)) return null;     // user opted out
   const payload = JSON.stringify(data || {});
+
+  let id = null;
+  let didWrite = false;        // any insert OR bump → fan a push
   if (dedupeKey) {
     const existing = db.prepare(
       'SELECT id FROM notifications WHERE user_id = ? AND dedupe_key = ?'
     ).get(userId, dedupeKey);
     if (existing) {
-      if (!bumpOnDedupe) return existing.id;
+      if (!bumpOnDedupe) return existing.id;     // intentional silence (e.g. live_game)
       db.prepare(`
         UPDATE notifications
         SET type = ?, actor_id = ?, data = ?, read_at = NULL,
             created_at = datetime('now')
         WHERE id = ?
       `).run(type, actorId, payload, existing.id);
-      return existing.id;
+      id = existing.id;
+      didWrite = true;
     }
   }
-  const id = uuidv4();
-  try {
-    db.prepare(`
-      INSERT INTO notifications (id, user_id, type, actor_id, data, dedupe_key)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, userId, type, actorId, payload, dedupeKey);
-    // Fan out a Web Push to every device this user has subscribed.
-    // Lazy-loaded so the require chain doesn't break if web-push isn't
-    // installed yet. fire-and-forget — pushes never block the in-app
-    // write path.
+
+  if (!id) {
+    id = uuidv4();
+    try {
+      db.prepare(`
+        INSERT INTO notifications (id, user_id, type, actor_id, data, dedupe_key)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(id, userId, type, actorId, payload, dedupeKey);
+      didWrite = true;
+    } catch (e) {
+      if (String(e.message || '').includes('UNIQUE')) return null;   // race; treat as success
+      console.error('notify failed:', e.message);
+      return null;
+    }
+  }
+
+  // Fan out a Web Push to every device this user has subscribed.
+  // Fires for both fresh inserts AND dedupe-bumps so a second message
+  // in the same conversation still pings the user. Lazy-loaded so the
+  // require chain doesn't break if web-push isn't installed yet.
+  if (didWrite) {
     try {
       const push = require('./push');
       const actor = actorId
@@ -83,12 +98,8 @@ function notify({ userId, type, actorId = null, data = null, dedupeKey = null, b
     } catch (e) {
       // services/push.js missing or web-push not installed yet — fine.
     }
-    return id;
-  } catch (e) {
-    if (String(e.message || '').includes('UNIQUE')) return null;   // race; treat as success
-    console.error('notify failed:', e.message);
-    return null;
   }
+  return id;
 }
 
 // Find users for whom a game's events are relevant. League followers OR
