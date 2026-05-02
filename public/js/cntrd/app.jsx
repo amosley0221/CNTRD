@@ -793,6 +793,10 @@ function CNTRDApp() {
       </PostActionsContext.Provider>
       {/* Branded replacement for native confirm() — see theme.jsx. */}
       <ConfirmHost />
+      {/* One-time iOS install nudge so Safari users learn that
+          notifications + the standalone window need Add to Home Screen.
+          Dismissed state lives in localStorage. */}
+      {authed && <IOSInstallNudge />}
     </div>
   );
 

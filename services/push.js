@@ -11,8 +11,6 @@
 // in-app notification row, so any notification that lands in the inbox
 // also fans out as a system push to every device the user has subscribed.
 
-const fs = require('fs');
-const path = require('path');
 const db = require('../database/db');
 
 let webpush = null;
@@ -40,34 +38,47 @@ function ensureConfigured() {
   let pub = process.env.VAPID_PUBLIC_KEY || '';
   let priv = process.env.VAPID_PRIVATE_KEY || '';
 
-  // Persist a generated pair to a local file in dev so restarts don't
-  // invalidate active subscriptions. The file is gitignored.
-  const cachePath = path.join(__dirname, '..', '.vapid.json');
-  if ((!pub || !priv) && fs.existsSync(cachePath)) {
-    try {
-      const cached = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
-      if (cached.publicKey && cached.privateKey) {
-        pub  = pub  || cached.publicKey;
-        priv = priv || cached.privateKey;
-      }
-    } catch { /* ignore */ }
+  // VAPID keys live in app_settings so they survive Render container
+  // restarts (ephemeral filesystem wipes any cache file). Env vars
+  // win when present so production can pin keys explicitly.
+  if (!pub || !priv) {
+    const rows = db.prepare("SELECT key, value FROM app_settings WHERE key IN ('vapid_public', 'vapid_private')").all();
+    const stored = Object.fromEntries(rows.map(r => [r.key, r.value]));
+    pub  = pub  || stored.vapid_public  || '';
+    priv = priv || stored.vapid_private || '';
   }
+
   if (!pub || !priv) {
     const generated = wp.generateVAPIDKeys();
     pub  = generated.publicKey;
     priv = generated.privateKey;
-    try {
-      fs.writeFileSync(cachePath, JSON.stringify(generated, null, 2));
-    } catch { /* read-only filesystem on some hosts; tolerate */ }
-    console.log('[push] generated VAPID keys; set as env vars to make them stable:');
-    console.log(`  VAPID_PUBLIC_KEY=${pub}`);
-    console.log(`  VAPID_PRIVATE_KEY=${priv}`);
+    db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('vapid_public', ?)").run(pub);
+    db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('vapid_private', ?)").run(priv);
+    console.log('[push] generated VAPID keys (persisted to app_settings).');
+    console.log(`        VAPID_PUBLIC_KEY=${pub}`);
+    // Don't log the private key in production.
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`        VAPID_PRIVATE_KEY=${priv}`);
+    }
   }
 
   const subject = process.env.VAPID_SUBJECT || 'mailto:admin@cntrd.local';
   wp.setVapidDetails(subject, pub, priv);
   publicKey = pub;
   configured = true;
+
+  // Drop subscriptions that were saved against a different public key —
+  // they'd just bounce on every send. The very first launch with a
+  // fresh DB has no subs so this is a no-op.
+  try {
+    const last = db.prepare("SELECT value FROM app_settings WHERE key = 'vapid_public_active'").get();
+    if (last && last.value && last.value !== pub) {
+      const dropped = db.prepare('DELETE FROM push_subscriptions').run();
+      console.log(`[push] VAPID public key changed; cleared ${dropped.changes} stale subscription(s).`);
+    }
+    db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('vapid_public_active', ?)").run(pub);
+  } catch { /* tolerate */ }
+
   return wp;
 }
 
@@ -135,6 +146,7 @@ async function sendToUser(userId, { type, actor, data }) {
 
   let sent = 0;
   let removed = 0;
+  const errors = [];
   await Promise.all(subs.map(async (s) => {
     try {
       await wp.sendNotification(
@@ -146,16 +158,19 @@ async function sendToUser(userId, { type, actor, data }) {
       sent += 1;
     } catch (err) {
       const status = err?.statusCode || err?.status;
+      const msg = err?.body || err?.message || String(err);
       // 404/410 = subscription is dead; clean it up so we stop trying.
       if (status === 404 || status === 410) {
         db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(s.id);
         removed += 1;
+        errors.push({ status, reason: 'gone' });
       } else {
-        console.warn('[push] send failed', s.endpoint?.slice(0, 40), status || err.message);
+        console.warn('[push] send failed', status || '', String(msg).slice(0, 200));
+        errors.push({ status: status || null, reason: String(msg).slice(0, 200) });
       }
     }
   }));
-  return { sent, removed };
+  return { sent, removed, total: subs.length, errors };
 }
 
 module.exports = { ensureConfigured, getPublicKey, sendToUser };

@@ -49,15 +49,25 @@ router.post('/unsubscribe', requireAuth, (req, res) => {
 });
 
 // Lightweight self-test for the user — fires a push to all of their
-// subscribed devices so they can verify it works end-to-end.
+// subscribed devices so they can verify it works end-to-end. Returns
+// diagnostic info (sub count, sends attempted, removed) so the UI can
+// surface the actual result instead of silently optimistic.
 router.post('/test', requireAuth, async (req, res) => {
   try {
+    const publicKey = push.getPublicKey();
+    if (!publicKey) {
+      return res.status(503).json({ error: 'Push not configured (VAPID keys missing)' });
+    }
+    const subs = db.prepare('SELECT id, endpoint FROM push_subscriptions WHERE user_id = ?').all(req.user.id);
+    if (!subs.length) {
+      return res.status(400).json({ error: 'No subscriptions on this account. Toggle notifications back on, then try again.' });
+    }
     const result = await push.sendToUser(req.user.id, {
       type: 'message',
       actor: { id: 'system', username: 'cntrd', displayName: 'CNTRD' },
       data: { preview: 'Test push delivered ✅' },
     });
-    res.json({ ok: true, ...result });
+    res.json({ ok: true, subscriptions: subs.length, ...result });
   } catch (e) {
     res.status(500).json({ error: e.message || 'Push test failed' });
   }

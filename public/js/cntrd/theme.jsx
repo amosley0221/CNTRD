@@ -807,6 +807,81 @@ function ReportSheet({ targetType, targetId, preview = '', onClose, onSubmitted 
   );
 }
 
+// iOS install nudge — shown once per user agent. Renders only on iOS
+// Safari that hasn't been installed to the home screen yet, since that's
+// the only platform where push won't work without install. Dismissal
+// persists in localStorage so we don't pester returning users.
+function IOSInstallNudge() {
+  const initial = (() => {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || '';
+    const isIOS = /iPad|iPhone|iPod/.test(ua);
+    if (!isIOS) return false;
+    // iOS standalone if launched from the home-screen icon.
+    const standalone = window.navigator?.standalone === true ||
+      window.matchMedia?.('(display-mode: standalone)').matches;
+    if (standalone) return false;
+    // Only show in Safari proper — Chrome / Firefox on iOS share the
+    // WebKit engine but never get the install dialog, so the nudge is
+    // misleading there.
+    const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+    if (!isSafari) return false;
+    try { if (localStorage.getItem('cntrd:ios-nudge-dismissed') === '1') return false; } catch {}
+    return true;
+  })();
+  const [open, setOpen] = React.useState(initial);
+  if (!open) return null;
+  const dismiss = (forever) => {
+    setOpen(false);
+    if (forever) {
+      try { localStorage.setItem('cntrd:ios-nudge-dismissed', '1'); } catch {}
+    }
+  };
+  return (
+    <div style={{
+      position: 'absolute', left: 12, right: 12,
+      bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
+      zIndex: 90,
+      background: 'var(--cn-bg-elev)',
+      border: '0.5px solid var(--cn-accent)',
+      borderRadius: 14,
+      padding: '12px 14px',
+      boxShadow: '0 12px 32px rgba(0,0,0,0.45)',
+      color: 'var(--cn-text)',
+      fontFamily: 'var(--cn-font-body)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <span style={{
+          padding: '2px 7px', borderRadius: 999,
+          background: 'var(--cn-accent)', color: 'var(--cn-on-accent)',
+          fontFamily: 'var(--cn-font-mono)', fontSize: 9, fontWeight: 800, letterSpacing: 1,
+        }}>INSTALL</span>
+        <span style={{ fontWeight: 800, fontSize: 14 }}>Get the full CNTRD experience</span>
+      </div>
+      <div style={{ fontSize: 12.5, color: 'var(--cn-text-dim)', lineHeight: 1.45, marginBottom: 8 }}>
+        Add CNTRD to your Home Screen so you can get system notifications when your team scores, you get a DM, or someone reacts to a Play.
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--cn-text)', lineHeight: 1.55, marginBottom: 10 }}>
+        Tap <strong>Share</strong> at the bottom of Safari, then <strong>Add to Home Screen</strong>.
+      </div>
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <button onClick={() => dismiss(false)} style={{
+          padding: '7px 12px', borderRadius: 999,
+          background: 'transparent', color: 'var(--cn-text-dim)',
+          border: '0.5px solid var(--cn-border-s)', cursor: 'pointer',
+          fontWeight: 700, fontSize: 11, fontFamily: 'inherit',
+        }}>Not now</button>
+        <button onClick={() => dismiss(true)} style={{
+          padding: '7px 12px', borderRadius: 999,
+          background: 'var(--cn-accent)', color: 'var(--cn-on-accent)',
+          border: 'none', cursor: 'pointer',
+          fontWeight: 700, fontSize: 11, fontFamily: 'inherit',
+        }}>Got it</button>
+      </div>
+    </div>
+  );
+}
+
 Object.assign(window, {
   THEMES, TYPE_PAIRS, DENSITY, applyTheme, pickContrast, resolveTeam,
   TeamPill, TeamTagsRow, Avatar, Icon,
@@ -815,5 +890,5 @@ Object.assign(window, {
   dedupeUclOverlap,
   confirmAction, ConfirmHost,
   RoleBadges, displayHandle,
-  ReportSheet,
+  ReportSheet, IOSInstallNudge,
 });

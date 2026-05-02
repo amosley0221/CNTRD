@@ -287,6 +287,16 @@ db.exec(`
   );
 `);
 
+// Tiny key/value bag for app-wide config we'd otherwise stash in a
+// missing file (Render's filesystem is ephemeral). VAPID keys live
+// here so subscriptions survive restarts.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+`);
+
 // Web Push subscriptions — one row per device/browser. The endpoint URL
 // is the unique identifier (each browser/device gets a different one).
 // We delete rows on 410 Gone responses from the push service.

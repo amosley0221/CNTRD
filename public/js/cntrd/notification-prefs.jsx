@@ -197,13 +197,25 @@ function PushSection() {
 
       const { publicKey } = await API.pushVapidPublic();
       if (!publicKey) throw new Error('Server is missing VAPID keys.');
+      const wantedKey = urlBase64ToUint8Array(publicKey);
 
       const reg = await navigator.serviceWorker.ready;
       let sub = await reg.pushManager.getSubscription();
+      // If an existing subscription was created against a different VAPID
+      // public key (e.g. after a Render restart regenerated keys), the
+      // push service will reject every send. Tear it down and re-subscribe
+      // with the current key.
+      if (sub) {
+        const currentKey = sub.options?.applicationServerKey;
+        if (!currentKey || !arrayBufferEquals(currentKey, wantedKey.buffer)) {
+          try { await sub.unsubscribe(); } catch { /* ignore */ }
+          sub = null;
+        }
+      }
       if (!sub) {
         sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(publicKey),
+          applicationServerKey: wantedKey,
         });
       }
       await API.pushSubscribe(sub.toJSON());
@@ -215,6 +227,15 @@ function PushSection() {
       setBusy(false);
     }
   };
+
+  // Equal-bytes check between two ArrayBuffer-likes.
+  function arrayBufferEquals(a, b) {
+    const ua = a instanceof ArrayBuffer ? new Uint8Array(a) : new Uint8Array(a.buffer || a);
+    const ub = b instanceof ArrayBuffer ? new Uint8Array(b) : new Uint8Array(b.buffer || b);
+    if (ua.length !== ub.length) return false;
+    for (let i = 0; i < ua.length; i++) if (ua[i] !== ub[i]) return false;
+    return true;
+  }
 
   const disable = async () => {
     if (!supported || busy) return;
@@ -238,8 +259,22 @@ function PushSection() {
   const sendTest = async () => {
     setBusy(true); setErr(null); setInfo(null);
     try {
-      await API.pushTest();
-      setInfo('Test sent — should appear in a few seconds.');
+      const r = await API.pushTest();
+      const sent = Number(r?.sent || 0);
+      const total = Number(r?.subscriptions || r?.total || 0);
+      const removed = Number(r?.removed || 0);
+      if (sent > 0) {
+        setInfo(`Test sent to ${sent} device${sent === 1 ? '' : 's'} — should appear in a few seconds.`);
+      } else if (removed > 0) {
+        setErr(`The push service rejected ${removed} dead subscription${removed === 1 ? '' : 's'}. Toggle notifications off and back on to refresh.`);
+      } else if (Array.isArray(r?.errors) && r.errors.length) {
+        const first = r.errors[0];
+        setErr(`Push service replied ${first.status || 'error'}: ${first.reason || 'unknown'}`);
+      } else if (total === 0) {
+        setErr('No subscriptions registered for this account.');
+      } else {
+        setErr('Test request returned no result.');
+      }
     } catch (e) {
       setErr(e.message || 'Test failed');
     } finally {
