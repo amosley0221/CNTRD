@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>CNTRD — Where the game gets loud.</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="description" content="CNTRD — a sports-only social network. Hot takes, live scores, and Plays from the people who care most." />
   <meta name="theme-color" content="#1B1B20" />
   <!-- Favicon + Home Screen icon. The same SVG is used everywhere; modern
@@ -38,6 +38,11 @@
       background: #0A0A0B;
       color: #F4F1EA;
       overflow: hidden;
+      /* Suppress iOS double-tap zoom + pinch-zoom on the entire app
+         shell. Combined with maximum-scale=1.0 in the viewport meta,
+         this stops the page from drifting when the user mistakenly
+         taps twice in quick succession. */
+      touch-action: manipulation;
     }
     @keyframes cn-pulse {
       0%, 100% { opacity: 1; transform: scale(1); }

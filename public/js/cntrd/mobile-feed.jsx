@@ -418,17 +418,18 @@ function BottomNav({ active = 'home', onChange, unreadMessages = 0 }) {
   return (
     <div style={{
       position: 'absolute', left: 0, right: 0, bottom: 0,
-      // Pad only by the iOS home-indicator inset (no extra spacing) so
-      // the bar reads flush with the bottom edge in standalone mode.
-      // Falls back to a small comfort gap in regular browser tabs.
-      paddingBottom: 'env(safe-area-inset-bottom, 8px)',
+      // Pad below the icons so they clear the iPhone home indicator
+      // (the horizontal bar at the bottom of home-button-less iPhones).
+      // Adds a comfort gap on top of the iOS safe-area inset; falls
+      // back to that gap alone in regular browser tabs.
+      paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)',
       background: 'color-mix(in srgb, var(--cn-bg-elev2) 90%, transparent)',
       backdropFilter: 'blur(24px) saturate(180%)',
       WebkitBackdropFilter: 'blur(24px) saturate(180%)',
       borderTop: '0.5px solid var(--cn-border)',
       display: 'flex', alignItems: 'flex-start',
       justifyContent: 'space-around',
-      paddingTop: 8,
+      paddingTop: 10,
       zIndex: 5,
     }}>
       {tabs.map(t => {
