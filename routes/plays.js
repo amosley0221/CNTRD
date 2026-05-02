@@ -82,14 +82,54 @@ function visibilityClause(viewerId) {
   };
 }
 
+// Plays expire 24 hours after publish — Instagram-style ephemerality.
+// Server-side guard: every list query AND the single-fetch endpoints
+// only return rows still inside the window. A nightly-ish cleanup
+// runs lazily on the list endpoints to physically delete the rows
+// (and their media files); until then expired rows just stop being
+// served. Cheap, no cron required.
+const PLAY_TTL_HOURS = 24;
+const FRESH_CLAUSE = `p.created_at > datetime('now', '-${PLAY_TTL_HOURS} hours')`;
+
+let _lastPurge = 0;
+function purgeExpired() {
+  // Throttle to once every 5 minutes so a hot list endpoint isn't
+  // hitting the disk repeatedly.
+  if (Date.now() - _lastPurge < 5 * 60 * 1000) return;
+  _lastPurge = Date.now();
+  try {
+    const expired = db.prepare(`
+      SELECT id, media_url FROM plays
+      WHERE created_at <= datetime('now', '-${PLAY_TTL_HOURS} hours')
+    `).all();
+    if (!expired.length) return;
+    const path = require('path');
+    const fs = require('fs');
+    const uploadRouter = require('./upload');
+    for (const r of expired) {
+      if (r.media_url) {
+        try {
+          const f = path.join(uploadRouter.uploadDir, path.basename(r.media_url));
+          if (fs.existsSync(f)) fs.unlinkSync(f);
+        } catch { /* tolerate */ }
+      }
+    }
+    const ids = expired.map(r => r.id);
+    db.prepare(`DELETE FROM plays WHERE id IN (${ids.map(() => '?').join(',')})`).run(...ids);
+  } catch (e) {
+    console.warn('[plays] purge failed:', e.message);
+  }
+}
+
 // List plays for the feed rail. Signed-in users only see plays from
 // people they follow + their own. Unauthenticated viewers fall back
 // to the same public visibility filter used elsewhere (banned/private
 // excluded).
 router.get('/', optionalAuth, (req, res) => {
+  purgeExpired();
   const viewerId = req.user?.id || null;
   const v = visibilityClause(viewerId);
-  let sql = `${SELECT} WHERE ${v.sql}`;
+  let sql = `${SELECT} WHERE ${v.sql} AND ${FRESH_CLAUSE}`;
   const params = [...v.params];
   if (viewerId) {
     sql += ` AND (p.user_id = ? OR p.user_id IN (SELECT following_id FROM follows WHERE follower_id = ?))`;
@@ -103,6 +143,7 @@ router.get('/', optionalAuth, (req, res) => {
 // Plays from a specific user. Same visibility rules — if the viewer is
 // blocked, the response is empty.
 router.get('/user/:username', optionalAuth, (req, res) => {
+  purgeExpired();
   const owner = db.prepare('SELECT id, is_private FROM users WHERE username = ? AND banned = 0').get(req.params.username);
   if (!owner) return res.json([]);
   const viewerId = req.user?.id || null;
@@ -120,7 +161,7 @@ router.get('/user/:username', optionalAuth, (req, res) => {
       if (!follows) return res.json([]);
     }
   }
-  const rows = db.prepare(`${SELECT} WHERE p.user_id = ? AND u.banned = 0 ORDER BY p.created_at DESC LIMIT 30`)
+  const rows = db.prepare(`${SELECT} WHERE p.user_id = ? AND u.banned = 0 AND ${FRESH_CLAUSE} ORDER BY p.created_at DESC LIMIT 30`)
     .all(owner.id);
   res.json(rows.map(p => hydrate(p, viewerId)));
 });

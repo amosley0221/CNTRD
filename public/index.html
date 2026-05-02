@@ -68,9 +68,14 @@
       font-family: var(--cn-font-body);
     }
     #root {
-      width: 100vw;
-      height: 100vh;
-      height: 100dvh;
+      /* Pin to the actual viewport. In iOS PWA standalone mode, 100vh
+         and 100dvh sometimes resolve to a smaller-than-screen value
+         (the engine still reserves space for chrome that isn't there),
+         leaving a phantom gap at the bottom. position: fixed + inset: 0
+         locks the element to the visible viewport edges no matter what
+         the viewport units report. */
+      position: fixed;
+      inset: 0;
       overflow: hidden;
       /* In iOS standalone mode (Add to Home Screen → "open as app"), the
          status bar / Dynamic Island overlays the page. Pad the root by
