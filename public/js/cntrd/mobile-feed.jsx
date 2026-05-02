@@ -424,11 +424,7 @@ function BottomNav({ active = 'home', onChange, unreadMessages = 0 }) {
   return (
     <div style={{
       position: 'fixed', left: 0, right: 0, bottom: 0,
-      // Pad only by the iOS home-indicator inset so the icons sit
-      // flush above the indicator with no extra comfort gap.
-      // Falls back to a small spacing in regular browser tabs where
-      // the env() value is 0.
-      paddingBottom: 'env(safe-area-inset-bottom, 6px)',
+      paddingBottom: 6,
       background: 'color-mix(in srgb, var(--cn-bg-elev2) 90%, transparent)',
       backdropFilter: 'blur(24px) saturate(180%)',
       WebkitBackdropFilter: 'blur(24px) saturate(180%)',
