@@ -415,9 +415,15 @@ function BottomNav({ active = 'home', onChange, unreadMessages = 0 }) {
     { id: 'chat',     icon: 'whistle',  label: 'Gameday' },
     { id: 'profile',  icon: 'profile',  label: 'You' },
   ];
+  // Pin to the viewport directly. Using position: absolute against the
+  // FeedScreen container surfaced a phantom gap in iOS PWA standalone
+  // mode whenever the parent's height calculation lagged the actual
+  // visible viewport. Fixed positioning sidesteps the whole chain.
+  // Desktop renders DesktopApp (no BottomNav) so this won't escape its
+  // frame.
   return (
     <div style={{
-      position: 'absolute', left: 0, right: 0, bottom: 0,
+      position: 'fixed', left: 0, right: 0, bottom: 0,
       // Pad only by the iOS home-indicator inset so the icons sit
       // flush above the indicator with no extra comfort gap.
       // Falls back to a small spacing in regular browser tabs where
