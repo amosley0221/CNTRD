@@ -93,7 +93,14 @@ function notify({ userId, type, actorId = null, data = null, dedupeKey = null, b
         id: actor.id, username: actor.username,
         displayName: actor.display_name || actor.username,
       } : null;
+      const subCount = db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ?').get(userId).n;
+      console.log(`[push] notify type=${type} to user=${userId} subs=${subCount}`);
       push.sendToUser(userId, { type, actor: actorClean, data: data || {} })
+        .then(r => {
+          if (r && (r.sent || r.removed || (r.errors && r.errors.length))) {
+            console.log(`[push] result type=${type} user=${userId} sent=${r.sent} removed=${r.removed} errors=${r.errors?.length || 0}`);
+          }
+        })
         .catch((e) => console.warn('[push] dispatch failed:', e?.message || e));
     } catch (e) {
       // services/push.js missing or web-push not installed yet — fine.

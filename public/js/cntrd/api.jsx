@@ -220,6 +220,8 @@ const API = {
   pushSubscribe(subscription)        { return request('POST', '/api/push/subscribe', { subscription }); },
   pushUnsubscribe(endpoint)          { return request('POST', '/api/push/unsubscribe', { endpoint }); },
   pushTest()                         { return request('POST', '/api/push/test'); },
+  pushStatus()                       { return request('GET',  '/api/admin/push-status'); },
+  pushDebug(payload)                 { return request('POST', '/api/admin/push-debug', payload); },
 
   // Admin (server enforces is_admin)
   adminUsers(q)            { return request('GET',  '/api/admin/users' + (q ? '?q=' + encodeURIComponent(q) : '')); },

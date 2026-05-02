@@ -221,4 +221,41 @@ router.get('/vapid', requireOwner, (req, res) => {
   });
 });
 
+// Snapshot of who's subscribed to system notifications, useful for
+// debugging "I'm not getting pushes". Owner-only.
+router.get('/push-status', requireOwner, (req, res) => {
+  const rows = db.prepare(`
+    SELECT u.username, u.display_name, u.id,
+           COUNT(s.id) AS subs,
+           MAX(s.last_push_at) AS last_push
+    FROM users u
+    LEFT JOIN push_subscriptions s ON s.user_id = u.id
+    GROUP BY u.id
+    HAVING subs > 0
+    ORDER BY subs DESC, u.username
+  `).all();
+  const total = db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions').get().n;
+  res.json({ total, byUser: rows });
+});
+
+// Fire a push to any user by username so the owner can verify the
+// real flow end-to-end. Routes through notify() so notification prefs
+// + dedupe + push fan-out all behave like a normal event. Owner-only.
+router.post('/push-debug', requireOwner, (req, res) => {
+  const target = String(req.body?.username || '').trim().toLowerCase();
+  const type   = String(req.body?.type || 'message').trim();
+  const preview = String(req.body?.preview || 'Debug push').slice(0, 140);
+  if (!target) return res.status(400).json({ error: 'username required' });
+  const u = db.prepare('SELECT id FROM users WHERE lower(username) = ?').get(target);
+  if (!u) return res.status(404).json({ error: 'user not found' });
+  const subs = db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ?').get(u.id).n;
+  const { notify } = require('../services/notifier');
+  const id = notify({
+    userId: u.id, type, actorId: req.user.id,
+    data: { preview, conversation_id: 'debug', __debug: true },
+    dedupeKey: `debug:${Date.now()}`,
+  });
+  res.json({ ok: true, target_user_id: u.id, subscriptions: subs, notification_id: id });
+});
+
 module.exports = router;
