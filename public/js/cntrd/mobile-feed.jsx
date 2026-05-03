@@ -415,48 +415,14 @@ function BottomNav({ active = 'home', onChange, unreadMessages = 0 }) {
     { id: 'chat',     icon: 'whistle',  label: 'Gameday' },
     { id: 'profile',  icon: 'profile',  label: 'You' },
   ];
-  // TEMP DEBUG: read viewport metrics so we can see what the phone
-  // actually thinks is happening. Removed once the gap issue is solved.
-  const navRef = React.useRef(null);
-  const [debug, setDebug] = React.useState('');
-  React.useEffect(() => {
-    const measure = () => {
-      const probe = document.createElement('div');
-      probe.style.cssText =
-        'position:fixed;left:0;bottom:0;height:env(safe-area-inset-bottom,0px);width:1px;visibility:hidden;';
-      document.body.appendChild(probe);
-      const safeBottom = probe.getBoundingClientRect().height;
-      document.body.removeChild(probe);
-      const r = navRef.current?.getBoundingClientRect();
-      const standalone =
-        window.matchMedia?.('(display-mode: standalone)').matches ||
-        window.navigator?.standalone === true;
-      setDebug(
-        `iH=${window.innerHeight} cH=${document.documentElement.clientHeight} ` +
-        `safeB=${Math.round(safeBottom)} navTop=${r ? Math.round(r.top) : '?'} ` +
-        `navBot=${r ? Math.round(r.bottom) : '?'} sa=${standalone ? 'Y' : 'N'}`
-      );
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, []);
-  // Pin to the viewport directly. Using position: absolute against the
-  // FeedScreen container surfaced a phantom gap in iOS PWA standalone
-  // mode whenever the parent's height calculation lagged the actual
-  // visible viewport. Fixed positioning sidesteps the whole chain.
-  // Desktop renders DesktopApp (no BottomNav) so this won't escape its
-  // frame.
+  // Pin to the viewport directly. iOS PWA reserves a band at the
+  // bottom of the screen for the home-indicator gesture zone and
+  // won't render fixed content past window.innerHeight, so we can't
+  // visually fill it — just sit flush against innerHeight's bottom.
   return (
-    <div ref={navRef} style={{
-      position: 'fixed', left: 0, right: 0,
-      // iOS PWA reports innerHeight shorter than the physical screen
-      // by the home-indicator inset, leaving an unrendered band below
-      // bottom: 0. Pulling the box down by env(safe-area-inset-bottom)
-      // and adding the same amount as extra bottom padding pushes the
-      // nav background through that band while keeping icons in place.
-      bottom: 'calc(0px - env(safe-area-inset-bottom, 0px))',
-      paddingBottom: 'calc(6px + env(safe-area-inset-bottom, 0px))',
+    <div style={{
+      position: 'fixed', left: 0, right: 0, bottom: 0,
+      paddingBottom: 6,
       background: 'color-mix(in srgb, var(--cn-bg-elev2) 90%, transparent)',
       backdropFilter: 'blur(24px) saturate(180%)',
       WebkitBackdropFilter: 'blur(24px) saturate(180%)',
@@ -466,13 +432,6 @@ function BottomNav({ active = 'home', onChange, unreadMessages = 0 }) {
       paddingTop: 8,
       zIndex: 5,
     }}>
-      {/* TEMP DEBUG overlay — viewport metrics for diagnosing the gap. */}
-      <div style={{
-        position: 'absolute', left: 0, right: 0, bottom: '100%',
-        background: 'rgba(0,0,0,0.85)', color: '#0f0',
-        font: '500 10px/1.35 ui-monospace, monospace',
-        padding: '4px 8px', textAlign: 'center', pointerEvents: 'none',
-      }}>{debug}</div>
       {tabs.map(t => {
         const isCompose = t.id === 'compose';
         const isActive = t.id === active;

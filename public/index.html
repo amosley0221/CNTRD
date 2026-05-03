@@ -35,14 +35,21 @@
     body {
       font-family: "Inter Tight", system-ui, sans-serif;
       -webkit-font-smoothing: antialiased;
+      /* Default to the dark scheme; light-mode override below. iOS PWA
+         paints the home-indicator gesture zone with the body color, so
+         this needs to match the active theme or it shows a contrasting
+         band below the bottom nav. */
       background: #0A0A0B;
       color: #F4F1EA;
       overflow: hidden;
       /* Suppress iOS double-tap zoom + pinch-zoom on the entire app
          shell. Combined with maximum-scale=1.0 in the viewport meta,
          this stops the page from drifting when the user mistakenly
-         taps twice in quick succession. */
+         taps twice in quick repetition. */
       touch-action: manipulation;
+    }
+    @media (prefers-color-scheme: light) {
+      body { background: #F4F1EA; color: #1B1B20; }
     }
     @keyframes cn-pulse {
       0%, 100% { opacity: 1; transform: scale(1); }
