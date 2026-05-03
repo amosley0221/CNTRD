@@ -449,8 +449,14 @@ function BottomNav({ active = 'home', onChange, unreadMessages = 0 }) {
   // frame.
   return (
     <div ref={navRef} style={{
-      position: 'fixed', left: 0, right: 0, bottom: 0,
-      paddingBottom: 6,
+      position: 'fixed', left: 0, right: 0,
+      // iOS PWA reports innerHeight shorter than the physical screen
+      // by the home-indicator inset, leaving an unrendered band below
+      // bottom: 0. Pulling the box down by env(safe-area-inset-bottom)
+      // and adding the same amount as extra bottom padding pushes the
+      // nav background through that band while keeping icons in place.
+      bottom: 'calc(0px - env(safe-area-inset-bottom, 0px))',
+      paddingBottom: 'calc(6px + env(safe-area-inset-bottom, 0px))',
       background: 'color-mix(in srgb, var(--cn-bg-elev2) 90%, transparent)',
       backdropFilter: 'blur(24px) saturate(180%)',
       WebkitBackdropFilter: 'blur(24px) saturate(180%)',
