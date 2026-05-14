@@ -861,10 +861,10 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me, games }) {
         audio: false,
       }).catch(() => md.getUserMedia({ video: true, audio: false }));
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => {});
-      }
+      // Flip state first so the <video> element actually mounts, then
+      // attach the stream in the effect below once the ref exists.
+      // Assigning srcObject here would no-op because videoRef.current
+      // is still null until React commits the next render.
       setCamState('ok');
     } catch (e) {
       const msg = (e?.name === 'NotAllowedError') ? 'Camera permission denied.'
@@ -874,6 +874,16 @@ function PlaysCreatorScreen({ tweaks, onNav, onCreate, me, games }) {
       setCamErr(msg);
     }
   }, [facing, stopStream]);
+
+  // Attach the active MediaStream to the <video> element after it mounts.
+  React.useEffect(() => {
+    if (camState !== 'ok') return;
+    const v = videoRef.current;
+    const s = streamRef.current;
+    if (!v || !s) return;
+    v.srcObject = s;
+    v.play().catch(() => {});
+  }, [camState, facing]);
 
   // Auto-start the camera when the user switches to camera mode and
   // restart it when they flip front/back. Stop on cleanup.
