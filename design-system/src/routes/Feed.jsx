@@ -45,6 +45,7 @@ export default function Feed() {
   const [postsErr, setPostsErr] = useState(null);
   const [games, setGames] = useState(null);
   const [plays, setPlays] = useState([]);
+  const [articles, setArticles] = useState(null);
 
   useEffect(() => {
     let cancel = false;
@@ -70,6 +71,15 @@ export default function Feed() {
         if (!cancel) setPlays(data || []);
       } catch {
         if (!cancel) setPlays([]);
+      }
+    })();
+    (async () => {
+      try {
+        const leagues = Array.isArray(me?.followed_leagues) ? me.followed_leagues : null;
+        const res = await gamesApi.news(leagues);
+        if (!cancel) setArticles(res?.articles || []);
+      } catch {
+        if (!cancel) setArticles([]);
       }
     })();
     return () => { cancel = true; };
@@ -142,6 +152,15 @@ export default function Feed() {
           <SectionHead title="Recent" italicWord="finals" count={`${recent.length}`} />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {recent.map((g, i) => <GameCard key={g.id || i} {...gameToCardProps(g)} />)}
+          </div>
+        </section>
+      )}
+
+      {articles && articles.length > 0 && (
+        <section className="mb-12">
+          <SectionHead title="On the" italicWord="wire" count={`${articles.length}`} />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {articles.slice(0, 8).map((a) => <ArticleCard key={a.id || a.url} article={a} />)}
           </div>
         </section>
       )}
@@ -223,6 +242,51 @@ function RealPost({ post }) {
         <span className="flex items-center gap-1.5"><MsgIcon size={13} /> {post.replies || 0}</span>
       </div>
     </article>
+  );
+}
+
+function ArticleCard({ article }) {
+  return (
+    <a
+      href={article.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        display: 'flex', flexDirection: 'column',
+        background: c.paper, border: `1px solid ${c.line}`,
+        color: 'inherit', textDecoration: 'none',
+        overflow: 'hidden',
+        minHeight: 220,
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.borderColor = c.accent)}
+      onMouseLeave={(e) => (e.currentTarget.style.borderColor = c.line)}
+    >
+      {article.image && (
+        <div
+          style={{
+            width: '100%',
+            aspectRatio: '16 / 9',
+            backgroundImage: `url("${article.image}")`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            background: `${c.surface} url("${article.image}") center/cover no-repeat`,
+          }}
+        />
+      )}
+      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ fontFamily: fonts.mono, fontSize: 10, letterSpacing: '0.2em', color: c.accent, textTransform: 'uppercase' }}>
+          {article.league} {article.published ? `· ${relTime(article.published)}` : ''}
+        </div>
+        <h3 style={{ fontFamily: fonts.display, fontSize: 19, fontWeight: 500, lineHeight: 1.2, letterSpacing: '-0.02em', color: c.ink, margin: 0 }}>
+          {article.title}
+        </h3>
+        {article.description && (
+          <p style={{ fontFamily: fonts.body, fontSize: 14, lineHeight: 1.45, color: c.inkSoft, margin: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+            {article.description}
+          </p>
+        )}
+      </div>
+    </a>
   );
 }
 

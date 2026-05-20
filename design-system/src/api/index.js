@@ -21,6 +21,10 @@ export const posts = {
 
 export const games = {
   all:      ()                   => get('/api/games'),
+  news:     (leagues)            => {
+    const qs = leagues?.length ? `?leagues=${encodeURIComponent(leagues.join(','))}` : '';
+    return get(`/api/games/news/articles${qs}`);
+  },
 };
 
 export const users = {
