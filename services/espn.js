@@ -601,6 +601,9 @@ async function getGameDetail(leagueCode, eventId) {
       logo: (home.team?.logos?.[0]?.href) || home.team?.logo || '',
       primary: colorHex(home.team?.color),
       score: state === 'scheduled' ? '–' : (readScore(home) ?? 0),
+      // Per-period scores. ESPN surfaces these as `linescores: [{ value }]`
+      // on each competitor. Empty array for sports without periods.
+      line:  (home.linescores || []).map(l => Number(l?.value ?? l?.displayValue ?? 0)),
       record: pickRecord(home.records),
       stats: summarizeTeamStats((json.boxscore?.teams || []).find(t => t?.team?.id === home.team?.id)),
       players: extractPlayers(json.boxscore, home.team?.id),
@@ -612,6 +615,7 @@ async function getGameDetail(leagueCode, eventId) {
       logo: (away.team?.logos?.[0]?.href) || away.team?.logo || '',
       primary: colorHex(away.team?.color),
       score: state === 'scheduled' ? '–' : (readScore(away) ?? 0),
+      line:  (away.linescores || []).map(l => Number(l?.value ?? l?.displayValue ?? 0)),
       record: pickRecord(away.records),
       stats: summarizeTeamStats((json.boxscore?.teams || []).find(t => t?.team?.id === away.team?.id)),
       players: extractPlayers(json.boxscore, away.team?.id),
