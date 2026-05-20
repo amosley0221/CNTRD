@@ -60,6 +60,14 @@ app.use('/api/upload', uploadRouter);
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', app: 'CNTRD' }));
 
+// /v2/* SPA fallback: serve the v2 shell for any deep link inside the
+// new app so React Router (browser history mode) can take over.
+// express.static already handles /v2/ → public/v2/index.html for the
+// bare directory; this catches /v2/feed, /v2/u/anyone, etc.
+app.get('/v2/*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'v2', 'index.html'));
+});
+
 // SPA fallback – serve index.html for all non-API routes
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
