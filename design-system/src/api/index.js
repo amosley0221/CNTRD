@@ -31,6 +31,29 @@ export const plays = {
   remove:   (id)                 => del(`/api/plays/${id}`),
 };
 
+export const messages = {
+  list:        ()                          => get('/api/messages'),
+  unread:      ()                          => get('/api/messages/unread'),
+  searchUsers: (q)                         => get(`/api/messages/users/search?q=${encodeURIComponent(q)}`),
+  create:      (user_ids, opts = {})       => post('/api/messages', { user_ids, ...opts }),
+  conversation:(id)                        => get(`/api/messages/${id}`),
+  fetch:       (id, opts = {})             => {
+    const params = new URLSearchParams();
+    if (opts.before) params.set('before', opts.before);
+    if (opts.after)  params.set('after',  opts.after);
+    const qs = params.toString();
+    return get(`/api/messages/${id}/messages${qs ? `?${qs}` : ''}`);
+  },
+  send:        (id, content, reply_to_id) => post(`/api/messages/${id}/messages`, { content, reply_to_id }),
+  gameday:     (gameId, state, date)      => {
+    const params = new URLSearchParams();
+    if (state) params.set('state', state);
+    if (date)  params.set('date',  date);
+    const qs = params.toString();
+    return get(`/api/messages/gameday/${encodeURIComponent(gameId)}${qs ? `?${qs}` : ''}`);
+  },
+};
+
 export const uploads = {
   // Multipart upload. The Express endpoint expects field name "media".
   // Returns { url, kind, size } — url is a relative /uploads/... path.

@@ -9,6 +9,11 @@ import Plays from './routes/Plays';
 import PlayCreator from './routes/PlayCreator';
 import PlayViewer from './routes/PlayViewer';
 import Composer from './routes/Composer';
+import Messages from './routes/Messages';
+import Thread from './routes/Thread';
+import NewMessage from './routes/NewMessage';
+import Gameday from './routes/Gameday';
+import GamedayRoom from './routes/GamedayRoom';
 import ComingSoon from './routes/ComingSoon';
 import Showcase from './Showcase';
 import { c, fonts } from './tokens';
@@ -45,16 +50,11 @@ export default function App() {
             <Route path="plays/new"       element={<RequireAuth><PlayCreator /></RequireAuth>} />
             <Route path="plays/:id"       element={<PlayViewer />} />
 
-            <Route path="messages" element={<ComingSoon
-              title="Messages" italicWord="inbox"
-              blurb="DMs and group chats with read receipts, port from the live SQLite messages table. Coming in the next slice."
-              legacyPath="/?screen=messages" />}
-            />
-            <Route path="gameday" element={<ComingSoon
-              title="Gameday" italicWord="chat"
-              blurb="The big-game live chat with score-pinned events and team-color sidebars."
-              legacyPath="/?screen=chat" />}
-            />
+            <Route path="messages"         element={<RequireAuth><Messages /></RequireAuth>} />
+            <Route path="messages/new"     element={<RequireAuth><NewMessage /></RequireAuth>} />
+            <Route path="messages/:id"     element={<RequireAuth><Thread /></RequireAuth>} />
+            <Route path="gameday"          element={<RequireAuth><Gameday /></RequireAuth>} />
+            <Route path="gameday/:gameId"  element={<RequireAuth><GamedayRoom /></RequireAuth>} />
             <Route path="notifications" element={<ComingSoon
               title="Bell" italicWord="notifications"
               blurb="Push toggles, in-app feed, dedupe. Push subscriptions table is already wired server-side."
