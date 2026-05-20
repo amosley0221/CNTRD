@@ -3,4 +3,19 @@
 @tailwind utilities;
 
 html, body { margin: 0; padding: 0; }
-body { background: #f4ede0; color: #1a1612; }
+body {
+  background: #f4ede0;
+  color: #1a1612;
+  font-family: "Instrument Sans", -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Variable-axis SOFT for Fraunces — gives the giant serif headlines
+   the subtle softness from the mockups. */
+.fraunces-soft { font-variation-settings: "SOFT" 50, "opsz" 144; }
+
+/* Scrolling ticker animation */
+@keyframes cn-ticker {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}

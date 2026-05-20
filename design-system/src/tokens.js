@@ -3,15 +3,15 @@
    Change these and the whole product shifts.
    ============================================================ */
 export const c = {
-  paper:    '#f4ede0',
-  surface:  '#ebe3d2',
-  ink:      '#1a1612',
+  paper:    '#f4ede0',          // warm cream background
+  surface:  '#ebe3d2',          // slightly deeper cream for cards
+  ink:      '#1a1612',          // warm near-black text
   inkSoft:  'rgba(26, 22, 18, 0.7)',
   inkDim:   'rgba(26, 22, 18, 0.5)',
   inkFaint: 'rgba(26, 22, 18, 0.18)',
   line:     'rgba(26, 22, 18, 0.15)',
-  accent:   '#c84c1e',
-  alert:    '#8a1f2b',
+  accent:   '#c84c1e',          // terracotta — primary accent
+  alert:    '#8a1f2b',          // deep crimson — live / urgent
 };
 
 export const fonts = {
