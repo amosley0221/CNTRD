@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Home, MessageCircle, Plus, Trophy, User, LogOut } from 'lucide-react';
+import { Home, MessageCircle, Plus, Trophy, User, LogOut, Search, Bell } from 'lucide-react';
 import { c, fonts } from '../tokens';
 import { Logo, LiveDot } from '../components';
 import { useAuth } from '../auth/AuthContext';
@@ -30,9 +30,12 @@ export default function Layout() {
           <div className="flex items-center gap-4" style={{ fontFamily: fonts.mono, fontSize: 10, color: c.inkDim, letterSpacing: '0.1em' }}>
             {me ? (
               <>
-                <span className="flex items-center gap-1.5" style={{ color: c.alert, textTransform: 'uppercase' }}>
-                  <LiveDot tone="alert" />LIVE
-                </span>
+                <NavLink to="/search" aria-label="Search" style={{ color: c.inkDim, display: 'flex', alignItems: 'center' }}>
+                  <Search size={16} strokeWidth={1.8} />
+                </NavLink>
+                <NavLink to="/notifications" aria-label="Notifications" style={{ color: c.inkDim, display: 'flex', alignItems: 'center' }}>
+                  <Bell size={16} strokeWidth={1.8} />
+                </NavLink>
                 <button
                   onClick={async () => { await logout(); nav('/login', { replace: true }); }}
                   className="flex items-center gap-1.5"
