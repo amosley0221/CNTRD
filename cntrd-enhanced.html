@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CNTRD — The center of the action</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..900,0..100&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.min.js"></script>
+<style>
+  :root {
+    --ink: #0a0a0a;
+    --paper: #f5f1e8;
+    --paper-dim: rgba(245, 241, 232, 0.55);
+    --paper-faint: rgba(245, 241, 232, 0.12);
+    --line: rgba(245, 241, 232, 0.15);
+    --volt: #d8ff3c;
+    --blood: #ff3838;
+    --bone: #1a1a1a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'Instrument Sans', sans-serif;
+    overflow-x: hidden;
+    line-height: 1.4;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0; pointer-events: none; z-index: 200;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.8;
+    mix-blend-mode: overlay;
+  }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  .serif { font-family: 'Fraunces', serif; }
+  .caps { text-transform: uppercase; letter-spacing: 0.2em; font-size: 11px; font-weight: 600; }
+  .micro { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; }
+
+  /* ==== HEADER ==== */
+  header {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(10, 10, 10, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px;
+  }
+  .logo {
+    font-family: 'Fraunces', serif;
+    font-weight: 900;
+    font-size: 22px;
+    letter-spacing: -0.04em;
+    font-variation-settings: "SOFT" 0;
+  }
+  .logo .dot { color: var(--volt); }
+  .nav-meta {
+    display: flex; align-items: center; gap: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--paper-dim);
+  }
+  .live-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--paper);
+    text-transform: uppercase;
+  }
+  .live-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--blood);
+    box-shadow: 0 0 0 0 rgba(255, 56, 56, 0.7);
+    animation: pulse 1.8s infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(255, 56, 56, 0.7); }
+    70% { box-shadow: 0 0 0 8px rgba(255, 56, 56, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 56, 56, 0); }
+  }
+
+  /* ==== TICKER ==== */
+  .ticker {
+    border-bottom: 1px solid var(--line);
+    overflow: hidden;
+    position: relative;
+    background: var(--ink);
+  }
+  .ticker-track {
+    display: inline-flex; gap: 40px;
+    padding: 10px 0;
+    white-space: nowrap;
+    animation: scroll 60s linear infinite;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+  }
+  .ticker-item { display: inline-flex; align-items: center; gap: 10px; }
+  .ticker-item .tag { color: var(--paper-dim); }
+  .ticker-item .score { font-weight: 700; }
+  .ticker-item .live { color: var(--volt); font-size: 9px; letter-spacing: 0.2em; }
+  .ticker-item .win { color: var(--volt); }
+  .ticker-item .lose { color: var(--paper-dim); }
+  @keyframes scroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+
+  /* ==== HERO ==== */
+  .hero {
+    padding: 60px 20px 40px;
+    position: relative;
+    border-bottom: 1px solid var(--line);
+  }
+  .hero-kicker {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 24px;
+    color: var(--volt);
+  }
+  .hero-kicker::before {
+    content: ''; display: block;
+    width: 30px; height: 1px;
+    background: var(--volt);
+  }
+  .hero h1 {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-size: clamp(44px, 11vw, 96px);
+    line-height: 0.92;
+    letter-spacing: -0.04em;
+    font-variation-settings: "SOFT" 50, "opsz" 144;
+    margin-bottom: 28px;
+  }
+  .hero h1 em {
+    font-style: italic;
+    font-weight: 300;
+    color: var(--volt);
+  }
+  .hero-graphic {
+    position: relative;
+    aspect-ratio: 16 / 10;
+    margin: 32px 0;
+    background:
+      radial-gradient(circle at 30% 40%, rgba(216, 255, 60, 0.15), transparent 50%),
+      radial-gradient(circle at 70% 60%, rgba(255, 56, 56, 0.18), transparent 50%),
+      linear-gradient(135deg, #1a1a1a, #0a0a0a);
+    overflow: hidden;
+    border: 1px solid var(--line);
+  }
+  .hero-graphic::after {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(245, 241, 232, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(245, 241, 232, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+  }
+  .stat-big {
+    position: absolute; left: 24px; top: 50%;
+    transform: translateY(-50%);
+    font-family: 'Fraunces', serif;
+    font-weight: 200;
+    font-size: clamp(120px, 28vw, 240px);
+    line-height: 0.85;
+    letter-spacing: -0.06em;
+    color: var(--paper);
+    font-variation-settings: "SOFT" 100;
+    z-index: 2;
+  }
+  .stat-big sup {
+    font-size: 0.3em;
+    color: var(--volt);
+    font-weight: 600;
+    letter-spacing: 0;
+    vertical-align: super;
+    margin-left: 4px;
+  }
+  .hero-meta {
+    position: absolute;
+    bottom: 24px; right: 24px;
+    text-align: right;
+    z-index: 2;
+  }
+  .hero-meta .num {
+    font-family: 'Fraunces', serif;
+    font-weight: 300;
+    font-size: 32px;
+    line-height: 1;
+    color: var(--volt);
+  }
+  .hero-meta .lbl {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: var(--paper-dim);
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+  .hero-deck {
+    font-family: 'Fraunces', serif;
+    font-size: 18px;
+    line-height: 1.4;
+    color: var(--paper);
+    max-width: 520px;
+    font-weight: 300;
+  }
+  .hero-byline {
+    margin-top: 24px;
+    display: flex; gap: 16px;
+    color: var(--paper-dim);
+  }
+  .hero-byline span:not(:last-child)::after {
+    content: '·'; margin-left: 16px;
+  }
+
+  /* ==== SECTION FRAME ==== */
+  section { padding: 60px 20px; border-bottom: 1px solid var(--line); }
+  .sec-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 32px;
+  }
+  .sec-title {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-size: clamp(28px, 6vw, 44px);
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+  .sec-title em { font-style: italic; color: var(--volt); font-weight: 300; }
+  .sec-count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--paper-dim);
+    letter-spacing: 0.15em;
+  }
+
+  /* ==== LIVE GAMES ==== */
+  .games { display: flex; flex-direction: column; gap: 14px; }
+  .game {
+    border: 1px solid var(--line);
+    padding: 20px;
+    position: relative;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.02), transparent);
+    transition: border-color 0.3s, background 0.3s;
+  }
+  .game:hover {
+    border-color: var(--paper-faint);
+    background: linear-gradient(135deg, rgba(216, 255, 60, 0.04), transparent);
+  }
+  .game-status {
+    position: absolute; top: 20px; right: 20px;
+    display: flex; align-items: center; gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+  }
+  .game-status.live { color: var(--volt); }
+  .game-status .ldot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--volt);
+    animation: pulse-v 1.6s infinite;
+  }
+  @keyframes pulse-v {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .game-teams { display: flex; flex-direction: column; gap: 14px; margin-top: 8px; }
+  .team {
+    display: grid;
+    grid-template-columns: 28px 1fr auto;
+    gap: 14px; align-items: center;
+  }
+  .team-mark {
+    width: 28px; height: 28px;
+    border-radius: 2px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .team-name {
+    font-family: 'Fraunces', serif;
+    font-size: 19px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+  .team.lead .team-name { color: var(--paper); }
+  .team:not(.lead) .team-name { color: var(--paper-dim); }
+  .team-score {
+    font-family: 'Fraunces', serif;
+    font-size: 32px;
+    font-weight: 300;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.04em;
+  }
+  .team.lead .team-score { color: var(--volt); }
+  .game-foot {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--line);
+    display: flex; justify-content: space-between;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--paper-dim);
+    letter-spacing: 0.1em;
+  }
+
+  /* ==== DISCOURSE / SOCIAL FEED ==== */
+  .feed { display: flex; flex-direction: column; gap: 0; }
+  .post {
+    padding: 24px 0;
+    border-bottom: 1px solid var(--line);
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .post:last-child { border-bottom: none; }
+  .post-head {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 13px;
+  }
+  .avatar {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--bone);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .post-name { font-weight: 600; }
+  .post-handle { color: var(--paper-dim); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+  .post-time { color: var(--paper-dim); margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+  .post-body {
+    font-family: 'Fraunces', serif;
+    font-size: 19px;
+    line-height: 1.35;
+    font-weight: 300;
+    letter-spacing: -0.005em;
+  }
+  .post-body strong { color: var(--volt); font-weight: 500; }
+  .post-quote {
+    border-left: 2px solid var(--volt);
+    padding: 8px 14px;
+    margin: 6px 0;
+    color: var(--paper-dim);
+    font-size: 14px;
+    font-family: 'Instrument Sans', sans-serif;
+    font-style: italic;
+  }
+  .post-actions {
+    display: flex; gap: 24px;
+    margin-top: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--paper-dim);
+    letter-spacing: 0.05em;
+  }
+  .post-actions span { transition: color 0.2s; cursor: pointer; }
+  .post-actions span:hover { color: var(--volt); }
+  .post-media {
+    background: linear-gradient(135deg, #1a1a1a, #0a0a0a);
+    border: 1px solid var(--line);
+    aspect-ratio: 16 / 9;
+    position: relative;
+    overflow: hidden;
+  }
+  .post-media::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(circle at 50% 50%, rgba(216, 255, 60, 0.08), transparent 60%);
+  }
+  .play-mark {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 56px; height: 56px;
+    border: 1px solid var(--paper);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 2;
+  }
+  .play-mark::before {
+    content: '';
+    width: 0; height: 0;
+    border-left: 12px solid var(--paper);
+    border-top: 8px solid transparent;
+    border-bottom: 8px solid transparent;
+    margin-left: 4px;
+  }
+  .media-meta {
+    position: absolute; bottom: 12px; left: 14px;
+    z-index: 2;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--paper);
+  }
+  .media-meta .views { color: var(--volt); }
+
+  /* ==== BY THE NUMBERS ==== */
+  .numbers { display: flex; flex-direction: column; gap: 28px; }
+  .num-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 16px;
+    align-items: baseline;
+    padding-bottom: 16px;
+    border-bottom: 1px dashed var(--line);
+  }
+  .num-row:last-child { border-bottom: none; }
+  .num-label {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .num-name {
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+  .num-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--paper-dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .num-val {
+    font-family: 'Fraunces', serif;
+    font-size: 56px;
+    font-weight: 200;
+    line-height: 1;
+    letter-spacing: -0.04em;
+    font-variant-numeric: tabular-nums;
+    color: var(--volt);
+  }
+  .num-val .unit {
+    font-size: 14px;
+    color: var(--paper-dim);
+    margin-left: 4px;
+    letter-spacing: 0;
+  }
+  .num-bar {
+    grid-column: 1 / -1;
+    height: 2px;
+    background: var(--line);
+    position: relative;
+    margin-top: 12px;
+  }
+  .num-bar-fill {
+    position: absolute;
+    top: 0; left: 0;
+    height: 100%;
+    background: var(--volt);
+    width: 0;
+  }
+
+  /* ==== UPCOMING ==== */
+  .upcoming { display: flex; flex-direction: column; gap: 16px; }
+  .up-row {
+    display: grid;
+    grid-template-columns: 80px 1fr auto;
+    gap: 16px;
+    align-items: center;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .up-row:last-child { border-bottom: none; }
+  .up-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--paper-dim);
+  }
+  .up-time .day { display: block; font-size: 16px; color: var(--paper); font-weight: 700; letter-spacing: 0; }
+  .up-match {
+    font-family: 'Fraunces', serif;
+    font-size: 17px;
+    font-weight: 400;
+  }
+  .up-match .sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--paper-dim);
+    letter-spacing: 0.1em;
+    display: block;
+    margin-top: 4px;
+    text-transform: uppercase;
+    font-weight: 400;
+  }
+  .up-cta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--volt);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    border: 1px solid var(--volt);
+    padding: 6px 10px;
+    transition: background 0.2s, color 0.2s;
+  }
+  .up-cta:hover { background: var(--volt); color: var(--ink); }
+
+  /* ==== FOOTER ==== */
+  footer {
+    padding: 60px 20px 80px;
+    background: var(--ink);
+  }
+  .foot-grid {
+    display: flex; flex-direction: column; gap: 40px;
+  }
+  .foot-mark .logo { font-size: 64px; line-height: 0.9; }
+  .foot-tag {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: 22px;
+    color: var(--paper-dim);
+    margin-top: 12px;
+  }
+  .credits {
+    border-top: 1px solid var(--line);
+    padding-top: 28px;
+    display: flex; flex-direction: column; gap: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--paper-dim);
+    letter-spacing: 0.1em;
+  }
+  .credits strong { color: var(--paper); font-weight: 500; }
+
+  /* reveal animations */
+  .reveal { opacity: 0; transform: translateY(20px); }
+
+  @media (min-width: 768px) {
+    .nav { padding: 18px 48px; }
+    .hero { padding: 100px 48px 60px; }
+    section { padding: 80px 48px; }
+    footer { padding: 80px 48px 100px; }
+    .hero-deck { font-size: 22px; }
+    .games { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  }
+
+  @media (min-width: 1100px) {
+    .games { grid-template-columns: repeat(3, 1fr); }
+    .foot-grid { flex-direction: row; justify-content: space-between; align-items: flex-end; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="nav">
+    <div class="logo">cntrd<span class="dot">.</span></div>
+    <div class="nav-meta">
+      <span class="live-pill"><span class="live-dot"></span>14 LIVE</span>
+      <span class="mono">MON · 21:47</span>
+    </div>
+  </div>
+</header>
+
+<div class="ticker">
+  <div class="ticker-track" id="ticker">
+    <!-- populated by JS -->
+  </div>
+</div>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-kicker caps reveal">Long Read · NBA Playoffs</div>
+  <h1 class="reveal">Inside the <em>comeback</em><br>that broke the series</h1>
+
+  <div class="hero-graphic reveal">
+    <div class="stat-big">22<sup>↓</sup></div>
+    <div class="hero-meta">
+      <div class="num" id="hero-final">+5</div>
+      <div class="lbl">Final Margin</div>
+    </div>
+  </div>
+
+  <p class="hero-deck reveal">
+    Down twenty-two with eleven minutes to play, the bench rewrote what a playoff run is supposed to look like. We track every possession of the last quarter — and the one decision that changed everything.
+  </p>
+
+  <div class="hero-byline reveal mono" style="font-size:11px; letter-spacing:0.1em;">
+    <span>BY M. CARRINGTON</span>
+    <span>14 MIN READ</span>
+    <span>3.2K SAVES</span>
+  </div>
+</div>
+
+<!-- LIVE NOW -->
+<section>
+  <div class="sec-head">
+    <h2 class="sec-title reveal">Live <em>now</em></h2>
+    <div class="sec-count reveal">06 / 14</div>
+  </div>
+
+  <div class="games">
+    <div class="game reveal">
+      <div class="game-status live"><span class="ldot"></span>Q3 · 4:22</div>
+      <div class="game-teams" style="margin-top: 28px;">
+        <div class="team">
+          <div class="team-mark" style="background: #007a33;">BOS</div>
+          <div class="team-name">Celtics</div>
+          <div class="team-score" data-count="87">87</div>
+        </div>
+        <div class="team lead">
+          <div class="team-mark" style="background: #fdb927;">LAL</div>
+          <div class="team-name">Lakers</div>
+          <div class="team-score" data-count="91">91</div>
+        </div>
+      </div>
+      <div class="game-foot">
+        <span>CRYPTO.COM ARENA</span>
+        <span>WIN % · 71</span>
+      </div>
+    </div>
+
+    <div class="game reveal">
+      <div class="game-status live"><span class="ldot"></span>P2 · 12:08</div>
+      <div class="game-teams" style="margin-top: 28px;">
+        <div class="team lead">
+          <div class="team-mark" style="background: #0033a0;">NYR</div>
+          <div class="team-name">Rangers</div>
+          <div class="team-score" data-count="2">2</div>
+        </div>
+        <div class="team">
+          <div class="team-mark" style="background: #fc4c02;">EDM</div>
+          <div class="team-name">Oilers</div>
+          <div class="team-score" data-count="1">1</div>
+        </div>
+      </div>
+      <div class="game-foot">
+        <span>MADISON SQUARE GARDEN</span>
+        <span>SHOTS · 18-14</span>
+      </div>
+    </div>
+
+    <div class="game reveal">
+      <div class="game-status live"><span class="ldot"></span>67' · 1H</div>
+      <div class="game-teams" style="margin-top: 28px;">
+        <div class="team">
+          <div class="team-mark" style="background: #6cabdd;">MCI</div>
+          <div class="team-name">Man City</div>
+          <div class="team-score" data-count="1">1</div>
+        </div>
+        <div class="team">
+          <div class="team-mark" style="background: #ef0107;">ARS</div>
+          <div class="team-name">Arsenal</div>
+          <div class="team-score" data-count="1">1</div>
+        </div>
+      </div>
+      <div class="game-foot">
+        <span>ETIHAD · POSSESSION 58/42</span>
+        <span>xG · 1.4 - 1.1</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- DISCOURSE -->
+<section>
+  <div class="sec-head">
+    <h2 class="sec-title reveal">The <em>discourse</em></h2>
+    <div class="sec-count reveal">FOLLOWING</div>
+  </div>
+
+  <div class="feed">
+    <article class="post reveal">
+      <div class="post-head">
+        <div class="avatar">M</div>
+        <div>
+          <div class="post-name">Marcus Reeve</div>
+          <div class="post-handle">@reevehoops</div>
+        </div>
+        <div class="post-time">2M</div>
+      </div>
+      <div class="post-body">
+        Whatever you think the ceiling for this Lakers bench was, throw it out. <strong>Five guys in double digits</strong> in the fourth, and not one of them is on a max deal. That's coaching.
+      </div>
+      <div class="post-actions">
+        <span>↑ 2.4K</span><span>↺ 318</span><span>◌ 91</span>
+      </div>
+    </article>
+
+    <article class="post reveal">
+      <div class="post-head">
+        <div class="avatar">L</div>
+        <div>
+          <div class="post-name">Lena Park</div>
+          <div class="post-handle">@lenaparkwrites</div>
+        </div>
+        <div class="post-time">11M</div>
+      </div>
+      <div class="post-body">
+        The play of the night isn't the dunk. It's the screen that freed the dunk. Watch the weak side.
+      </div>
+      <div class="post-media">
+        <div class="play-mark"></div>
+        <div class="media-meta"><span class="views">412K</span> · 0:18 · HIGHLIGHT</div>
+      </div>
+      <div class="post-actions">
+        <span>↑ 5.1K</span><span>↺ 1.2K</span><span>◌ 240</span>
+      </div>
+    </article>
+
+    <article class="post reveal">
+      <div class="post-head">
+        <div class="avatar">D</div>
+        <div>
+          <div class="post-name">Devon Iverson</div>
+          <div class="post-handle">@devon_iv</div>
+        </div>
+        <div class="post-time">23M</div>
+      </div>
+      <div class="post-body">
+        Hot take that isn't actually hot:
+        <div class="post-quote">Defense doesn't win championships. <em>Adjustments</em> win championships. There's a difference.</div>
+      </div>
+      <div class="post-actions">
+        <span>↑ 891</span><span>↺ 142</span><span>◌ 67</span>
+      </div>
+    </article>
+
+    <article class="post reveal">
+      <div class="post-head">
+        <div class="avatar">S</div>
+        <div>
+          <div class="post-name">Sam Tate</div>
+          <div class="post-handle">@samtate</div>
+        </div>
+        <div class="post-time">41M</div>
+      </div>
+      <div class="post-body">
+        Three things I won't shut up about tomorrow: the rookie's wingspan, that 4-minute scoring drought, and why nobody is talking about the second-unit defensive rating.
+      </div>
+      <div class="post-actions">
+        <span>↑ 1.8K</span><span>↺ 203</span><span>◌ 88</span>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- BY THE NUMBERS -->
+<section>
+  <div class="sec-head">
+    <h2 class="sec-title reveal">By the <em>numbers</em></h2>
+    <div class="sec-count reveal">PLAYOFFS · WEEK 03</div>
+  </div>
+
+  <div class="numbers">
+    <div class="num-row reveal">
+      <div class="num-label">
+        <div class="num-name">Bench points · Game 4</div>
+        <div class="num-sub">LAL · series-high</div>
+      </div>
+      <div class="num-val" data-count="64">64</div>
+      <div class="num-bar"><div class="num-bar-fill" data-fill="90"></div></div>
+    </div>
+
+    <div class="num-row reveal">
+      <div class="num-label">
+        <div class="num-name">Fourth-quarter swing</div>
+        <div class="num-sub">Down 22 → +5</div>
+      </div>
+      <div class="num-val" data-count="27"><span>+</span>27</div>
+      <div class="num-bar"><div class="num-bar-fill" data-fill="78"></div></div>
+    </div>
+
+    <div class="num-row reveal">
+      <div class="num-label">
+        <div class="num-name">Three-point % · clutch</div>
+        <div class="num-sub">Last 5 min · margin ≤ 5</div>
+      </div>
+      <div class="num-val" data-count="61"><span>.</span>61<span class="unit">%</span></div>
+      <div class="num-bar"><div class="num-bar-fill" data-fill="61"></div></div>
+    </div>
+
+    <div class="num-row reveal">
+      <div class="num-label">
+        <div class="num-name">Series win probability</div>
+        <div class="num-sub">Cntrd model · post-game</div>
+      </div>
+      <div class="num-val" data-count="74"><span>.</span>74<span class="unit">%</span></div>
+      <div class="num-bar"><div class="num-bar-fill" data-fill="74"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- UPCOMING -->
+<section>
+  <div class="sec-head">
+    <h2 class="sec-title reveal">What's <em>next</em></h2>
+    <div class="sec-count reveal">THIS WEEK</div>
+  </div>
+
+  <div class="upcoming">
+    <div class="up-row reveal">
+      <div class="up-time"><span class="day">TUE</span>20:00</div>
+      <div class="up-match">Knicks at Heat <span class="sub">ECF · Game 5 · Series 2-2</span></div>
+      <div class="up-cta">REMIND</div>
+    </div>
+    <div class="up-row reveal">
+      <div class="up-time"><span class="day">WED</span>19:30</div>
+      <div class="up-match">Avalanche at Stars <span class="sub">WCSF · Game 6 · DAL leads 3-2</span></div>
+      <div class="up-cta">REMIND</div>
+    </div>
+    <div class="up-row reveal">
+      <div class="up-time"><span class="day">THU</span>15:00</div>
+      <div class="up-match">Real Madrid v Inter <span class="sub">UCL Final · Munich</span></div>
+      <div class="up-cta">REMIND</div>
+    </div>
+    <div class="up-row reveal">
+      <div class="up-time"><span class="day">SAT</span>13:00</div>
+      <div class="up-match">Preakness Stakes <span class="sub">Triple Crown · Baltimore</span></div>
+      <div class="up-cta">REMIND</div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="foot-grid">
+    <div class="foot-mark">
+      <div class="logo serif">cntrd<span class="dot">.</span></div>
+      <div class="foot-tag">The center of the action.</div>
+    </div>
+    <div class="credits">
+      <div><strong>BUILT WITH</strong> · GSAP · LENIS · CUSTOM CANVAS</div>
+      <div><strong>TYPE</strong> · FRAUNCES · INSTRUMENT SANS · JETBRAINS MONO</div>
+      <div><strong>VERSION</strong> · 2.0 PROTOTYPE · MAY 2026</div>
+    </div>
+  </div>
+</footer>
+
+<script>
+  /* ==== TICKER (infinite loop, duplicated content) ==== */
+  const tickerData = [
+    { tag: 'NBA', a: 'BOS', b: 'LAL', as: '87', bs: '91', live: 'Q3 4:22', lead: 'b' },
+    { tag: 'NHL', a: 'NYR', b: 'EDM', as: '2', bs: '1', live: 'P2 12:08', lead: 'a' },
+    { tag: 'EPL', a: 'MCI', b: 'ARS', as: '1', bs: '1', live: "67'", lead: null },
+    { tag: 'MLB', a: 'NYY', b: 'BOS', as: '4', bs: '2', live: 'T7', lead: 'a' },
+    { tag: 'NBA', a: 'DEN', b: 'OKC', as: '102', bs: '98', live: 'FINAL', lead: 'a' },
+    { tag: 'WNBA', a: 'LV', b: 'NY', as: '78', bs: '82', live: 'FINAL', lead: 'b' },
+    { tag: 'F1', a: 'VER', b: 'NOR', as: 'P1', bs: 'P2', live: 'L34', lead: 'a' },
+    { tag: 'MLS', a: 'LAFC', b: 'INT', as: '2', bs: '3', live: "89'", lead: 'b' },
+  ];
+
+  function renderTicker() {
+    const t = document.getElementById('ticker');
+    const html = tickerData.map(g => `
+      <span class="ticker-item">
+        <span class="tag">${g.tag}</span>
+        <span class="${g.lead==='a'?'win':'lose'}">${g.a}</span>
+        <span class="score ${g.lead==='a'?'win':''}">${g.as}</span>
+        <span class="tag">—</span>
+        <span class="score ${g.lead==='b'?'win':''}">${g.bs}</span>
+        <span class="${g.lead==='b'?'win':'lose'}">${g.b}</span>
+        <span class="live">${g.live}</span>
+      </span>
+    `).join('');
+    // Duplicate so the loop is seamless
+    t.innerHTML = html + html;
+  }
+  renderTicker();
+
+  /* ==== GSAP REVEAL + COUNT-UP ==== */
+  gsap.registerPlugin(ScrollTrigger);
+
+  // Stagger reveal everything tagged .reveal as it scrolls into view
+  gsap.utils.toArray('.reveal').forEach(el => {
+    gsap.to(el, {
+      opacity: 1,
+      y: 0,
+      duration: 0.9,
+      ease: 'power3.out',
+      scrollTrigger: {
+        trigger: el,
+        start: 'top 88%',
+        once: true,
+      }
+    });
+  });
+
+  // Count-up for scores and stat numbers
+  gsap.utils.toArray('[data-count]').forEach(el => {
+    const target = parseFloat(el.dataset.count);
+    const original = el.innerHTML;
+    el.innerHTML = original.replace(/\d+(\.\d+)?/, '0');
+    ScrollTrigger.create({
+      trigger: el,
+      start: 'top 90%',
+      once: true,
+      onEnter: () => {
+        const obj = { v: 0 };
+        gsap.to(obj, {
+          v: target,
+          duration: 1.6,
+          ease: 'power2.out',
+          onUpdate: () => {
+            const formatted = target >= 10 ? Math.round(obj.v) : obj.v.toFixed(2).replace('0.', '');
+            el.innerHTML = original.replace(/\d+(\.\d+)?/, formatted);
+          }
+        });
+      }
+    });
+  });
+
+  // Bar fills
+  gsap.utils.toArray('.num-bar-fill').forEach(bar => {
+    const pct = bar.dataset.fill + '%';
+    ScrollTrigger.create({
+      trigger: bar,
+      start: 'top 92%',
+      once: true,
+      onEnter: () => {
+        gsap.to(bar, { width: pct, duration: 1.4, ease: 'power3.out' });
+      }
+    });
+  });
+
+  /* ==== LENIS SMOOTH SCROLL ==== */
+  if (typeof Lenis !== 'undefined') {
+    const lenis = new Lenis({
+      duration: 1.1,
+      easing: t => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      smoothWheel: true,
+      smoothTouch: false,
+    });
+    function raf(time) {
+      lenis.raf(time);
+      requestAnimationFrame(raf);
+    }
+    requestAnimationFrame(raf);
+    lenis.on('scroll', ScrollTrigger.update);
+  }
+</script>
+
+</body>
+</html>

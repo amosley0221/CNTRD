@@ -1,0 +1,1370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CNTRD — Game Center + Reels</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..900,0..100&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.min.js"></script>
+<style>
+  :root {
+    --ink: #0a0a0a;
+    --paper: #f5f1e8;
+    --paper-dim: rgba(245, 241, 232, 0.55);
+    --paper-faint: rgba(245, 241, 232, 0.12);
+    --line: rgba(245, 241, 232, 0.15);
+    --volt: #d8ff3c;
+    --blood: #ff3838;
+    --bone: #1a1a1a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'Instrument Sans', sans-serif;
+    overflow-x: hidden;
+    line-height: 1.4;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0; pointer-events: none; z-index: 200;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.8;
+    mix-blend-mode: overlay;
+  }
+  .serif { font-family: 'Fraunces', serif; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ==== HEADER ==== */
+  header {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(10, 10, 10, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px;
+  }
+  .logo {
+    font-family: 'Fraunces', serif;
+    font-weight: 900;
+    font-size: 22px;
+    letter-spacing: -0.04em;
+  }
+  .logo .dot { color: var(--volt); }
+  .nav-back {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--paper-dim);
+    text-transform: uppercase;
+  }
+  .nav-back::before { content: '←  '; }
+
+  /* ==== SECTION MARKER ==== */
+  .section-marker {
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    padding: 60px 20px 20px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .section-marker .num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    color: var(--volt);
+  }
+  .section-marker h2 {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-size: clamp(28px, 6vw, 44px);
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+  .section-marker h2 em { font-style: italic; color: var(--volt); font-weight: 300; }
+  .section-marker p {
+    font-family: 'Fraunces', serif;
+    font-weight: 300;
+    font-size: 16px;
+    color: var(--paper-dim);
+    max-width: 560px;
+    margin-top: 6px;
+  }
+
+  /* ==== GAME HERO ==== */
+  .game-hero {
+    padding: 60px 20px 40px;
+    position: relative;
+    border-bottom: 1px solid var(--line);
+  }
+  .gh-kicker {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 32px;
+    color: var(--volt);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+  .gh-kicker::before {
+    content: ''; display: block;
+    width: 30px; height: 1px;
+    background: var(--volt);
+  }
+  .gh-status {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-left: 8px;
+    color: var(--volt);
+  }
+  .gh-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--volt);
+    animation: pulse-v 1.6s infinite;
+  }
+  @keyframes pulse-v { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .gh-matchup {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 24px;
+    align-items: center;
+    margin-bottom: 32px;
+  }
+  .gh-team { display: flex; flex-direction: column; gap: 8px; }
+  .gh-team.away { align-items: flex-start; }
+  .gh-team.home { align-items: flex-end; text-align: right; }
+  .gh-mark {
+    width: 56px; height: 56px;
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .gh-name {
+    font-family: 'Fraunces', serif;
+    font-size: clamp(22px, 5vw, 32px);
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    margin-top: 4px;
+  }
+  .gh-record {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--paper-dim);
+    letter-spacing: 0.1em;
+  }
+  .gh-score-block {
+    text-align: center;
+    display: flex; flex-direction: column; align-items: center;
+    min-width: 160px;
+  }
+  .gh-scores {
+    display: flex; gap: 14px;
+    font-family: 'Fraunces', serif;
+    font-weight: 200;
+    font-size: clamp(56px, 14vw, 96px);
+    line-height: 0.85;
+    letter-spacing: -0.05em;
+    font-variant-numeric: tabular-nums;
+  }
+  .gh-scores .away-s { color: var(--paper-dim); }
+  .gh-scores .dash { color: var(--paper-faint); font-weight: 100; }
+  .gh-scores .home-s { color: var(--volt); }
+  .gh-clock {
+    margin-top: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    color: var(--paper);
+  }
+
+  /* score by period */
+  .gh-periods {
+    margin-top: 24px;
+    border: 1px solid var(--line);
+  }
+  .gh-periods table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+  }
+  .gh-periods th, .gh-periods td {
+    padding: 10px 14px;
+    text-align: center;
+    border-bottom: 1px solid var(--line);
+  }
+  .gh-periods tr:last-child td { border-bottom: none; }
+  .gh-periods th {
+    background: rgba(245, 241, 232, 0.03);
+    color: var(--paper-dim);
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    font-size: 9px;
+  }
+  .gh-periods td { color: var(--paper); }
+  .gh-periods td:first-child {
+    text-align: left;
+    font-family: 'Fraunces', serif;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .gh-periods td.total {
+    color: var(--volt);
+    font-weight: 700;
+    background: rgba(216, 255, 60, 0.03);
+  }
+
+  /* ==== GENERIC SECTION ==== */
+  section.block { padding: 60px 20px; border-bottom: 1px solid var(--line); }
+  .sec-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 32px;
+  }
+  .sec-title {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-size: clamp(26px, 5.5vw, 40px);
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+  .sec-title em { font-style: italic; color: var(--volt); font-weight: 300; }
+  .sec-count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--paper-dim);
+    letter-spacing: 0.15em;
+  }
+
+  /* ==== PLAY-BY-PLAY ==== */
+  .pbp { display: flex; flex-direction: column; }
+  .pbp-row {
+    display: grid;
+    grid-template-columns: 56px 26px 1fr auto;
+    gap: 14px;
+    align-items: center;
+    padding: 14px 0;
+    border-bottom: 1px dashed var(--line);
+  }
+  .pbp-row:last-child { border-bottom: none; }
+  .pbp-row.key {
+    background: linear-gradient(90deg, rgba(216, 255, 60, 0.04), transparent);
+    border-bottom: 1px solid rgba(216, 255, 60, 0.3);
+    padding: 16px 14px;
+    margin: 0 -14px;
+  }
+  .pbp-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--paper-dim);
+    letter-spacing: 0.05em;
+  }
+  .pbp-mark {
+    width: 22px; height: 22px;
+    border-radius: 2px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .pbp-text {
+    font-family: 'Fraunces', serif;
+    font-size: 15px;
+    line-height: 1.3;
+  }
+  .pbp-row.key .pbp-text { font-weight: 500; }
+  .pbp-text strong { color: var(--volt); font-weight: 500; }
+  .pbp-score {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--paper);
+    letter-spacing: 0.05em;
+    font-variant-numeric: tabular-nums;
+  }
+  .pbp-row.key .pbp-score { color: var(--volt); font-weight: 700; }
+
+  /* ==== SHOT CHART ==== */
+  .shotchart-wrap {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  @media (min-width: 800px) {
+    .shotchart-wrap { grid-template-columns: 1fr 1fr; }
+  }
+  .court-frame {
+    border: 1px solid var(--line);
+    padding: 20px;
+    background: linear-gradient(180deg, rgba(216, 255, 60, 0.02), transparent);
+  }
+  .court-svg { width: 100%; height: auto; display: block; }
+  .court-key {
+    margin-top: 16px;
+    display: flex; gap: 20px; flex-wrap: wrap;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--paper-dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .court-key .dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .court-key .made { background: var(--volt); }
+  .court-key .missed { background: transparent; border: 1px solid var(--paper-dim); }
+
+  .shot-stats { display: flex; flex-direction: column; gap: 16px; }
+  .ss-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: baseline;
+    padding-bottom: 12px;
+    border-bottom: 1px dashed var(--line);
+  }
+  .ss-row:last-child { border-bottom: none; }
+  .ss-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--paper-dim); letter-spacing: 0.1em; text-transform: uppercase; }
+  .ss-val {
+    font-family: 'Fraunces', serif;
+    font-size: 28px;
+    font-weight: 300;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+  }
+  .ss-val .pct { color: var(--volt); }
+  .ss-val .frac { color: var(--paper-dim); font-size: 14px; margin-left: 8px; }
+
+  /* ==== WIN PROBABILITY ==== */
+  .winprob-frame {
+    border: 1px solid var(--line);
+    padding: 24px 20px 20px;
+  }
+  .wp-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 20px;
+  }
+  .wp-title { font-family: 'Fraunces', serif; font-size: 16px; font-weight: 500; }
+  .wp-current {
+    font-family: 'Fraunces', serif;
+    font-size: 32px;
+    font-weight: 300;
+    color: var(--volt);
+    letter-spacing: -0.03em;
+  }
+  .wp-svg { width: 100%; height: 180px; display: block; }
+  .wp-x {
+    display: flex; justify-content: space-between;
+    margin-top: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--paper-dim);
+    letter-spacing: 0.1em;
+  }
+
+  /* ==== TEAM COMPARE ==== */
+  .compare { display: flex; flex-direction: column; gap: 18px; }
+  .cmp-row {
+    display: grid;
+    grid-template-columns: 60px 1fr 60px;
+    gap: 14px;
+    align-items: center;
+  }
+  .cmp-label {
+    grid-column: 1 / -1;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--paper-dim);
+    text-transform: uppercase;
+    margin-bottom: -8px;
+  }
+  .cmp-val {
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .cmp-val.away { text-align: left; }
+  .cmp-val.home { text-align: right; color: var(--volt); }
+  .cmp-val.lower-wins.away.win { color: var(--volt); }
+  .cmp-val.lower-wins.home.lose { color: var(--paper-dim); }
+  .cmp-val.away:not(.win) { color: var(--paper-dim); }
+  .cmp-bar {
+    display: flex; height: 4px;
+    background: var(--line);
+    position: relative;
+  }
+  .cmp-bar-away, .cmp-bar-home {
+    height: 100%;
+  }
+  .cmp-bar-away { background: var(--paper-dim); }
+  .cmp-bar-home { background: var(--volt); margin-left: auto; }
+
+  /* ==== HIGHLIGHT REEL PLAYER ==== */
+  .reel-hero {
+    padding: 60px 20px 0;
+    position: relative;
+  }
+  .reel-kicker {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 24px;
+    color: var(--volt);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+  .reel-kicker::before {
+    content: ''; display: block;
+    width: 30px; height: 1px;
+    background: var(--volt);
+  }
+
+  .player {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    background:
+      radial-gradient(circle at 30% 30%, rgba(216, 255, 60, 0.12), transparent 60%),
+      radial-gradient(circle at 70% 70%, rgba(255, 56, 56, 0.08), transparent 60%),
+      linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+    border: 1px solid var(--line);
+    overflow: hidden;
+  }
+  .player::after {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(245, 241, 232, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(245, 241, 232, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+  }
+  .player-title {
+    position: absolute;
+    top: 20px; left: 24px;
+    z-index: 3;
+  }
+  .player-title .clip-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--volt);
+    text-transform: uppercase;
+  }
+  .player-title .clip-name {
+    font-family: 'Fraunces', serif;
+    font-size: clamp(22px, 5vw, 32px);
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    margin-top: 6px;
+    max-width: 70%;
+    line-height: 1.1;
+  }
+  .player-play {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 84px; height: 84px;
+    border: 1px solid var(--paper);
+    border-radius: 50%;
+    background: rgba(10, 10, 10, 0.4);
+    backdrop-filter: blur(8px);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    z-index: 3;
+    transition: transform 0.3s, background 0.3s, border-color 0.3s;
+  }
+  .player-play:hover {
+    transform: translate(-50%, -50%) scale(1.08);
+    background: var(--volt);
+    border-color: var(--volt);
+  }
+  .player-play:hover::before { border-left-color: var(--ink); }
+  .player-play::before {
+    content: '';
+    width: 0; height: 0;
+    border-left: 18px solid var(--paper);
+    border-top: 12px solid transparent;
+    border-bottom: 12px solid transparent;
+    margin-left: 6px;
+    transition: border-left-color 0.3s;
+  }
+  .player-stat-overlay {
+    position: absolute;
+    bottom: 80px; right: 24px;
+    text-align: right;
+    z-index: 3;
+  }
+  .player-stat-overlay .num {
+    font-family: 'Fraunces', serif;
+    font-weight: 200;
+    font-size: clamp(64px, 14vw, 120px);
+    line-height: 0.85;
+    letter-spacing: -0.05em;
+    color: var(--paper);
+  }
+  .player-stat-overlay .lbl {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--paper-dim);
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  /* Custom controls bar */
+  .controls {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    padding: 12px 20px;
+    background: linear-gradient(180deg, transparent, rgba(10, 10, 10, 0.6) 50%);
+    z-index: 4;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .timeline {
+    height: 3px;
+    background: rgba(245, 241, 232, 0.2);
+    position: relative;
+    cursor: pointer;
+  }
+  .timeline-fill {
+    height: 100%;
+    background: var(--volt);
+    width: 38%;
+    position: relative;
+  }
+  .timeline-thumb {
+    position: absolute;
+    right: -6px; top: 50%;
+    transform: translateY(-50%);
+    width: 10px; height: 10px;
+    background: var(--volt);
+    border-radius: 50%;
+  }
+  .ctrl-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--paper);
+    letter-spacing: 0.1em;
+  }
+  .ctrl-buttons { display: flex; gap: 16px; align-items: center; }
+  .ctrl-buttons span { cursor: pointer; opacity: 0.7; transition: opacity 0.2s; }
+  .ctrl-buttons span:hover { opacity: 1; color: var(--volt); }
+  .ctrl-time { font-variant-numeric: tabular-nums; }
+
+  /* clip meta */
+  .clip-meta {
+    padding: 28px 20px 0;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .clip-title-row {
+    display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 12px;
+  }
+  .clip-title-row h2 {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-size: clamp(28px, 6vw, 40px);
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+  .clip-title-row h2 em { font-style: italic; color: var(--volt); font-weight: 300; }
+  .clip-views {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--volt);
+    letter-spacing: 0.15em;
+  }
+  .clip-byline {
+    display: flex; gap: 16px;
+    color: var(--paper-dim);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    flex-wrap: wrap;
+  }
+  .clip-byline span:not(:last-child)::after { content: '·'; margin-left: 16px; }
+  .clip-actions {
+    display: flex; gap: 10px;
+    flex-wrap: wrap;
+  }
+  .pill {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 8px 14px;
+    border: 1px solid var(--paper-faint);
+    color: var(--paper);
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+  }
+  .pill:hover { border-color: var(--volt); color: var(--volt); }
+  .pill.primary { border-color: var(--volt); color: var(--volt); }
+  .pill.primary:hover { background: var(--volt); color: var(--ink); }
+
+  /* reel queue */
+  .reel-queue {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    scrollbar-width: thin;
+  }
+  .reel-queue::-webkit-scrollbar { height: 4px; }
+  .reel-queue::-webkit-scrollbar-thumb { background: var(--paper-faint); }
+  .queue-clip {
+    flex-shrink: 0;
+    width: 220px;
+    cursor: pointer;
+  }
+  .queue-thumb {
+    aspect-ratio: 16 / 9;
+    border: 1px solid var(--line);
+    background:
+      radial-gradient(circle at 50% 50%, rgba(216, 255, 60, 0.06), transparent 60%),
+      linear-gradient(135deg, #1a1a1a, #0a0a0a);
+    position: relative;
+    transition: border-color 0.3s;
+  }
+  .queue-clip.active .queue-thumb { border-color: var(--volt); }
+  .queue-clip:hover .queue-thumb { border-color: var(--paper-faint); }
+  .queue-clip.active:hover .queue-thumb { border-color: var(--volt); }
+  .queue-num {
+    position: absolute;
+    top: 8px; left: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: var(--volt);
+  }
+  .queue-dur {
+    position: absolute;
+    bottom: 8px; right: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--paper);
+    letter-spacing: 0.1em;
+    background: rgba(10, 10, 10, 0.7);
+    padding: 2px 6px;
+  }
+  .queue-now {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: var(--volt);
+    background: rgba(10, 10, 10, 0.7);
+    padding: 4px 8px;
+    opacity: 0;
+  }
+  .queue-clip.active .queue-now { opacity: 1; }
+  .queue-clip.active .queue-thumb::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    box-shadow: inset 0 0 0 2px var(--volt);
+    pointer-events: none;
+  }
+  .queue-title {
+    margin-top: 8px;
+    font-family: 'Fraunces', serif;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.3;
+  }
+  .queue-meta {
+    margin-top: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--paper-dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  /* discourse on the clip */
+  .feed { display: flex; flex-direction: column; }
+  .post {
+    padding: 22px 0;
+    border-bottom: 1px solid var(--line);
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .post:last-child { border-bottom: none; }
+  .post-head {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 13px;
+  }
+  .avatar {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: var(--bone);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 12px;
+  }
+  .post-name { font-weight: 600; font-size: 13px; }
+  .post-handle { color: var(--paper-dim); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+  .post-time { color: var(--paper-dim); margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+  .post-body { font-family: 'Fraunces', serif; font-size: 17px; line-height: 1.35; font-weight: 300; }
+  .post-body strong { color: var(--volt); font-weight: 500; }
+
+  footer {
+    padding: 60px 20px 80px;
+  }
+  .foot-mark .logo { font-size: 48px; line-height: 0.9; }
+  .foot-tag {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: 18px;
+    color: var(--paper-dim);
+    margin-top: 10px;
+  }
+
+  .reveal { opacity: 0; transform: translateY(20px); }
+
+  @media (min-width: 700px) {
+    .nav { padding: 18px 48px; }
+    .section-marker { padding: 80px 48px 28px; }
+    .game-hero { padding: 100px 48px 60px; }
+    section.block { padding: 80px 48px; }
+    .reel-hero { padding: 100px 48px 0; }
+    .clip-meta { padding: 32px 48px 0; }
+    footer { padding: 80px 48px 100px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="nav">
+    <div class="logo">cntrd<span class="dot">.</span></div>
+    <div class="nav-back">BACK TO PROFILE</div>
+  </div>
+</header>
+
+<!-- ======================================== -->
+<!--  PART 1 — LIVE GAME CENTER                -->
+<!-- ======================================== -->
+<div class="section-marker">
+  <div class="num">03 — PAGE</div>
+  <h2 class="reveal">The <em>game</em>, in real time.</h2>
+  <p class="reveal">Same shell, scaled to a single game. Play-by-play as a typographic feed, shot chart as editorial chart, win probability as a story arc. Every section answers a different question a fan is asking *while watching*.</p>
+</div>
+
+<!-- GAME HERO -->
+<section class="game-hero">
+  <div class="gh-kicker reveal">
+    NBA Playoffs · ECF Game 4
+    <span class="gh-status"><span class="gh-dot"></span>LIVE</span>
+  </div>
+
+  <div class="gh-matchup reveal">
+    <div class="gh-team away">
+      <div class="gh-mark" style="background: #007a33;">BOS</div>
+      <div class="gh-name">Celtics</div>
+      <div class="gh-record">SERIES 2-1</div>
+    </div>
+    <div class="gh-score-block">
+      <div class="gh-scores">
+        <span class="away-s" data-count="87">87</span>
+        <span class="dash">—</span>
+        <span class="home-s" data-count="91">91</span>
+      </div>
+      <div class="gh-clock">Q3 · 4:22</div>
+    </div>
+    <div class="gh-team home">
+      <div class="gh-mark" style="background: #fdb927;">LAL</div>
+      <div class="gh-name">Lakers</div>
+      <div class="gh-record">SERIES 1-2</div>
+    </div>
+  </div>
+
+  <div class="gh-periods reveal">
+    <table>
+      <thead>
+        <tr>
+          <th style="text-align: left;">TEAM</th>
+          <th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th><th>TOTAL</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>BOS</td>
+          <td>24</td><td>28</td><td>22</td><td>13</td><td class="total">87</td>
+        </tr>
+        <tr>
+          <td>LAL</td>
+          <td>18</td><td>22</td><td>29</td><td>22</td><td class="total">91</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- PLAY BY PLAY -->
+<section class="block">
+  <div class="sec-head">
+    <h2 class="sec-title reveal">Play-by-<em>play</em></h2>
+    <div class="sec-count reveal">LATEST · 10</div>
+  </div>
+
+  <div class="pbp">
+    <div class="pbp-row reveal">
+      <div class="pbp-time">4:22 Q3</div>
+      <div class="pbp-mark" style="background: #fdb927;">LAL</div>
+      <div class="pbp-text">Halliday assist to Reaves for a corner three</div>
+      <div class="pbp-score">87-91</div>
+    </div>
+    <div class="pbp-row key reveal">
+      <div class="pbp-time">4:38 Q3</div>
+      <div class="pbp-mark" style="background: #fdb927;">LAL</div>
+      <div class="pbp-text"><strong>Halliday with the and-one, fouled on the drive.</strong> 8th straight Lakers point.</div>
+      <div class="pbp-score">87-88</div>
+    </div>
+    <div class="pbp-row reveal">
+      <div class="pbp-time">5:01 Q3</div>
+      <div class="pbp-mark" style="background: #fdb927;">LAL</div>
+      <div class="pbp-text">Halliday step-back three, top of the key</div>
+      <div class="pbp-score">87-85</div>
+    </div>
+    <div class="pbp-row reveal">
+      <div class="pbp-time">5:24 Q3</div>
+      <div class="pbp-mark" style="background: #007a33;">BOS</div>
+      <div class="pbp-text">Tatum jumper good, 18 feet</div>
+      <div class="pbp-score">87-82</div>
+    </div>
+    <div class="pbp-row reveal">
+      <div class="pbp-time">5:48 Q3</div>
+      <div class="pbp-mark" style="background: #fdb927;">LAL</div>
+      <div class="pbp-text">Reaves cuts backdoor, Halliday finds him</div>
+      <div class="pbp-score">85-82</div>
+    </div>
+    <div class="pbp-row key reveal">
+      <div class="pbp-time">6:11 Q3</div>
+      <div class="pbp-mark" style="background: #fdb927;">LAL</div>
+      <div class="pbp-text"><strong>Halliday from 28 feet.</strong> Lakers timeout signaled, no — they're letting them run.</div>
+      <div class="pbp-score">85-80</div>
+    </div>
+    <div class="pbp-row reveal">
+      <div class="pbp-time">6:33 Q3</div>
+      <div class="pbp-mark" style="background: #007a33;">BOS</div>
+      <div class="pbp-text">Brown turnover, stolen by Hachimura</div>
+      <div class="pbp-score">85-77</div>
+    </div>
+    <div class="pbp-row reveal">
+      <div class="pbp-time">7:01 Q3</div>
+      <div class="pbp-mark" style="background: #fdb927;">LAL</div>
+      <div class="pbp-text">Halliday driving layup, contested</div>
+      <div class="pbp-score">85-77</div>
+    </div>
+  </div>
+</section>
+
+<!-- SHOT CHART -->
+<section class="block">
+  <div class="sec-head">
+    <h2 class="sec-title reveal">Shot <em>chart</em></h2>
+    <div class="sec-count reveal">HALLIDAY · LIVE</div>
+  </div>
+
+  <div class="shotchart-wrap">
+    <div class="court-frame reveal">
+      <svg class="court-svg" viewBox="0 0 500 470" preserveAspectRatio="xMidYMid meet">
+        <!-- court outline -->
+        <g fill="none" stroke="rgba(245,241,232,0.25)" stroke-width="1.5">
+          <!-- court boundary -->
+          <rect x="20" y="20" width="460" height="430"/>
+          <!-- paint (key) -->
+          <rect x="170" y="20" width="160" height="190"/>
+          <!-- free throw circle -->
+          <circle cx="250" cy="210" r="60"/>
+          <!-- restricted area -->
+          <path d="M 210 60 A 40 40 0 0 0 290 60"/>
+          <!-- 3-point line -->
+          <path d="M 50 20 L 50 142 A 220 220 0 0 0 450 142 L 450 20" />
+          <!-- basket -->
+          <circle cx="250" cy="60" r="9" stroke="#d8ff3c" stroke-width="2"/>
+          <line x1="220" y1="50" x2="280" y2="50"/>
+        </g>
+
+        <!-- shots: made = filled volt, missed = open ring -->
+        <g>
+          <!-- mades -->
+          <circle cx="250" cy="85" r="6" fill="#d8ff3c"/>
+          <circle cx="225" cy="90" r="6" fill="#d8ff3c"/>
+          <circle cx="280" cy="95" r="6" fill="#d8ff3c"/>
+          <circle cx="195" cy="115" r="6" fill="#d8ff3c"/>
+          <circle cx="305" cy="120" r="6" fill="#d8ff3c"/>
+          <circle cx="250" cy="180" r="6" fill="#d8ff3c"/>
+          <circle cx="160" cy="200" r="6" fill="#d8ff3c"/>
+          <circle cx="340" cy="195" r="6" fill="#d8ff3c"/>
+          <circle cx="100" cy="240" r="6" fill="#d8ff3c"/>
+          <circle cx="400" cy="240" r="6" fill="#d8ff3c"/>
+          <circle cx="250" cy="280" r="6" fill="#d8ff3c"/>
+          <circle cx="180" cy="310" r="6" fill="#d8ff3c"/>
+          <!-- misses -->
+          <circle cx="215" cy="135" r="6" fill="none" stroke="rgba(245,241,232,0.5)" stroke-width="1.5"/>
+          <circle cx="290" cy="155" r="6" fill="none" stroke="rgba(245,241,232,0.5)" stroke-width="1.5"/>
+          <circle cx="130" cy="280" r="6" fill="none" stroke="rgba(245,241,232,0.5)" stroke-width="1.5"/>
+          <circle cx="370" cy="290" r="6" fill="none" stroke="rgba(245,241,232,0.5)" stroke-width="1.5"/>
+          <circle cx="250" cy="330" r="6" fill="none" stroke="rgba(245,241,232,0.5)" stroke-width="1.5"/>
+          <circle cx="320" cy="335" r="6" fill="none" stroke="rgba(245,241,232,0.5)" stroke-width="1.5"/>
+          <circle cx="225" cy="380" r="6" fill="none" stroke="rgba(245,241,232,0.5)" stroke-width="1.5"/>
+        </g>
+      </svg>
+      <div class="court-key">
+        <span><span class="dot made"></span>Made · 12</span>
+        <span><span class="dot missed"></span>Missed · 7</span>
+        <span>FG · 12-19 · 63%</span>
+      </div>
+    </div>
+
+    <div class="shot-stats reveal">
+      <div class="ss-row">
+        <span class="ss-label">Inside the arc</span>
+        <span class="ss-val"><span class="pct">75</span>%<span class="frac">9/12</span></span>
+      </div>
+      <div class="ss-row">
+        <span class="ss-label">Three-point %</span>
+        <span class="ss-val"><span class="pct">43</span>%<span class="frac">3/7</span></span>
+      </div>
+      <div class="ss-row">
+        <span class="ss-label">Free throws</span>
+        <span class="ss-val"><span class="pct">88</span>%<span class="frac">7/8</span></span>
+      </div>
+      <div class="ss-row">
+        <span class="ss-label">Points off drives</span>
+        <span class="ss-val">18</span>
+      </div>
+      <div class="ss-row">
+        <span class="ss-label">Effective FG %</span>
+        <span class="ss-val"><span class="pct">71</span>%</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WIN PROBABILITY -->
+<section class="block">
+  <div class="sec-head">
+    <h2 class="sec-title reveal">Win <em>probability</em></h2>
+    <div class="sec-count reveal">LAL · LIVE</div>
+  </div>
+
+  <div class="winprob-frame reveal">
+    <div class="wp-head">
+      <div class="wp-title">Lakers · win % over time</div>
+      <div class="wp-current">71<span style="font-size: 14px; color: var(--paper-dim); margin-left: 4px;">%</span></div>
+    </div>
+    <svg class="wp-svg" viewBox="0 0 600 180" preserveAspectRatio="none">
+      <!-- center line (50%) -->
+      <line x1="0" y1="90" x2="600" y2="90" stroke="rgba(245,241,232,0.15)" stroke-dasharray="3 4"/>
+      <text x="595" y="86" fill="rgba(245,241,232,0.4)" font-family="JetBrains Mono" font-size="9" text-anchor="end" letter-spacing="1">50</text>
+
+      <!-- area fill -->
+      <path id="wp-area"
+            d="M 0 90 L 60 100 L 120 80 L 180 130 L 240 155 L 280 165 L 320 140 L 380 100 L 440 70 L 500 60 L 560 50 L 600 52 L 600 180 L 0 180 Z"
+            fill="url(#wp-gradient)"
+            opacity="0"/>
+      <defs>
+        <linearGradient id="wp-gradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#d8ff3c" stop-opacity="0.3"/>
+          <stop offset="1" stop-color="#d8ff3c" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+
+      <!-- the win prob curve -->
+      <path id="wp-line"
+            d="M 0 90 L 60 100 L 120 80 L 180 130 L 240 155 L 280 165 L 320 140 L 380 100 L 440 70 L 500 60 L 560 50 L 600 52"
+            fill="none"
+            stroke="#d8ff3c"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-dasharray="2000"
+            stroke-dashoffset="2000"/>
+
+      <!-- low point marker (the "down 22" moment) -->
+      <circle id="wp-low" cx="280" cy="165" r="5" fill="#ff3838" opacity="0"/>
+      <text id="wp-low-label" x="280" y="178" fill="#ff3838" font-family="JetBrains Mono" font-size="9" text-anchor="middle" letter-spacing="1" opacity="0">DOWN 22</text>
+
+      <!-- current point -->
+      <circle id="wp-now" cx="600" cy="52" r="5" fill="#d8ff3c" opacity="0"/>
+    </svg>
+    <div class="wp-x">
+      <span>Q1</span><span>Q2</span><span>HALF</span><span>Q3</span><span>NOW</span>
+    </div>
+  </div>
+</section>
+
+<!-- TEAM COMPARE -->
+<section class="block">
+  <div class="sec-head">
+    <h2 class="sec-title reveal">Head to <em>head</em></h2>
+    <div class="sec-count reveal">TEAM STATS</div>
+  </div>
+
+  <div class="compare">
+    <div class="cmp-row reveal">
+      <div class="cmp-label">Field Goal %</div>
+      <div class="cmp-val away">42</div>
+      <div class="cmp-bar">
+        <div class="cmp-bar-away" style="width: 42%"></div>
+        <div class="cmp-bar-home" style="width: 51%"></div>
+      </div>
+      <div class="cmp-val home">51</div>
+    </div>
+    <div class="cmp-row reveal">
+      <div class="cmp-label">Three-point %</div>
+      <div class="cmp-val away">31</div>
+      <div class="cmp-bar">
+        <div class="cmp-bar-away" style="width: 31%"></div>
+        <div class="cmp-bar-home" style="width: 44%"></div>
+      </div>
+      <div class="cmp-val home">44</div>
+    </div>
+    <div class="cmp-row reveal">
+      <div class="cmp-label">Rebounds</div>
+      <div class="cmp-val away">38</div>
+      <div class="cmp-bar">
+        <div class="cmp-bar-away" style="width: 50%"></div>
+        <div class="cmp-bar-home" style="width: 55%"></div>
+      </div>
+      <div class="cmp-val home">42</div>
+    </div>
+    <div class="cmp-row reveal">
+      <div class="cmp-label">Turnovers · lower wins</div>
+      <div class="cmp-val away lower-wins lose">14</div>
+      <div class="cmp-bar">
+        <div class="cmp-bar-away" style="width: 56%"></div>
+        <div class="cmp-bar-home" style="width: 36%; background: var(--volt)"></div>
+      </div>
+      <div class="cmp-val home lower-wins win">9</div>
+    </div>
+    <div class="cmp-row reveal">
+      <div class="cmp-label">Bench points</div>
+      <div class="cmp-val away">22</div>
+      <div class="cmp-bar">
+        <div class="cmp-bar-away" style="width: 38%"></div>
+        <div class="cmp-bar-home" style="width: 64%"></div>
+      </div>
+      <div class="cmp-val home">37</div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================== -->
+<!--  PART 2 — HIGHLIGHT REEL PLAYER           -->
+<!-- ======================================== -->
+<div class="section-marker">
+  <div class="num">04 — PAGE</div>
+  <h2 class="reveal">The <em>reel</em>.</h2>
+  <p class="reveal">A custom video player with the same type rules. Stat overlay as design, not data viz. Clip queue scrolls horizontally with the current clip ringed in volt. Discourse on each clip lives below — because every highlight is also a conversation.</p>
+</div>
+
+<!-- REEL HERO -->
+<section class="reel-hero">
+  <div class="reel-kicker reveal">Reel · The Comeback · 3 of 8</div>
+
+  <div class="player reveal">
+    <div class="player-title">
+      <div class="clip-num">CLIP 03 / 08</div>
+      <div class="clip-name">The four straight threes</div>
+    </div>
+
+    <div class="player-stat-overlay">
+      <div class="num">14</div>
+      <div class="lbl">Points · 87 seconds</div>
+    </div>
+
+    <div class="player-play"></div>
+
+    <div class="controls">
+      <div class="timeline">
+        <div class="timeline-fill"><div class="timeline-thumb"></div></div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-buttons">
+          <span>⏮</span><span>▶</span><span>⏭</span><span>♪</span>
+        </div>
+        <div class="ctrl-time">0:33 · 1:27</div>
+        <div class="ctrl-buttons">
+          <span>HD</span><span>CC</span><span>⤢</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CLIP META -->
+<section class="clip-meta">
+  <div class="clip-title-row reveal">
+    <h2>The four <em>straight threes</em></h2>
+    <div class="clip-views">↑ 482K VIEWS</div>
+  </div>
+  <div class="clip-byline reveal">
+    <span>HALLIDAY · LAL</span>
+    <span>Q3 · 6:11 → 4:44</span>
+    <span>POSTED 18M AGO</span>
+  </div>
+  <div class="clip-actions reveal" style="padding-bottom: 32px;">
+    <span class="pill primary">＋ SAVE</span>
+    <span class="pill">SHARE</span>
+    <span class="pill">CLIP</span>
+    <span class="pill">FULL GAME</span>
+  </div>
+</section>
+
+<!-- REEL QUEUE -->
+<section class="block" style="border-top: 1px solid var(--line);">
+  <div class="sec-head">
+    <h2 class="sec-title reveal">Up <em>next</em></h2>
+    <div class="sec-count reveal">THE COMEBACK · 08 CLIPS</div>
+  </div>
+
+  <div class="reel-queue">
+    <div class="queue-clip reveal">
+      <div class="queue-thumb">
+        <span class="queue-num">01</span>
+        <span class="queue-dur">0:42</span>
+      </div>
+      <div class="queue-title">The and-one that started it</div>
+      <div class="queue-meta">Q3 · 11:08</div>
+    </div>
+    <div class="queue-clip reveal">
+      <div class="queue-thumb">
+        <span class="queue-num">02</span>
+        <span class="queue-dur">1:05</span>
+      </div>
+      <div class="queue-title">Reaves backdoor cut</div>
+      <div class="queue-meta">Q3 · 8:24</div>
+    </div>
+    <div class="queue-clip active reveal">
+      <div class="queue-thumb">
+        <span class="queue-num">03</span>
+        <span class="queue-now">NOW PLAYING</span>
+        <span class="queue-dur">1:27</span>
+      </div>
+      <div class="queue-title">The four straight threes</div>
+      <div class="queue-meta">Q3 · 6:11</div>
+    </div>
+    <div class="queue-clip reveal">
+      <div class="queue-thumb">
+        <span class="queue-num">04</span>
+        <span class="queue-dur">0:38</span>
+      </div>
+      <div class="queue-title">Hachimura steal, fast break</div>
+      <div class="queue-meta">Q3 · 4:21</div>
+    </div>
+    <div class="queue-clip reveal">
+      <div class="queue-thumb">
+        <span class="queue-num">05</span>
+        <span class="queue-dur">0:54</span>
+      </div>
+      <div class="queue-title">First lead of the night</div>
+      <div class="queue-meta">Q4 · 8:14</div>
+    </div>
+    <div class="queue-clip reveal">
+      <div class="queue-thumb">
+        <span class="queue-num">06</span>
+        <span class="queue-dur">1:12</span>
+      </div>
+      <div class="queue-title">The Tatum response</div>
+      <div class="queue-meta">Q4 · 6:02</div>
+    </div>
+    <div class="queue-clip reveal">
+      <div class="queue-thumb">
+        <span class="queue-num">07</span>
+        <span class="queue-dur">0:48</span>
+      </div>
+      <div class="queue-title">The dagger</div>
+      <div class="queue-meta">Q4 · 0:48</div>
+    </div>
+  </div>
+</section>
+
+<!-- CLIP DISCOURSE -->
+<section class="block">
+  <div class="sec-head">
+    <h2 class="sec-title reveal">On this <em>clip</em></h2>
+    <div class="sec-count reveal">438 REACTIONS</div>
+  </div>
+
+  <div class="feed">
+    <article class="post reveal">
+      <div class="post-head">
+        <div class="avatar">M</div>
+        <div>
+          <div class="post-name">Marcus Reeve</div>
+          <div class="post-handle">@reevehoops</div>
+        </div>
+        <div class="post-time">11M</div>
+      </div>
+      <div class="post-body">
+        The third one is the giveaway. Notice the defender's hand is in his face. He shoots it <strong>exactly the same</strong>. No flinch, no adjustment. That's what 10,000 reps look like.
+      </div>
+    </article>
+
+    <article class="post reveal">
+      <div class="post-head">
+        <div class="avatar">L</div>
+        <div>
+          <div class="post-name">Lena Park</div>
+          <div class="post-handle">@lenaparkwrites</div>
+        </div>
+        <div class="post-time">19M</div>
+      </div>
+      <div class="post-body">
+        Three of the four came off the same action. Boston ran it back three times and never adjusted. <strong>That's a coaching loss</strong> as much as a player win.
+      </div>
+    </article>
+
+    <article class="post reveal">
+      <div class="post-head">
+        <div class="avatar">D</div>
+        <div>
+          <div class="post-name">Devon Iverson</div>
+          <div class="post-handle">@devon_iv</div>
+        </div>
+        <div class="post-time">27M</div>
+      </div>
+      <div class="post-body">
+        87 seconds of game time. Four possessions. Twelve points. The series turned in less than the length of this clip.
+      </div>
+    </article>
+  </div>
+</section>
+
+<footer>
+  <div class="foot-mark">
+    <div class="logo serif">cntrd<span class="dot">.</span></div>
+    <div class="foot-tag">The center of the action.</div>
+  </div>
+</footer>
+
+<script>
+  gsap.registerPlugin(ScrollTrigger);
+
+  // Reveal
+  gsap.utils.toArray('.reveal').forEach(el => {
+    gsap.to(el, {
+      opacity: 1,
+      y: 0,
+      duration: 0.9,
+      ease: 'power3.out',
+      scrollTrigger: { trigger: el, start: 'top 90%', once: true }
+    });
+  });
+
+  // Count-up
+  gsap.utils.toArray('[data-count]').forEach(el => {
+    const target = parseFloat(el.dataset.count);
+    const isDecimal = target % 1 !== 0;
+    const original = el.innerHTML;
+    el.innerHTML = original.replace(/\d+(\.\d+)?/, '0');
+    ScrollTrigger.create({
+      trigger: el,
+      start: 'top 92%',
+      once: true,
+      onEnter: () => {
+        const obj = { v: 0 };
+        gsap.to(obj, {
+          v: target,
+          duration: 1.6,
+          ease: 'power2.out',
+          onUpdate: () => {
+            const formatted = isDecimal ? obj.v.toFixed(1) : Math.round(obj.v);
+            el.innerHTML = original.replace(/\d+(\.\d+)?/, formatted);
+          }
+        });
+      }
+    });
+  });
+
+  // Win probability chart animation
+  const wpLine = document.getElementById('wp-line');
+  const wpArea = document.getElementById('wp-area');
+  const wpLow = document.getElementById('wp-low');
+  const wpLowLabel = document.getElementById('wp-low-label');
+  const wpNow = document.getElementById('wp-now');
+  if (wpLine) {
+    const length = wpLine.getTotalLength();
+    wpLine.style.strokeDasharray = length;
+    wpLine.style.strokeDashoffset = length;
+
+    ScrollTrigger.create({
+      trigger: wpLine,
+      start: 'top 80%',
+      once: true,
+      onEnter: () => {
+        gsap.to(wpLine, { strokeDashoffset: 0, duration: 2.4, ease: 'power2.inOut' });
+        gsap.to(wpArea, { opacity: 1, duration: 1.5, delay: 1.2 });
+        gsap.to([wpLow, wpLowLabel], { opacity: 1, duration: 0.4, delay: 1.4 });
+        gsap.to(wpNow, { opacity: 1, duration: 0.4, delay: 2.4 });
+      }
+    });
+  }
+
+  // Cycle the live game clock + scores to feel "live"
+  const clockEl = document.querySelector('.gh-clock');
+  if (clockEl) {
+    let seconds = 4 * 60 + 22;
+    setInterval(() => {
+      seconds -= 1;
+      if (seconds < 0) seconds = 4 * 60 + 22;
+      const m = Math.floor(seconds / 60);
+      const s = (seconds % 60).toString().padStart(2, '0');
+      clockEl.textContent = `Q3 · ${m}:${s}`;
+    }, 1000);
+  }
+
+  // Subtle timeline scrub on player
+  const fill = document.querySelector('.timeline-fill');
+  if (fill) {
+    let pct = 38;
+    let dir = 1;
+    setInterval(() => {
+      pct += 0.6 * dir;
+      if (pct >= 100) { pct = 100; dir = -1; }
+      if (pct <= 0) { pct = 0; dir = 1; }
+      fill.style.width = pct + '%';
+    }, 80);
+  }
+
+  // Lenis
+  if (typeof Lenis !== 'undefined') {
+    const lenis = new Lenis({
+      duration: 1.1,
+      easing: t => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      smoothWheel: true,
+      smoothTouch: false,
+    });
+    function raf(time) {
+      lenis.raf(time);
+      requestAnimationFrame(raf);
+    }
+    requestAnimationFrame(raf);
+    lenis.on('scroll', ScrollTrigger.update);
+  }
+</script>
+
+</body>
+</html>
