@@ -1,4 +1,4 @@
-import { api, get, post } from './client';
+import { api, get, post, del } from './client';
 
 export const auth = {
   me:       ()                   => get('/api/auth/me'),
@@ -21,6 +21,24 @@ export const games = {
 
 export const users = {
   profile:  (username)           => get(`/api/users/${encodeURIComponent(username)}`),
+};
+
+export const plays = {
+  list:     ()                   => get('/api/plays'),
+  byUser:   (username)           => get(`/api/plays/user/${encodeURIComponent(username)}`),
+  create:   (body)               => post('/api/plays', body),
+  view:     (id)                 => post(`/api/plays/${id}/view`),
+  remove:   (id)                 => del(`/api/plays/${id}`),
+};
+
+export const uploads = {
+  // Multipart upload. The Express endpoint expects field name "media".
+  // Returns { url, kind, size } — url is a relative /uploads/... path.
+  async media(file) {
+    const fd = new FormData();
+    fd.append('media', file);
+    return api('/api/upload/media', { method: 'POST', body: fd });
+  },
 };
 
 export { api };

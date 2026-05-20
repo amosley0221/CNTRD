@@ -5,6 +5,10 @@ import Login from './routes/Login';
 import Register from './routes/Register';
 import Feed from './routes/Feed';
 import Profile from './routes/Profile';
+import Plays from './routes/Plays';
+import PlayCreator from './routes/PlayCreator';
+import PlayViewer from './routes/PlayViewer';
+import Composer from './routes/Composer';
 import ComingSoon from './routes/ComingSoon';
 import Showcase from './Showcase';
 import { c, fonts } from './tokens';
@@ -36,12 +40,11 @@ export default function App() {
             <Route path="feed"     element={<RequireAuth><Feed /></RequireAuth>} />
             <Route path="me"       element={<RequireAuth><Profile /></RequireAuth>} />
             <Route path="u/:username" element={<Profile />} />
+            <Route path="compose"  element={<RequireAuth><Composer /></RequireAuth>} />
+            <Route path="plays"           element={<Plays />} />
+            <Route path="plays/new"       element={<RequireAuth><PlayCreator /></RequireAuth>} />
+            <Route path="plays/:id"       element={<PlayViewer />} />
 
-            <Route path="plays" element={<ComingSoon
-              title="Plays" italicWord="creator"
-              blurb="Camera capture, 30-second clips, in-app stickers and team-color overlays. Wiring the existing /api/plays endpoints into the new editor surface — back here next."
-              legacyPath="/?screen=playsCreator" />}
-            />
             <Route path="messages" element={<ComingSoon
               title="Messages" italicWord="inbox"
               blurb="DMs and group chats with read receipts, port from the live SQLite messages table. Coming in the next slice."

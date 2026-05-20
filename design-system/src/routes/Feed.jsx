@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Heart, Repeat2, MessageCircle as MsgIcon } from 'lucide-react';
+import { Heart, Repeat2, MessageCircle as MsgIcon, Plus } from 'lucide-react';
 import { c, fonts } from '../tokens';
 import { Eyebrow, SectionHead, GameCard, Avatar } from '../components';
-import { posts as postsApi, games as gamesApi } from '../api';
+import { posts as postsApi, games as gamesApi, plays as playsApi } from '../api';
 import { useAuth } from '../auth/AuthContext';
 
 const LEAGUE_COLORS = {
@@ -44,6 +44,7 @@ export default function Feed() {
   const [posts, setPosts] = useState(null);
   const [postsErr, setPostsErr] = useState(null);
   const [games, setGames] = useState(null);
+  const [plays, setPlays] = useState([]);
 
   useEffect(() => {
     let cancel = false;
@@ -63,6 +64,14 @@ export default function Feed() {
         if (!cancel) setGames({ live: [], upcoming: [], recent: [] });
       }
     })();
+    (async () => {
+      try {
+        const data = await playsApi.list();
+        if (!cancel) setPlays(data || []);
+      } catch {
+        if (!cancel) setPlays([]);
+      }
+    })();
     return () => { cancel = true; };
   }, [me?.id]);
 
@@ -72,6 +81,52 @@ export default function Feed() {
   return (
     <>
       <Eyebrow>Today’s board</Eyebrow>
+
+      <section className="mb-10">
+        <SectionHead title="Plays" italicWord={null} count={`${plays.length} · 24h`} />
+        <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollSnapType: 'x mandatory' }}>
+          <Link
+            to="/plays/new"
+            aria-label="Add a play"
+            style={{
+              flex: '0 0 96px', aspectRatio: '3 / 4',
+              border: `1.5px dashed ${c.inkFaint}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column',
+              gap: 6, color: c.inkDim, scrollSnapAlign: 'start',
+            }}
+          >
+            <Plus size={22} strokeWidth={1.6} />
+            <span style={{ fontFamily: fonts.mono, fontSize: 9.5, letterSpacing: '0.18em' }}>ADD</span>
+          </Link>
+          {plays.slice(0, 12).map((p) => (
+            <Link
+              key={p.id}
+              to={`/plays/${p.id}`}
+              style={{
+                flex: '0 0 96px', aspectRatio: '3 / 4', position: 'relative', overflow: 'hidden',
+                border: `1px solid ${c.line}`, scrollSnapAlign: 'start',
+                background: p.media_url ? '#000' : `hsl(${p.hue}, 60%, 55%)`,
+              }}
+            >
+              {p.media_url ? (
+                p.media_kind === 'video' ? (
+                  <video src={p.media_url} muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <img src={p.media_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
+                )
+              ) : null}
+              <div style={{
+                position: 'absolute', left: 0, right: 0, bottom: 0,
+                background: 'linear-gradient(to top, rgba(0,0,0,0.7), transparent)',
+                padding: '8px 8px 6px', color: '#fff',
+                fontFamily: fonts.mono, fontSize: 9, letterSpacing: '0.1em',
+              }}>
+                @{p.user?.username || 'anon'}
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
 
       {live.length > 0 && (
         <section className="mb-12">

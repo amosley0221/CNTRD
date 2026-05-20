@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Home, MessageCircle, PlusSquare, Trophy, User, LogOut } from 'lucide-react';
+import { Home, MessageCircle, Plus, Trophy, User, LogOut } from 'lucide-react';
 import { c, fonts } from '../tokens';
 import { Logo, LiveDot } from '../components';
 import { useAuth } from '../auth/AuthContext';
@@ -7,7 +7,7 @@ import { useAuth } from '../auth/AuthContext';
 const TABS = [
   { to: '/feed',          icon: Home,          label: 'Feed' },
   { to: '/messages',      icon: MessageCircle, label: 'Messages' },
-  { to: '/plays',         icon: PlusSquare,    label: 'Plays', accent: true },
+  { to: '/compose',       icon: Plus,          label: 'Compose', accent: true },
   { to: '/gameday',       icon: Trophy,        label: 'Gameday' },
   { to: '/me',            icon: User,          label: 'You' },
 ];
