@@ -145,7 +145,11 @@ export default function Feed() {
         <section className="mb-12">
           <SectionHead title="Live" italicWord="now" count={`${live.length}`} />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {live.map((g, i) => <GameCard key={g.id || i} {...gameToCardProps(g)} />)}
+            {live.map((g, i) => (
+              <Link key={g.id || i} to={`/game/${encodeURIComponent(g.league)}/${encodeURIComponent(g.id)}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                <GameCard {...gameToCardProps(g)} />
+              </Link>
+            ))}
           </div>
         </section>
       )}
@@ -154,7 +158,11 @@ export default function Feed() {
         <section className="mb-12">
           <SectionHead title="Recent" italicWord="finals" count={`${recent.length}`} />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {recent.map((g, i) => <GameCard key={g.id || i} {...gameToCardProps(g)} />)}
+            {recent.map((g, i) => (
+              <Link key={g.id || i} to={`/game/${encodeURIComponent(g.league)}/${encodeURIComponent(g.id)}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                <GameCard {...gameToCardProps(g)} />
+              </Link>
+            ))}
           </div>
         </section>
       )}

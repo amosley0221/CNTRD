@@ -21,6 +21,7 @@ export const posts = {
 
 export const games = {
   all:      ()                   => get('/api/games'),
+  detail:   (league, id)         => get(`/api/games/${encodeURIComponent(league)}/${encodeURIComponent(id)}`),
   news:     (leagues)            => {
     const qs = leagues?.length ? `?leagues=${encodeURIComponent(leagues.join(','))}` : '';
     return get(`/api/games/news/articles${qs}`);
