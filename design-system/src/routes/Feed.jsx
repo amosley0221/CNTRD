@@ -87,10 +87,13 @@ export default function Feed() {
 
   const live    = (games?.live    || []).slice(0, 4);
   const recent  = (games?.recent  || []).slice(0, 4);
+  const headlineArticle = articles?.[0];
 
   return (
     <>
-      <Eyebrow>Today’s board</Eyebrow>
+      <Ticker games={[...live, ...((games?.upcoming || []).slice(0, 6))]} />
+
+      <Hero article={headlineArticle} live={live} />
 
       <section className="mb-10">
         <SectionHead title="Plays" italicWord={null} count={`${plays.length} · 24h`} />
@@ -242,6 +245,155 @@ function RealPost({ post }) {
         <span className="flex items-center gap-1.5"><MsgIcon size={13} /> {post.replies || 0}</span>
       </div>
     </article>
+  );
+}
+
+// Scrolling live ticker — dark band with monospaced league/score
+// tickets. CSS marquee on a duplicated list so the loop is seamless.
+// Pulls from the actual /api/games response so what's on the wire is
+// what's actually on the wire.
+function Ticker({ games }) {
+  if (!games || games.length === 0) return null;
+  const items = games.slice(0, 12);
+  const row = (
+    <div className="inline-flex" style={{ gap: 40, padding: '10px 0', whiteSpace: 'nowrap' }}>
+      {items.map((g, i) => {
+        const away = teamMark(g, 'away');
+        const home = teamMark(g, 'home');
+        const aScore = g.away_score ?? '';
+        const hScore = g.home_score ?? '';
+        const aLead  = Number(aScore) > Number(hScore);
+        const hLead  = Number(hScore) > Number(aScore);
+        const status = g.status_detail || g.detail || g.clock || (g.status === 'pre' ? g.kickoff_label : '');
+        return (
+          <span key={`${g.id || i}`} className="inline-flex items-center" style={{ gap: 10, fontFamily: fonts.mono, fontSize: 12 }}>
+            <span style={{ color: c.inkDim }}>{g.league}</span>
+            <span style={{ color: aLead ? c.accent : c.inkDim, fontWeight: aLead ? 700 : 400 }}>{away.code}</span>
+            <span style={{ fontWeight: aLead ? 700 : 400, color: aLead ? c.accent : c.ink }}>{aScore}</span>
+            <span style={{ color: c.inkDim }}>—</span>
+            <span style={{ fontWeight: hLead ? 700 : 400, color: hLead ? c.accent : c.ink }}>{hScore}</span>
+            <span style={{ color: hLead ? c.accent : c.inkDim, fontWeight: hLead ? 700 : 400 }}>{home.code}</span>
+            {status && <span style={{ color: c.accent, fontSize: 9, letterSpacing: '0.2em' }}>{String(status).toUpperCase()}</span>}
+          </span>
+        );
+      })}
+    </div>
+  );
+  return (
+    <div
+      style={{
+        margin: '-24px -20px 24px',
+        background: c.paper,
+        borderTop: `1px solid ${c.line}`,
+        borderBottom: `1px solid ${c.line}`,
+        overflow: 'hidden',
+        position: 'relative',
+      }}
+    >
+      <div style={{ display: 'inline-flex', animation: 'cn-ticker 60s linear infinite', whiteSpace: 'nowrap' }}>
+        {row}
+        {row}
+      </div>
+    </div>
+  );
+}
+
+// Editorial hero — Fraunces headline with an italic volt accent word.
+// Uses the freshest live game as the headline if there is one; falls
+// back to the latest news article so the slot always has something
+// real to say.
+function Hero({ article, live }) {
+  const focus = (live && live[0]) || null;
+
+  if (focus) {
+    const away = teamMark(focus, 'away');
+    const home = teamMark(focus, 'home');
+    const aScore = Number(focus.away_score ?? 0);
+    const hScore = Number(focus.home_score ?? 0);
+    const lead = hScore >= aScore ? 'home' : 'away';
+    const winner = lead === 'home' ? home.name : away.name;
+    const status = focus.status_detail || focus.detail || focus.clock || 'LIVE';
+    return (
+      <section className="mb-12" style={{ paddingBottom: 32, borderBottom: `1px solid ${c.line}` }}>
+        <div className="flex items-center gap-3 mb-6" style={{ color: c.accent }}>
+          <span className="block" style={{ width: 30, height: 1, background: c.accent }} />
+          <span style={{ fontFamily: fonts.mono, fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', fontWeight: 600 }}>
+            {focus.league} · LIVE · {String(status).toUpperCase()}
+          </span>
+        </div>
+        <h1
+          className="fraunces-soft"
+          style={{
+            fontFamily: fonts.display, fontWeight: 400,
+            fontSize: 'clamp(40px, 9vw, 80px)',
+            lineHeight: 0.95, letterSpacing: '-0.04em',
+            marginBottom: 20, maxWidth: 860,
+          }}
+        >
+          {winner}{' '}
+          <em style={{ fontStyle: 'italic', fontWeight: 300, color: c.accent }}>are answering</em>
+          <br />
+          on the road.
+        </h1>
+        <div className="flex items-center gap-6" style={{ fontFamily: fonts.mono, fontSize: 11, color: c.inkDim, letterSpacing: '0.1em' }}>
+          <span>{away.code} <strong style={{ color: c.ink, fontWeight: 700 }}>{aScore}</strong></span>
+          <span>—</span>
+          <span><strong style={{ color: c.accent, fontWeight: 700 }}>{hScore}</strong> {home.code}</span>
+        </div>
+      </section>
+    );
+  }
+
+  if (article) {
+    return (
+      <section className="mb-12" style={{ paddingBottom: 32, borderBottom: `1px solid ${c.line}` }}>
+        <div className="flex items-center gap-3 mb-6" style={{ color: c.accent }}>
+          <span className="block" style={{ width: 30, height: 1, background: c.accent }} />
+          <span style={{ fontFamily: fonts.mono, fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', fontWeight: 600 }}>
+            {article.league} · LEAD
+          </span>
+        </div>
+        <a href={article.url} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>
+          <h1
+            className="fraunces-soft"
+            style={{
+              fontFamily: fonts.display, fontWeight: 400,
+              fontSize: 'clamp(40px, 9vw, 80px)',
+              lineHeight: 0.95, letterSpacing: '-0.04em',
+              marginBottom: 20, maxWidth: 860,
+            }}
+          >
+            {article.title}
+          </h1>
+        </a>
+        {article.description && (
+          <p style={{ fontFamily: fonts.display, fontSize: 18, lineHeight: 1.45, fontWeight: 300, color: c.inkSoft, maxWidth: 580 }}>
+            {article.description}
+          </p>
+        )}
+      </section>
+    );
+  }
+
+  return (
+    <section className="mb-12" style={{ paddingBottom: 32, borderBottom: `1px solid ${c.line}` }}>
+      <div className="flex items-center gap-3 mb-6" style={{ color: c.accent }}>
+        <span className="block" style={{ width: 30, height: 1, background: c.accent }} />
+        <span style={{ fontFamily: fonts.mono, fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', fontWeight: 600 }}>
+          Today’s board
+        </span>
+      </div>
+      <h1
+        className="fraunces-soft"
+        style={{
+          fontFamily: fonts.display, fontWeight: 400,
+          fontSize: 'clamp(40px, 9vw, 80px)',
+          lineHeight: 0.95, letterSpacing: '-0.04em', marginBottom: 12,
+        }}
+      >
+        The center of the <em style={{ fontStyle: 'italic', fontWeight: 300, color: c.accent }}>action</em>.
+      </h1>
+    </section>
   );
 }
 
