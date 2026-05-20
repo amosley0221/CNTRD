@@ -19,6 +19,7 @@ import PostThread from './routes/PostThread';
 import EditProfile from './routes/EditProfile';
 import Search from './routes/Search';
 import GameCenter from './routes/GameCenter';
+import Article from './routes/Article';
 import Showcase from './Showcase';
 import { c, fonts } from './tokens';
 
@@ -64,6 +65,7 @@ export default function App() {
             <Route path="me/edit"          element={<RequireAuth><EditProfile /></RequireAuth>} />
             <Route path="search"           element={<Search />} />
             <Route path="game/:league/:id" element={<GameCenter />} />
+            <Route path="article/:id"      element={<Article />} />
 
             <Route path="*" element={<NotFound />} />
           </Route>

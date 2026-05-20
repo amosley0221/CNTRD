@@ -191,6 +191,46 @@ db.exec(`
     FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
   );
   CREATE INDEX IF NOT EXISTS idx_bookmarks_user ON bookmarks(user_id, created_at DESC);
+
+  -- External news articles that CNTRD hosts discussions for. The id is
+  -- a deterministic SHA-256-prefix of the canonical URL, so the same
+  -- URL always maps to the same row no matter where it was inserted
+  -- from. We never republish the article body — we just keep the
+  -- metadata we already have (title, image, byline) so the page can
+  -- render before clicking through to the source.
+  CREATE TABLE IF NOT EXISTS articles (
+    id TEXT PRIMARY KEY,
+    url TEXT NOT NULL,
+    league TEXT,
+    title TEXT NOT NULL,
+    description TEXT,
+    image TEXT,
+    published_at TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_articles_created ON articles(created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS article_comments (
+    id TEXT PRIMARY KEY,
+    article_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_article_comments_article ON article_comments(article_id, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS article_reactions (
+    article_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    kind TEXT NOT NULL,            -- 'like' | 'repost' | 'bookmark'
+    created_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (article_id, user_id, kind),
+    FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_article_reactions_article ON article_reactions(article_id, kind);
 `);
 
 // Idempotent column adds for upgrading older databases.

@@ -49,6 +49,7 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/admin',  require('./routes/admin'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/push',    require('./routes/push'));
+app.use('/api/articles', require('./routes/articles'));
 
 // Eagerly configure Web Push so VAPID keys are generated/cached on boot
 // (logged on first generation so they can be promoted to env vars).

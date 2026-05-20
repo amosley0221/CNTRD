@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Heart, Repeat2, MessageCircle as MsgIcon, Plus } from 'lucide-react';
 import { c, fonts } from '../tokens';
 import { Eyebrow, SectionHead, GameCard, Avatar } from '../components';
@@ -405,18 +405,35 @@ function Hero({ article, live }) {
   );
 }
 
+// Same SHA-256-prefix the server uses for the deterministic article
+// id. Web Crypto's digest is async — quick (<5ms) but means clicking
+// becomes an awaited action. We pass `article` via Link state so the
+// destination screen can fall back to POST /resolve if the row hasn't
+// been created server-side yet.
+async function articleIdFor(url) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(url || '').trim()));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+}
+
 function ArticleCard({ article }) {
+  const nav = useNavigate();
+  const open = async () => {
+    const id = await articleIdFor(article.url);
+    nav(`/article/${id}`, { state: { article } });
+  };
   return (
-    <a
-      href={article.url}
-      target="_blank"
-      rel="noopener noreferrer"
+    <button
+      type="button"
+      onClick={open}
       style={{
         display: 'flex', flexDirection: 'column',
         background: c.paper, border: `1px solid ${c.line}`,
         color: 'inherit', textDecoration: 'none',
         overflow: 'hidden',
         minHeight: 220,
+        cursor: 'pointer',
+        textAlign: 'left',
+        padding: 0,
       }}
       onMouseEnter={(e) => (e.currentTarget.style.borderColor = c.accent)}
       onMouseLeave={(e) => (e.currentTarget.style.borderColor = c.line)}
@@ -446,7 +463,7 @@ function ArticleCard({ article }) {
           </p>
         )}
       </div>
-    </a>
+    </button>
   );
 }
 

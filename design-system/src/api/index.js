@@ -48,6 +48,23 @@ export const search = {
   trending: ()                   => get('/api/search/trending'),
 };
 
+export const articles = {
+  // Idempotent upsert from the URL + metadata we already have on the
+  // feed card; returns { id, ... } so the client can navigate.
+  resolve: (article) => post('/api/articles/resolve', {
+    url: article.url,
+    league: article.league,
+    title: article.title,
+    description: article.description,
+    image: article.image,
+    published: article.published,
+  }),
+  get:        (id)        => get(`/api/articles/${id}`),
+  comments:   (id)        => get(`/api/articles/${id}/comments`),
+  comment:    (id, body)  => post(`/api/articles/${id}/comments`, { content: body }),
+  react:      (id, kind)  => post(`/api/articles/${id}/react`, { kind }),
+};
+
 export const push = {
   vapidPublic: ()                          => get('/api/push/vapid-public'),
   subscribe:   (sub)                       => post('/api/push/subscribe', sub),
