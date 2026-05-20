@@ -872,4 +872,72 @@ async function getTeamSchedule(leagueCode, teamId, season) {
   return data;
 }
 
-module.exports = { getAll, getAllTeams, getGameDetail, getTeamSchedule, LEAGUES };
+// ── News / articles ───────────────────────────────────────────────
+// Aggregates ESPN's per-league /news feed across the requested codes.
+// Each league's response is cached for 5 minutes since articles only
+// roll over every 10–20 minutes upstream. Returns a flat, deduped
+// list of { id, league, title, description, image, url, published }.
+
+const NEWS_TTL_MS = 5 * 60 * 1000;
+const newsCache = new Map();        // league.code → { ts, articles }
+
+async function fetchLeagueNews(league) {
+  const cached = newsCache.get(league.code);
+  if (cached && Date.now() - cached.ts < NEWS_TTL_MS) return cached.articles;
+  const url = `https://site.api.espn.com/apis/site/v2/sports/${league.path}/news`;
+  try {
+    const r = await fetch(url, { headers: { 'User-Agent': 'cntrd/1.0' } });
+    if (!r.ok) throw new Error(`upstream ${r.status}`);
+    const json = await r.json();
+    const articles = (json.articles || []).map(a => ({
+      id: String(a.id || a.guid || a.headline || a.title || ''),
+      league: league.code,
+      title: a.headline || a.title || '',
+      description: a.description || '',
+      image: pickArticleImage(a),
+      url: pickArticleLink(a),
+      published: a.published || a.lastModified || null,
+    })).filter(a => a.title && a.url);
+    newsCache.set(league.code, { ts: Date.now(), articles });
+    return articles;
+  } catch (e) {
+    // Return whatever we last had so a flaky upstream doesn't blank
+    // the page; if there's nothing cached, return an empty array.
+    return cached?.articles || [];
+  }
+}
+
+function pickArticleImage(a) {
+  const imgs = a.images || [];
+  // Prefer landscape, then anything with a width >= 600.
+  const pick = imgs.find(i => i.width >= 600) || imgs[0];
+  return pick?.url || null;
+}
+
+function pickArticleLink(a) {
+  const links = a.links || {};
+  return links?.web?.href || links?.mobile?.href || links?.api?.news?.href || null;
+}
+
+async function getNews(leagueCodes) {
+  const codes = (Array.isArray(leagueCodes) && leagueCodes.length)
+    ? leagueCodes
+    : ['NFL', 'NBA', 'MLB', 'NHL', 'EPL', 'MLS', 'NCAAF', 'NCAAM'];
+  const leagues = codes
+    .map(code => LEAGUES.find(l => l.code === code))
+    .filter(Boolean);
+  const results = await Promise.all(leagues.map(fetchLeagueNews));
+  const flat = [].concat(...results);
+  // Dedupe by canonical URL and sort newest-first.
+  const seen = new Set();
+  const out = [];
+  for (const a of flat) {
+    if (seen.has(a.url)) continue;
+    seen.add(a.url);
+    out.push(a);
+  }
+  out.sort((a, b) => (Date.parse(b.published || 0) || 0) - (Date.parse(a.published || 0) || 0));
+  return out.slice(0, 40);
+}
+
+module.exports = { getAll, getAllTeams, getGameDetail, getTeamSchedule, getNews, LEAGUES };
