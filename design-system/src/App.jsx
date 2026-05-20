@@ -14,7 +14,10 @@ import Thread from './routes/Thread';
 import NewMessage from './routes/NewMessage';
 import Gameday from './routes/Gameday';
 import GamedayRoom from './routes/GamedayRoom';
-import ComingSoon from './routes/ComingSoon';
+import Notifications from './routes/Notifications';
+import PostThread from './routes/PostThread';
+import EditProfile from './routes/EditProfile';
+import Search from './routes/Search';
 import Showcase from './Showcase';
 import { c, fonts } from './tokens';
 
@@ -55,11 +58,10 @@ export default function App() {
             <Route path="messages/:id"     element={<RequireAuth><Thread /></RequireAuth>} />
             <Route path="gameday"          element={<RequireAuth><Gameday /></RequireAuth>} />
             <Route path="gameday/:gameId"  element={<RequireAuth><GamedayRoom /></RequireAuth>} />
-            <Route path="notifications" element={<ComingSoon
-              title="Bell" italicWord="notifications"
-              blurb="Push toggles, in-app feed, dedupe. Push subscriptions table is already wired server-side."
-              legacyPath="/?screen=notifications" />}
-            />
+            <Route path="notifications"    element={<RequireAuth><Notifications /></RequireAuth>} />
+            <Route path="post/:id"         element={<PostThread />} />
+            <Route path="me/edit"          element={<RequireAuth><EditProfile /></RequireAuth>} />
+            <Route path="search"           element={<Search />} />
 
             <Route path="*" element={<NotFound />} />
           </Route>

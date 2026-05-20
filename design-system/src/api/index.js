@@ -1,4 +1,6 @@
-import { api, get, post, del } from './client';
+import { api, get, post, put, del } from './client';
+
+const patch = (p, body) => api(p, { method: 'PATCH', body: JSON.stringify(body || {}) });
 
 export const auth = {
   me:       ()                   => get('/api/auth/me'),
@@ -11,7 +13,9 @@ export const posts = {
   feed:     ()                   => get('/api/posts/feed'),
   explore:  ()                   => get('/api/posts/explore'),
   byUser:   (username)           => get(`/api/users/${encodeURIComponent(username)}/posts`),
+  byId:     (id)                 => get(`/api/posts/${id}`),
   create:   (body)               => post('/api/posts', body),
+  reply:    (parentId, content)  => post('/api/posts', { content, reply_to: parentId }),
   like:     (id)                 => post(`/api/posts/${id}/like`),
 };
 
@@ -21,6 +25,29 @@ export const games = {
 
 export const users = {
   profile:  (username)           => get(`/api/users/${encodeURIComponent(username)}`),
+  follow:   (username)           => post(`/api/users/${encodeURIComponent(username)}/follow`),
+  updateMe: (body)               => patch('/api/users/me/profile', body),
+};
+
+export const notifications = {
+  list:     ()                   => get('/api/notifications'),
+  unread:   ()                   => get('/api/notifications/unread'),
+  readAll:  ()                   => post('/api/notifications/read-all'),
+  read:     (id)                 => post(`/api/notifications/${id}/read`),
+  remove:   (id)                 => del(`/api/notifications/${id}`),
+  clear:    ()                   => del('/api/notifications'),
+};
+
+export const search = {
+  query:    (q)                  => get(`/api/search?q=${encodeURIComponent(q)}`),
+  trending: ()                   => get('/api/search/trending'),
+};
+
+export const push = {
+  vapidPublic: ()                          => get('/api/push/vapid-public'),
+  subscribe:   (sub)                       => post('/api/push/subscribe', sub),
+  unsubscribe: (endpoint)                  => post('/api/push/unsubscribe', { endpoint }),
+  test:        ()                          => post('/api/push/test'),
 };
 
 export const plays = {

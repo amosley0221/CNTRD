@@ -199,9 +199,11 @@ function RealPost({ post }) {
         <span style={{ fontFamily: fonts.mono, fontSize: 10, color: c.inkDim }}>{time}</span>
       </div>
 
-      <div style={{ fontFamily: fonts.display, fontSize: 19, lineHeight: 1.35, fontWeight: 300, color: c.ink, whiteSpace: 'pre-wrap' }}>
-        {post.content || post.text}
-      </div>
+      <Link to={`/post/${post.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+        <div style={{ fontFamily: fonts.display, fontSize: 19, lineHeight: 1.35, fontWeight: 300, color: c.ink, whiteSpace: 'pre-wrap' }}>
+          {post.content || post.text}
+        </div>
+      </Link>
 
       {post.image && (
         <img
