@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches the v2 palette so system chrome blends with the app. -->
+    <color name="paper">#F4EDE0</color>
+    <color name="ink">#1A1612</color>
+    <color name="accent">#C84C1E</color>
+</resources>

@@ -1,0 +1,37 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.cntrd.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.cntrd.app"
+        minSdk 24          // Android 7.0 — covers ~97% of active devices
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            // The debug signing config is fine for sideload-only distribution:
+            // Google Play won't accept it, but the APK installs cleanly on any
+            // device where "Install from unknown sources" is enabled. Swap in a
+            // real keystore later if we ever publish to Play.
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    // No androidx deps — we render a bare WebView. Keeps the APK tiny
+    // (< 2 MB) and the toolchain minimal.
+}

@@ -1,0 +1,9 @@
+// Root Gradle build script. Just declares the plugin repositories that
+// the app module resolves against.
+plugins {
+    id 'com.android.application' version '8.2.2' apply false
+}
+
+allprojects {
+    // Nothing extra at the project level — everything lives in app/.
+}
