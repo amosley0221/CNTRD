@@ -79,6 +79,16 @@ persistent disk).
 │       ├── components/      11 design-system components + index.js barrel
 │       ├── routes/          one file per screen
 │       └── Showcase.jsx     legacy showcase, mounted at /v2/_showcase
+├── android/                 Android APK wrapper (WebView → live site)
+│   ├── app/                 Android module
+│   │   ├── build.gradle     minSdk 24, target 34, debug-signed
+│   │   └── src/main/
+│   │       ├── AndroidManifest.xml    permissions: INTERNET, CAMERA,
+│   │       │                          RECORD_AUDIO
+│   │       ├── java/com/cntrd/app/MainActivity.java  WebView host
+│   │       └── res/                    icons + theme (cream + terracotta)
+│   ├── build.gradle, settings.gradle, gradle.properties
+│   └── README.md            install + build docs
 └── public/
     ├── index.html           Legacy app shell
     ├── manifest.webmanifest start_url: "/" (NOT flipped to /v2 yet)
@@ -131,6 +141,18 @@ npm run dev        # nodemon server.js (server hot reload)
 npm run dev:v2     # vite dev server with API proxy → :3000
 npm run build:v2   # build the v2 bundle to public/v2/
 ```
+
+### Android APK
+
+The `android/` directory is a thin WebView wrapper around
+`https://cntrd-618y.onrender.com/v2/feed`. GitHub Actions
+(`.github/workflows/android-apk.yml`) builds it on every push to the
+deploy branch that touches `android/**` and publishes the resulting
+APK to the stable `android-latest` release tag. Users download from
+https://github.com/amosley0221/CNTRD/releases/tag/android-latest.
+
+Signing uses the standard Android debug config — fine for sideload,
+Play Store would need a real keystore (see `android/README.md`).
 
 For day-to-day v2 dev: `npm run dev` in one terminal, `npm run dev:v2` in
 another. Vite serves the front-end on its own port with HMR; API calls
