@@ -5,45 +5,14 @@ import { c, fonts } from '../tokens';
 import { Eyebrow, SectionHead, GameCard, Avatar } from '../components';
 import { posts as postsApi, games as gamesApi, plays as playsApi } from '../api';
 import { useAuth } from '../auth/AuthContext';
-
-const LEAGUE_COLORS = {
-  NFL: '#013369', NBA: '#c8102e', MLB: '#002d72', NHL: '#000000',
-  EPL: '#37003c', MLS: '#001e62', NCAAF: '#a32035', NCAAB: '#a32035',
-};
-
-function teamMark(g, side /* 'home' | 'away' */) {
-  const name = side === 'home' ? (g.home_name || g.home || '') : (g.away_name || g.away || '');
-  const code = (side === 'home' ? g.home_abbr : g.away_abbr) || name.slice(0, 3).toUpperCase();
-  const color = (side === 'home' ? g.home_color : g.away_color) || LEAGUE_COLORS[g.league] || '#444';
-  return { code, color, name };
-}
-
-function gameToCardProps(g) {
-  const isLive   = g.status === 'in' || g.state === 'in';
-  const isFinal  = g.status === 'post' || g.state === 'post';
-  const state    = isLive ? 'LIVE' : isFinal ? 'FINAL' : 'UPCOMING';
-  const home = teamMark(g, 'home');
-  const away = teamMark(g, 'away');
-  const homeScore = Number(g.home_score ?? 0);
-  const awayScore = Number(g.away_score ?? 0);
-  const homeLead = homeScore > awayScore;
-  const awayLead = awayScore > homeScore;
-  return {
-    state,
-    league: g.league || '',
-    status: g.status_detail || g.detail || g.clock || (isFinal ? 'FT' : isLive ? 'LIVE' : (g.kickoff_label || '')),
-    away: { ...away, score: String(awayScore), lead: awayLead, odds: g.away_odds || '' },
-    home: { ...home, score: String(homeScore), lead: homeLead, odds: g.home_odds || '' },
-    foot1: g.venue || g.broadcast || '',
-    foot2: g.network || '',
-  };
-}
+import { team, statusLabel, leader, toCardProps, gamePath } from '../lib/games';
 
 export default function Feed() {
   const { me } = useAuth();
   const [posts, setPosts] = useState(null);
   const [postsErr, setPostsErr] = useState(null);
   const [games, setGames] = useState(null);
+  const [gamesErr, setGamesErr] = useState(null);
   const [plays, setPlays] = useState([]);
   const [articles, setArticles] = useState(null);
 
@@ -60,9 +29,16 @@ export default function Feed() {
     (async () => {
       try {
         const data = await gamesApi.all();
-        if (!cancel) setGames(data || { live: [], upcoming: [], recent: [] });
-      } catch {
-        if (!cancel) setGames({ live: [], upcoming: [], recent: [] });
+        if (cancel) return;
+        setGames(data || { live: [], upcoming: [], recent: [] });
+        // 200-with-error means the upstream scoreboard is down. Say so
+        // rather than rendering an empty board as if nothing were on.
+        if (data?.error) setGamesErr(data.error);
+      } catch (e) {
+        if (!cancel) {
+          setGamesErr(e.message || 'Could not reach the scoreboard.');
+          setGames({ live: [], upcoming: [], recent: [] });
+        }
       }
     })();
     (async () => {
@@ -141,13 +117,27 @@ export default function Feed() {
         </div>
       </section>
 
+      {gamesErr && (
+        <div
+          className="mb-8"
+          style={{ padding: '14px 16px', border: `1px solid ${c.alert}`, background: c.surface }}
+        >
+          <div style={{ fontFamily: fonts.mono, fontSize: 10, letterSpacing: '0.2em', color: c.alert, textTransform: 'uppercase' }}>
+            Scoreboard unavailable
+          </div>
+          <div style={{ fontFamily: fonts.body, fontSize: 14, color: c.inkSoft, marginTop: 4 }}>
+            {gamesErr}
+          </div>
+        </div>
+      )}
+
       {live.length > 0 && (
         <section className="mb-12">
           <SectionHead title="Live" italicWord="now" count={`${live.length}`} />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {live.map((g, i) => (
-              <Link key={g.id || i} to={`/game/${encodeURIComponent(g.league)}/${encodeURIComponent(g.id)}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                <GameCard {...gameToCardProps(g)} />
+              <Link key={g.id || i} to={gamePath(g)} style={{ textDecoration: 'none', color: 'inherit' }}>
+                <GameCard {...toCardProps(g)} />
               </Link>
             ))}
           </div>
@@ -159,8 +149,8 @@ export default function Feed() {
           <SectionHead title="Recent" italicWord="finals" count={`${recent.length}`} />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {recent.map((g, i) => (
-              <Link key={g.id || i} to={`/game/${encodeURIComponent(g.league)}/${encodeURIComponent(g.id)}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                <GameCard {...gameToCardProps(g)} />
+              <Link key={g.id || i} to={gamePath(g)} style={{ textDecoration: 'none', color: 'inherit' }}>
+                <GameCard {...toCardProps(g)} />
               </Link>
             ))}
           </div>
@@ -266,13 +256,14 @@ function Ticker({ games }) {
   const row = (
     <div className="inline-flex" style={{ gap: 40, padding: '10px 0', whiteSpace: 'nowrap' }}>
       {items.map((g, i) => {
-        const away = teamMark(g, 'away');
-        const home = teamMark(g, 'home');
-        const aScore = g.away_score ?? '';
-        const hScore = g.home_score ?? '';
-        const aLead  = Number(aScore) > Number(hScore);
-        const hLead  = Number(hScore) > Number(aScore);
-        const status = g.status_detail || g.detail || g.clock || (g.status === 'pre' ? g.kickoff_label : '');
+        const away = team(g, 'away');
+        const home = team(g, 'home');
+        const aScore = away.score === '–' ? '' : away.score;
+        const hScore = home.score === '–' ? '' : home.score;
+        const lead   = leader(g);
+        const aLead  = lead === 'away';
+        const hLead  = lead === 'home';
+        const status = statusLabel(g);
         return (
           <span key={`${g.id || i}`} className="inline-flex items-center" style={{ gap: 10, fontFamily: fonts.mono, fontSize: 12 }}>
             <span style={{ color: c.inkDim }}>{g.league}</span>
@@ -314,13 +305,13 @@ function Hero({ article, live }) {
   const focus = (live && live[0]) || null;
 
   if (focus) {
-    const away = teamMark(focus, 'away');
-    const home = teamMark(focus, 'home');
-    const aScore = Number(focus.away_score ?? 0);
-    const hScore = Number(focus.home_score ?? 0);
-    const lead = hScore >= aScore ? 'home' : 'away';
+    const away = team(focus, 'away');
+    const home = team(focus, 'home');
+    const aScore = away.score === '–' ? 0 : away.score;
+    const hScore = home.score === '–' ? 0 : home.score;
+    const lead = leader(focus) || 'home';
     const winner = lead === 'home' ? home.name : away.name;
-    const status = focus.status_detail || focus.detail || focus.clock || 'LIVE';
+    const status = statusLabel(focus) || 'LIVE';
     return (
       <section className="mb-12" style={{ paddingBottom: 32, borderBottom: `1px solid ${c.line}` }}>
         <div className="flex items-center gap-3 mb-6" style={{ color: c.accent }}>
