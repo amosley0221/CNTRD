@@ -348,10 +348,21 @@ function dateRange(daysBack) {
   return `${ymd(start)}-${ymd(end)}`;
 }
 
+// Flatten a batch of per-league fetches, tolerating individual failures
+// but REPORTING them. Returning only the items hid total upstream
+// outages: every league could fail and the caller still saw a clean
+// empty list, which the UI then rendered as "no games today".
 function settled(promises) {
-  return Promise.allSettled(promises).then(results =>
-    results.flatMap(r => r.status === 'fulfilled' ? r.value : [])
-  );
+  return Promise.allSettled(promises).then(results => {
+    const items = results.flatMap(r => r.status === 'fulfilled' ? r.value : []);
+    const failures = results
+      .filter(r => r.status === 'rejected')
+      .map(r => String(r.reason?.message || r.reason || 'unknown'));
+    items.__failed = failures.length;
+    items.__total = results.length;
+    items.__reasons = failures.slice(0, 3);
+    return items;
+  });
 }
 
 async function getAll() {
@@ -389,11 +400,31 @@ async function getAll() {
   // Sort upcoming by start time and cap to a reasonable number for display.
   upcoming.sort((a, b) => (a.date < b.date ? -1 : 1));
 
-  return {
+  // Surface upstream health. When every league fetch failed there are
+  // genuinely no games to show *and* something is wrong — the client
+  // needs to tell those two states apart.
+  const failed = (todayLists.__failed || 0);
+  const total  = (todayLists.__total || LEAGUES.length);
+  const meta = {
+    leagues_total: total,
+    leagues_failed: failed,
+    reasons: todayLists.__reasons || [],
+    fetched_at: new Date().toISOString(),
+  };
+  const out = {
     live: live.slice(0, 24),
     upcoming: upcoming.slice(0, 24),
     recent: recent.slice(0, 24),
+    meta,
   };
+  if (failed >= total && total > 0) {
+    out.error = `Scoreboard upstream unreachable (${failed}/${total} leagues failed).`;
+  } else if (failed > 0 && live.length === 0 && upcoming.length === 0) {
+    // Partial failure that left the board empty is worth flagging too —
+    // otherwise a quiet morning and a broken feed look identical.
+    out.error = `Partial scoreboard outage (${failed}/${total} leagues failed).`;
+  }
+  return out;
 }
 
 // ── League team rosters ──────────────────────────────────────────────────
