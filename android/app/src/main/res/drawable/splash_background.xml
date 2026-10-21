@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shown by the window manager the instant the launcher icon is tapped,
+     before any of our code runs. Without this the app opens on a white
+     flash then a blank WebView, which is what makes a wrapper app read
+     as "just a browser". -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/paper" />
+    <item>
+        <bitmap
+            android:src="@mipmap/ic_launcher"
+            android:gravity="center" />
+    </item>
+</layer-list>

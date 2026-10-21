@@ -6,4 +6,12 @@
         <item name="android:navigationBarColor">@color/paper</item>
         <item name="android:colorPrimary">@color/accent</item>
     </style>
+
+    <!-- Launch theme. The window manager paints this before the process
+         is even warm, so the app shows branded cream + the mark instead
+         of a white flash. MainActivity swaps back to Theme.CNTRD in
+         onCreate() so the splash drawable isn't kept behind the WebView. -->
+    <style name="Theme.CNTRD.Splash" parent="Theme.CNTRD">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+    </style>
 </resources>
