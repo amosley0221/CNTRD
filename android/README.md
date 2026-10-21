@@ -68,10 +68,48 @@ Launcher icons are copied straight from the PWA
 (`public/icons/icon-192.png`). To refresh, replace that file and re-copy
 into each `android/app/src/main/res/mipmap-*/ic_launcher.png`.
 
-## Why WebView, not TWA?
+## App shell behavior
 
-Trusted Web Activity would give a cleaner install (no URL chrome ever,
-even before the site verifies) but requires publishing a Digital Asset
-Links file at the domain root — a website change we're avoiding. The
-WebView route achieves the "installable app icon on the home screen"
-outcome without touching the site.
+The WebView is wrapped in enough native chrome that it doesn't read as a
+browser:
+
+- **Launch screen.** `Theme.CNTRD.Splash` paints cream + the CNTRD mark
+  via `windowBackground` before the process is warm, so there's no white
+  flash. `MainActivity.onCreate()` calls `setTheme(R.style.Theme_CNTRD)`
+  immediately so the splash drawable isn't retained behind the WebView.
+- **Branded failure screen.** `onReceivedError` / `onReceivedHttpError`
+  (main frame only) swap in a native cream screen with the `cntrd.`
+  wordmark, a reason, and a RETRY button — instead of Chrome's dinosaur
+  page. Distinguishes "you're offline" from "the server isn't
+  responding" from an HTTP 5xx.
+- **Offline reads.** Cache mode is connectivity-aware: `LOAD_DEFAULT`
+  when online, `LOAD_CACHE_ELSE_NETWORK` when not, re-evaluated on
+  `onResume`. The last feed the user loaded still renders with no
+  connection.
+
+The error screen is built in code rather than XML so the app keeps zero
+androidx dependencies and the APK stays under 2 MB.
+
+## Road to the Play Store
+
+Not blocking anything today — the APK sideloads fine. When we want a
+listing:
+
+1. **Real signing key.** Generate a keystore, add
+   `CNTRD_KEYSTORE_BASE64`, `CNTRD_KEYSTORE_PASSWORD`, `CNTRD_KEY_ALIAS`,
+   `CNTRD_KEY_PASSWORD` as GitHub Secrets, decode it in the workflow
+   before `assembleRelease`, and point a `release` signing block at them.
+   **Back the keystore up** — losing it means never updating the listing
+   again.
+2. **Convert to a Trusted Web Activity.** Google's policy discourages
+   plain WebView wrappers with no added value; TWA is the blessed path
+   for shipping a PWA. It needs one static file on the site:
+   `/.well-known/assetlinks.json` containing the app's package name and
+   signing-key fingerprint. No user-visible site change.
+   TWA also gets the splash screen and offline handling from the web
+   manifest + service worker, so some of the native shell above becomes
+   redundant at that point.
+3. **Build an App Bundle** (`bundleRelease` → `.aab`) rather than an
+   APK; Play requires AAB for new listings.
+4. **Store listing assets** — feature graphic, screenshots, privacy
+   policy URL. The privacy policy is the usual long pole.
