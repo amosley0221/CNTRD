@@ -33,8 +33,70 @@ const LEAGUES = [
 ];
 
 const TTL_OK_MS  = 30 * 1000;       // 30s while requests are succeeding
-const TTL_ERR_MS = 10 * 1000;       // back off 10s after an error
+const TTL_ERR_MS = 20 * 1000;       // back off after an error — don't hammer a
+                                    // throttling upstream on every page load
 const RECENT_DAYS = 3;              // how far back "recent finals" looks
+
+// ESPN's public scoreboard API throttles aggressively per source IP.
+// getAll() used to fire 2 × 21 = 42 requests simultaneously from a single
+// Render dyno, which reliably got most of them refused — the board then
+// rendered as "no games today". Cap in-flight requests, give each one a
+// deadline, and retry once on a transient failure.
+const FETCH_TIMEOUT_MS = 10_000;    // per-request deadline
+const FETCH_ATTEMPTS   = 2;         // initial try + 1 retry
+const SCOREBOARD_CONCURRENCY = 5;   // max simultaneous ESPN requests
+
+// Run `fn` over `items` with at most `limit` in flight. Returns
+// Promise.allSettled-shaped results in the original order.
+async function mapPool(items, limit, fn) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  const worker = async () => {
+    for (;;) {
+      const i = cursor++;
+      if (i >= items.length) return;
+      try {
+        results[i] = { status: 'fulfilled', value: await fn(items[i], i) };
+      } catch (reason) {
+        results[i] = { status: 'rejected', reason };
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker)
+  );
+  return results;
+}
+
+// Fetch JSON with a deadline and one retry. 4xx other than 429 won't
+// change on a retry, so those fail fast.
+async function fetchJsonWithRetry(url, label) {
+  let lastErr;
+  for (let attempt = 0; attempt < FETCH_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      // Jittered backoff so a pool of workers doesn't retry in lockstep.
+      await new Promise(r => setTimeout(r, 250 + Math.random() * 500));
+    }
+    try {
+      const res = await fetch(url, {
+        headers: { 'Accept': 'application/json', 'User-Agent': 'cntrd/1.0' },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        const err = new Error(`${label} HTTP ${res.status}`);
+        err.status = res.status;
+        throw err;
+      }
+      return await res.json();
+    } catch (e) {
+      lastErr = e;
+      const status = e?.status;
+      // Permanent client errors: stop trying.
+      if (status && status >= 400 && status < 500 && status !== 429) break;
+    }
+  }
+  throw lastErr;
+}
 
 const cache = new Map();            // league.code → { ts, data, err }
 const inflight = new Map();         // league.code → Promise
@@ -282,11 +344,7 @@ function normalizeEvent(ev, leagueCode) {
 async function fetchOne(league, dates) {
   const url = new URL(`https://site.api.espn.com/apis/site/v2/sports/${league.path}/scoreboard`);
   if (dates) url.searchParams.set('dates', dates);
-  const res = await fetch(url.toString(), {
-    headers: { 'Accept': 'application/json', 'User-Agent': 'cntrd/1.0' },
-  });
-  if (!res.ok) throw new Error(`ESPN ${league.code} HTTP ${res.status}`);
-  const json = await res.json();
+  const json = await fetchJsonWithRetry(url.toString(), `ESPN ${league.code}`);
   const events = Array.isArray(json.events) ? json.events : [];
   return events.map(e => normalizeEvent(e, league.code)).filter(Boolean);
 }
@@ -352,17 +410,16 @@ function dateRange(daysBack) {
 // but REPORTING them. Returning only the items hid total upstream
 // outages: every league could fail and the caller still saw a clean
 // empty list, which the UI then rendered as "no games today".
-function settled(promises) {
-  return Promise.allSettled(promises).then(results => {
-    const items = results.flatMap(r => r.status === 'fulfilled' ? r.value : []);
-    const failures = results
-      .filter(r => r.status === 'rejected')
-      .map(r => String(r.reason?.message || r.reason || 'unknown'));
-    items.__failed = failures.length;
-    items.__total = results.length;
-    items.__reasons = failures.slice(0, 3);
-    return items;
-  });
+function settled(results) {
+  const items = results.flatMap(r => r?.status === 'fulfilled' ? r.value : []);
+  const failures = results
+    .filter(r => r?.status === 'rejected')
+    .map(r => String(r.reason?.message || r.reason || 'unknown'));
+  items.__failed = failures.length;
+  items.__total = results.length;
+  // Dedupe reasons — 15 copies of "HTTP 429" is one fact, not fifteen.
+  items.__reasons = [...new Set(failures)].slice(0, 4);
+  return items;
 }
 
 async function getAll() {
@@ -375,10 +432,21 @@ async function getAll() {
   const todayRange = `${today}-${tomorrow}`;
   const cutoffMs = new Date(`${today.slice(0,4)}-${today.slice(4,6)}-${today.slice(6,8)}T23:59:59-04:00`).getTime() + 24 * 3600_000;
 
-  const [todayLists, recentLists] = await Promise.all([
-    settled(LEAGUES.map(l => getLeague(l, todayRange))),
-    settled(LEAGUES.map(l => getLeague(l, dateRange(RECENT_DAYS)))),
-  ]);
+  // Both batches share ONE concurrency pool. Firing all 42 at once got
+  // most of them throttled by ESPN, which surfaced as an empty board.
+  const recentRange = dateRange(RECENT_DAYS);
+  const tasks = [
+    ...LEAGUES.map(l => ({ league: l, dates: todayRange, bucket: 'today' })),
+    ...LEAGUES.map(l => ({ league: l, dates: recentRange, bucket: 'recent' })),
+  ];
+  const settledTasks = await mapPool(
+    tasks,
+    SCOREBOARD_CONCURRENCY,
+    t => getLeague(t.league, t.dates),
+  );
+
+  const todayLists  = settled(settledTasks.filter((_, i) => tasks[i].bucket === 'today'));
+  const recentLists = settled(settledTasks.filter((_, i) => tasks[i].bucket === 'recent'));
 
   const live = [];
   const upcoming = [];
@@ -417,12 +485,13 @@ async function getAll() {
     recent: recent.slice(0, 24),
     meta,
   };
+  const why = meta.reasons.length ? ` — ${meta.reasons.join('; ')}` : '';
   if (failed >= total && total > 0) {
-    out.error = `Scoreboard upstream unreachable (${failed}/${total} leagues failed).`;
+    out.error = `Scoreboard upstream unreachable (${failed}/${total} leagues failed)${why}`;
   } else if (failed > 0 && live.length === 0 && upcoming.length === 0) {
     // Partial failure that left the board empty is worth flagging too —
     // otherwise a quiet morning and a broken feed look identical.
-    out.error = `Partial scoreboard outage (${failed}/${total} leagues failed).`;
+    out.error = `Partial scoreboard outage (${failed}/${total} leagues failed)${why}`;
   }
   return out;
 }
