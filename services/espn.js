@@ -83,7 +83,11 @@ async function fetchJsonWithRetry(url, label) {
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       if (!res.ok) {
-        const err = new Error(`${label} HTTP ${res.status}`);
+        // Keep a snippet of the body: a bare "HTTP 400" told us the request
+        // was rejected but not why.
+        let detail = '';
+        try { detail = (await res.text()).replace(/\s+/g, ' ').trim().slice(0, 120); } catch {}
+        const err = new Error(`${label} HTTP ${res.status}${detail ? ` (${detail})` : ''}`);
         err.status = res.status;
         throw err;
       }
@@ -341,12 +345,70 @@ function normalizeEvent(ev, leagueCode) {
   };
 }
 
-async function fetchOne(league, dates) {
+// Leagues whose scoreboard has answered 400 to a `dates=A-B` range. ESPN
+// started rejecting ranges on some US leagues (NFL/NCAAF/NBA/WNBA first
+// showed up as "HTTP 400" in the outage banner) while still accepting
+// them elsewhere. Remember per process so we only pay the probe once.
+const rangeUnsupported = new Set();
+
+// 'YYYYMMDD-YYYYMMDD' → ['YYYYMMDD', ...] inclusive, capped. null when
+// `dates` isn't a range.
+function expandRange(dates, max = 8) {
+  const m = /^(\d{4})(\d{2})(\d{2})-(\d{4})(\d{2})(\d{2})$/.exec(dates || '');
+  if (!m) return null;
+  const start = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+  const end   = Date.UTC(+m[4], +m[5] - 1, +m[6]);
+  const out = [];
+  for (let t = start; t <= end && out.length < max; t += 86_400_000) {
+    out.push(ymd(new Date(t)));
+  }
+  return out;
+}
+
+async function fetchScoreboard(league, dates) {
   const url = new URL(`https://site.api.espn.com/apis/site/v2/sports/${league.path}/scoreboard`);
   if (dates) url.searchParams.set('dates', dates);
   const json = await fetchJsonWithRetry(url.toString(), `ESPN ${league.code}`);
-  const events = Array.isArray(json.events) ? json.events : [];
-  return events.map(e => normalizeEvent(e, league.code)).filter(Boolean);
+  return Array.isArray(json.events) ? json.events : [];
+}
+
+async function fetchOne(league, dates) {
+  const toGames = evs => evs.map(e => normalizeEvent(e, league.code)).filter(Boolean);
+  const days = expandRange(dates);
+
+  // 1. Range in a single request — cheapest, when ESPN accepts it.
+  if (!days || !rangeUnsupported.has(league.code)) {
+    try {
+      return toGames(await fetchScoreboard(league, dates));
+    } catch (e) {
+      if (!days || e.status !== 400) throw e;
+      rangeUnsupported.add(league.code);
+    }
+  }
+
+  // 2. Range rejected → one request per day, merged. Sequential on
+  //    purpose: these already run inside the getAll() concurrency pool.
+  let lastErr = null;
+  let anyOk = false;
+  const byId = new Map();
+  for (const day of days) {
+    try {
+      for (const ev of await fetchScoreboard(league, day)) byId.set(String(ev.id), ev);
+      anyOk = true;
+    } catch (e) {
+      if (e.status !== 400) throw e;
+      lastErr = e;
+    }
+  }
+  if (anyOk) return toGames([...byId.values()]);
+
+  // 3. Even single dates rejected → ESPN's default "current" scoreboard.
+  //    Better a fuzzy current slate than an empty board.
+  try {
+    return toGames(await fetchScoreboard(league, null));
+  } catch (e) {
+    throw lastErr || e;
+  }
 }
 
 function cacheKey(league, dates) { return `${league.code}|${dates || 'today'}`; }
